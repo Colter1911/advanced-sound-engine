@@ -1,0 +1,25 @@
+{
+  "id": "advanced-sound-engine",
+  "title": "Advanced Sound Engine",
+  "description": "Independent Web Audio engine with sync support",
+  "version": "0.1.0",
+  "compatibility": {
+    "minimum": "13",
+    "verified": "13.351"
+  },
+  "authors": [
+    {
+      "name": "Your Name"
+    }
+  ],
+  "esmodules": ["dist/module.js"],
+  "styles": ["dist/styles/sound-engine.css"],
+  "languages": [
+    {
+      "lang": "en",
+      "name": "English",
+      "path": "lang/en.json"
+    }
+  ],
+  "socket": true
+}

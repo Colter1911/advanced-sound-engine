@@ -1,0 +1,15 @@
+{
+  "ASE.Title": "Advanced Sound Engine",
+  "ASE.Mixer": "Sound Mixer",
+  "ASE.Volume": "Volume",
+  "ASE.MasterVolume": "Master Volume",
+  "ASE.Play": "Play",
+  "ASE.Pause": "Pause",
+  "ASE.Stop": "Stop",
+  "ASE.Loop": "Loop",
+  "ASE.Groups": {
+    "music": "Music",
+    "ambience": "Ambience",
+    "sfx": "Sound Effects"
+  }
+}

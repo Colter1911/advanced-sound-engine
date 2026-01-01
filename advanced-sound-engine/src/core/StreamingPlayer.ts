@@ -1,0 +1,208 @@
+import type { TrackGroup, PlaybackState } from '@t/audio';
+import { Logger } from '@utils/logger';
+
+export class StreamingPlayer {
+  readonly id: string;
+  private ctx: AudioContext;
+  private _group: TrackGroup;
+  private _url: string = '';
+  
+  private audio: HTMLAudioElement;
+  private sourceNode: MediaElementAudioSourceNode | null = null;
+  private gainNode: GainNode;
+  private outputNode: GainNode;
+  
+  private _state: PlaybackState = 'stopped';
+  private _volume: number = 1;
+  private _loop: boolean = false;
+  private _ready: boolean = false;
+
+  constructor(
+    id: string,
+    ctx: AudioContext,
+    channelOutput: GainNode,
+    group: TrackGroup = 'music'
+  ) {
+    this.id = id;
+    this.ctx = ctx;
+    this._group = group;
+    
+    this.audio = new Audio();
+    this.audio.crossOrigin = 'anonymous';
+    this.audio.preload = 'auto';
+    
+    this.gainNode = ctx.createGain();
+    this.outputNode = ctx.createGain();
+    
+    this.gainNode.connect(this.outputNode);
+    this.outputNode.connect(channelOutput);
+    
+    this.setupAudioEvents();
+  }
+
+  private setupAudioEvents(): void {
+    this.audio.addEventListener('canplay', () => {
+      this._ready = true;
+      if (this._state === 'loading') {
+        this._state = 'stopped';
+      }
+      Logger.debug(`Track ${this.id} ready to play`);
+    });
+
+    this.audio.addEventListener('ended', () => {
+      if (!this._loop) {
+        this._state = 'stopped';
+        Logger.debug(`Track ${this.id} ended`);
+      }
+    });
+
+    this.audio.addEventListener('error', (e) => {
+      Logger.error(`Track ${this.id} error:`, this.audio.error);
+      this._state = 'stopped';
+    });
+  }
+
+  get state(): PlaybackState {
+    return this._state;
+  }
+
+  get group(): TrackGroup {
+    return this._group;
+  }
+
+  get url(): string {
+    return this._url;
+  }
+
+  get volume(): number {
+    return this._volume;
+  }
+
+  get loop(): boolean {
+    return this._loop;
+  }
+
+  get ready(): boolean {
+    return this._ready;
+  }
+
+  async load(url: string): Promise<void> {
+    this._state = 'loading';
+    this._url = url;
+    this._ready = false;
+
+    return new Promise((resolve, reject) => {
+      const onCanPlay = () => {
+        this.audio.removeEventListener('canplay', onCanPlay);
+        this.audio.removeEventListener('error', onError);
+        
+        // Connect to Web Audio
+        if (!this.sourceNode) {
+          this.sourceNode = this.ctx.createMediaElementSource(this.audio);
+          this.sourceNode.connect(this.gainNode);
+        }
+        
+        this._ready = true;
+        this._state = 'stopped';
+        Logger.debug(`Track loaded: ${this.id}`);
+        resolve();
+      };
+
+      const onError = () => {
+        this.audio.removeEventListener('canplay', onCanPlay);
+        this.audio.removeEventListener('error', onError);
+        this._state = 'stopped';
+        reject(new Error(`Failed to load: ${url}`));
+      };
+
+      this.audio.addEventListener('canplay', onCanPlay, { once: true });
+      this.audio.addEventListener('error', onError, { once: true });
+      
+      this.audio.src = url;
+      this.audio.load();
+    });
+  }
+
+  async play(offset: number = 0): Promise<void> {
+    if (!this._ready) {
+      Logger.warn(`Track ${this.id} not ready`);
+      return;
+    }
+
+    try {
+      this.audio.currentTime = Math.max(0, Math.min(offset, this.audio.duration || 0));
+      this.audio.loop = this._loop;
+      await this.audio.play();
+      this._state = 'playing';
+      Logger.debug(`Track ${this.id} playing from ${offset.toFixed(2)}s`);
+    } catch (error) {
+      Logger.error(`Failed to play ${this.id}:`, error);
+    }
+  }
+
+  pause(): void {
+    if (this._state !== 'playing') return;
+    
+    this.audio.pause();
+    this._state = 'paused';
+    Logger.debug(`Track ${this.id} paused at ${this.audio.currentTime.toFixed(2)}s`);
+  }
+
+  stop(): void {
+    this.audio.pause();
+    this.audio.currentTime = 0;
+    this._state = 'stopped';
+    Logger.debug(`Track ${this.id} stopped`);
+  }
+
+  seek(time: number): void {
+    const safeTime = Math.max(0, Math.min(time, this.audio.duration || 0));
+    this.audio.currentTime = safeTime;
+  }
+
+  setVolume(value: number): void {
+    this._volume = Math.max(0, Math.min(1, value));
+    this.gainNode.gain.setValueAtTime(this._volume, this.ctx.currentTime);
+  }
+
+  setLoop(value: boolean): void {
+    this._loop = value;
+    this.audio.loop = value;
+  }
+
+  setChannel(newGroup: TrackGroup, newOutput: GainNode): void {
+    this._group = newGroup;
+    this.outputNode.disconnect();
+    this.outputNode.connect(newOutput);
+  }
+
+  getCurrentTime(): number {
+    return this.audio.currentTime;
+  }
+
+  getDuration(): number {
+    return this.audio.duration || 0;
+  }
+
+  getState() {
+    return {
+      id: this.id,
+      url: this._url,
+      group: this._group,
+      playbackState: this._state,
+      volume: this._volume,
+      loop: this._loop,
+      currentTime: this.getCurrentTime(),
+      duration: this.getDuration()
+    };
+  }
+
+  dispose(): void {
+    this.audio.pause();
+    this.audio.src = '';
+    this.sourceNode?.disconnect();
+    this.gainNode.disconnect();
+    this.outputNode.disconnect();
+    Logger.debug(`Track ${this.id} disposed`);
+  }
+}

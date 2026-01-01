@@ -1,0 +1,110 @@
+<div class="ase-mixer-container">
+  {{!-- Sync Toggle --}}
+  <div class="ase-sync-bar">
+    <label class="ase-sync-toggle">
+      <input type="checkbox" id="ase-sync-toggle" {{#if syncEnabled}}checked{{/if}}>
+      <span class="ase-sync-slider"></span>
+    </label>
+    <div class="ase-sync-status {{#if syncEnabled}}is-active{{/if}}">
+      <i class="fas fa-broadcast-tower"></i>
+      <span>{{#if syncEnabled}}SYNC ON{{else}}SYNC OFF{{/if}}</span>
+    </div>
+  </div>
+
+  {{!-- Channel Mixer --}}
+  <div class="ase-channels">
+    <div class="ase-channel">
+      <label><i class="fas fa-volume-up"></i> Master</label>
+      <input type="range" class="ase-slider ase-channel-slider" data-channel="master" min="0" max="100" value="{{volumes.master}}">
+      <span class="ase-channel-value">{{volumes.master}}%</span>
+    </div>
+    <div class="ase-channel">
+      <label><i class="fas fa-music"></i> Music</label>
+      <input type="range" class="ase-slider ase-channel-slider" data-channel="music" min="0" max="100" value="{{volumes.music}}">
+      <span class="ase-channel-value">{{volumes.music}}%</span>
+    </div>
+    <div class="ase-channel">
+      <label><i class="fas fa-tree"></i> Ambience</label>
+      <input type="range" class="ase-slider ase-channel-slider" data-channel="ambience" min="0" max="100" value="{{volumes.ambience}}">
+      <span class="ase-channel-value">{{volumes.ambience}}%</span>
+    </div>
+    <div class="ase-channel">
+      <label><i class="fas fa-bolt"></i> SFX</label>
+      <input type="range" class="ase-slider ase-channel-slider" data-channel="sfx" min="0" max="100" value="{{volumes.sfx}}">
+      <span class="ase-channel-value">{{volumes.sfx}}%</span>
+    </div>
+  </div>
+
+  {{!-- Actions --}}
+  <div class="ase-header-actions">
+    <button type="button" id="ase-add-track" class="ase-btn ase-btn-primary">
+      <i class="fas fa-plus"></i> Add Track
+    </button>
+    <button type="button" id="ase-stop-all" class="ase-btn">
+      <i class="fas fa-stop"></i> Stop All
+    </button>
+  </div>
+
+  {{!-- Track List --}}
+  <div class="ase-tracks">
+    {{#if tracks.length}}
+      {{#each tracks}}
+        <div class="ase-track is-{{#if isPlaying}}playing{{else if isPaused}}paused{{else if isLoading}}loading{{else}}stopped{{/if}}" data-track-id="{{id}}">
+          
+          <div class="ase-track-info">
+            <span class="ase-track-name" title="{{name}}">{{name}}</span>
+            <select class="ase-channel-select" data-track-id="{{id}}">
+              <option value="music" {{#if (eq group "music")}}selected{{/if}}>Music</option>
+              <option value="ambience" {{#if (eq group "ambience")}}selected{{/if}}>Ambience</option>
+              <option value="sfx" {{#if (eq group "sfx")}}selected{{/if}}>SFX</option>
+            </select>
+          </div>
+
+          <div class="ase-track-transport">
+            <button type="button" class="ase-btn-icon ase-btn-play" title="Play" {{#if isPlaying}}disabled{{/if}} {{#if isLoading}}disabled{{/if}}>
+              <i class="fas fa-play"></i>
+            </button>
+            <button type="button" class="ase-btn-icon ase-btn-pause" title="Pause" {{#unless isPlaying}}disabled{{/unless}}>
+              <i class="fas fa-pause"></i>
+            </button>
+            <button type="button" class="ase-btn-icon ase-btn-stop" title="Stop" {{#if isStopped}}disabled{{/if}}>
+              <i class="fas fa-stop"></i>
+            </button>
+          </div>
+
+          <div class="ase-track-seek">
+            <span class="ase-time-current">{{currentTimeFormatted}}</span>
+            <input type="range" class="ase-seek-slider ase-slider" min="0" max="100" value="{{progress}}" step="0.1">
+            <span class="ase-time-duration">{{durationFormatted}}</span>
+          </div>
+
+          <div class="ase-track-volume">
+            <i class="fas fa-volume-down"></i>
+            <input type="range" class="ase-volume-slider ase-slider" min="0" max="100" value="{{volumePercent}}">
+            <span class="ase-volume-value">{{volumePercent}}%</span>
+          </div>
+
+          <div class="ase-track-options">
+            <label class="ase-loop-label" title="Loop">
+              <input type="checkbox" class="ase-loop-toggle" {{#if loop}}checked{{/if}}>
+              <i class="fas fa-redo"></i>
+            </label>
+            <button type="button" class="ase-btn-icon ase-btn-remove" title="Remove">
+              <i class="fas fa-trash"></i>
+            </button>
+          </div>
+          
+        </div>
+      {{/each}}
+    {{else}}
+      <div class="ase-empty">
+        <p>No tracks loaded</p>
+        <p class="ase-hint">Click "Add Track" to load audio files</p>
+      </div>
+    {{/if}}
+  </div>
+
+  <footer class="ase-footer">
+    <span class="ase-track-count">{{playingCount}}/{{tracks.length}} playing</span>
+  </footer>
+</div>
