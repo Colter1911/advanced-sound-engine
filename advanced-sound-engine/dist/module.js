@@ -1,6 +1,6 @@
-var P = Object.defineProperty;
-var C = (r, e, t) => e in r ? P(r, e, { enumerable: !0, configurable: !0, writable: !0, value: t }) : r[e] = t;
-var l = (r, e, t) => C(r, typeof e != "symbol" ? e + "" : e, t);
+var A = Object.defineProperty;
+var w = (r, e, t) => e in r ? A(r, e, { enumerable: !0, configurable: !0, writable: !0, value: t }) : r[e] = t;
+var l = (r, e, t) => w(r, typeof e != "symbol" ? e + "" : e, t);
 const S = "ASE", c = {
   info: (r, ...e) => {
     console.log(`${S} | ${r}`, ...e);
@@ -131,7 +131,7 @@ function b(r) {
   return `${e}:${t.toString().padStart(2, "0")}`;
 }
 const E = "advanced-sound-engine", x = 8;
-class L {
+class P {
   constructor() {
     l(this, "ctx");
     l(this, "masterGain");
@@ -328,7 +328,7 @@ class L {
     this.players.clear(), this.ctx.close(), c.info("AudioEngine disposed");
   }
 }
-class I {
+class C {
   constructor() {
     l(this, "ctx");
     l(this, "masterGain");
@@ -456,8 +456,8 @@ class I {
     this.clearAll(), this.ctx.close(), c.info("PlayerAudioEngine disposed");
   }
 }
-const N = "advanced-sound-engine", v = `module.${N}`;
-class F {
+const L = "advanced-sound-engine", v = `module.${L}`;
+class I {
   constructor() {
     l(this, "gmEngine", null);
     l(this, "playerEngine", null);
@@ -668,8 +668,8 @@ function _(r, e) {
     }, u));
   };
 }
-const O = "advanced-sound-engine", D = 8;
-class z extends Application {
+const N = "advanced-sound-engine", F = 8;
+class O extends Application {
   constructor(t, s, a) {
     super(a);
     l(this, "engine");
@@ -681,7 +681,7 @@ class z extends Application {
     return foundry.utils.mergeObject(super.defaultOptions, {
       id: "ase-sound-mixer",
       title: "Sound Mixer (GM)",
-      template: `modules/${O}/templates/mixer.hbs`,
+      template: `modules/${N}/templates/mixer.hbs`,
       classes: ["ase-mixer"],
       width: 550,
       height: "auto",
@@ -701,7 +701,7 @@ class z extends Application {
         sfx: Math.round(s.sfx * 100)
       },
       playingCount: a,
-      maxSimultaneous: D,
+      maxSimultaneous: F,
       syncEnabled: this.socket.syncEnabled
     };
   }
@@ -900,55 +900,66 @@ class V extends Application {
     return t ? parseFloat(t) : 1;
   }
 }
-const U = "advanced-sound-engine";
+const D = "advanced-sound-engine";
 let p = null, y = null, m = null, k = null, g = null;
+Hooks.on("getSceneControlButtons", (r) => {
+  var t;
+  console.log("ASE: Hook fired", r);
+  const e = ((t = game.user) == null ? void 0 : t.isGM) ?? !1;
+  r["advanced-sound-engine"] = {
+    name: "advanced-sound-engine",
+    title: e ? "Sound Mixer" : "Sound Volume",
+    icon: e ? "fas fa-sliders-h" : "fas fa-volume-up",
+    visible: !0,
+    tools: {
+      "open-panel": {
+        name: "open-panel",
+        title: e ? "Sound Mixer" : "Sound Volume",
+        icon: e ? "fas fa-sliders-h" : "fas fa-volume-up",
+        button: !0,
+        onClick: () => {
+          var s;
+          return (s = window.ASE) == null ? void 0 : s.openPanel();
+        }
+      }
+    }
+  };
+});
 Hooks.once("init", () => {
   c.info("Initializing Advanced Sound Engine..."), J();
 });
 Hooks.once("ready", async () => {
   var e;
   const r = ((e = game.user) == null ? void 0 : e.isGM) ?? !1;
-  c.info(`Starting Advanced Sound Engine (${r ? "GM" : "Player"})...`), g = new F(), r ? await R() : await H(), window.ASE = {
+  c.info(`Starting Advanced Sound Engine (${r ? "GM" : "Player"})...`), g = new I(), r ? await z() : await U(), window.ASE = {
     isGM: r,
-    openPanel: r ? A : w,
+    openPanel: r ? R : H,
     engine: r ? p ?? void 0 : m ?? void 0,
     socket: g ?? void 0
-  }, B(), j(), c.info("Advanced Sound Engine ready");
+  }, j(), c.info("Advanced Sound Engine ready");
 });
-async function R() {
-  p = new L(), g.initializeAsGM(p), await p.loadSavedState();
+async function z() {
+  p = new P(), g.initializeAsGM(p), await p.loadSavedState();
 }
-async function H() {
-  m = new I(), g.initializeAsPlayer(m);
+async function U() {
+  m = new C(), g.initializeAsPlayer(m);
   const r = V.loadSavedVolume();
   m.setLocalVolume(r);
 }
-function A() {
-  !p || !g || (y && y.rendered ? y.bringToTop() : (y = new z(p, g), y.render(!0)));
+function R() {
+  !p || !g || (y && y.rendered ? y.bringToTop() : (y = new O(p, g), y.render(!0)));
 }
-function w() {
+function H() {
   m && (k && k.rendered ? k.bringToTop() : (k = new V(m), k.render(!0)));
 }
 function j() {
-  Hooks.on("renderSceneControls", () => {
-    var s;
-    if (document.getElementById("ase-control-btn")) return;
-    const r = document.querySelector("#controls");
-    if (!r) return;
-    const e = ((s = game.user) == null ? void 0 : s.isGM) ?? !1, t = document.createElement("li");
-    t.id = "ase-control-btn", t.className = "scene-control", t.dataset.tooltip = e ? "Sound Mixer" : "Sound Volume", t.innerHTML = `<i class="fas ${e ? "fa-sliders-h" : "fa-volume-up"}"></i>`, t.style.cursor = "pointer", t.addEventListener("click", () => {
-      e ? A() : w();
-    }), r.appendChild(t);
-  });
-}
-function B() {
   const r = () => {
     p == null || p.resume(), m == null || m.resume();
   };
   document.addEventListener("click", r, { once: !0 }), document.addEventListener("keydown", r, { once: !0 }), Hooks.once("canvasReady", r);
 }
 function J() {
-  game.settings.register(U, "mixerState", {
+  game.settings.register(D, "mixerState", {
     name: "Mixer State",
     hint: "Internal storage for mixer state",
     scope: "world",

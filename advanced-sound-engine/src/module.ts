@@ -31,6 +31,32 @@ declare global {
 }
 
 // ─────────────────────────────────────────────────────────────
+// Control Button (в начале файла, после импортов)
+// ─────────────────────────────────────────────────────────────
+
+Hooks.on('getSceneControlButtons', (controls: Record<string, any>) => {
+  console.log('ASE: Hook fired', controls);
+  
+  const isGM = game.user?.isGM ?? false;
+
+  // Добавляем к существующему контролу sounds
+controls['advanced-sound-engine'] = {
+  name: 'advanced-sound-engine',
+  title: isGM ? 'Sound Mixer' : 'Sound Volume',
+  icon: isGM ? 'fas fa-sliders-h' : 'fas fa-volume-up',
+  visible: true,
+  tools: {
+    'open-panel': {
+      name: 'open-panel',
+      title: isGM ? 'Sound Mixer' : 'Sound Volume',
+      icon: isGM ? 'fas fa-sliders-h' : 'fas fa-volume-up',
+      button: true,
+      onClick: () => window.ASE?.openPanel()
+    }
+  }
+};
+});
+// ─────────────────────────────────────────────────────────────
 // Initialization
 // ─────────────────────────────────────────────────────────────
 
@@ -59,8 +85,7 @@ Hooks.once('ready', async () => {
   };
   
   setupAutoplayHandler();
-  addControlButton();
-  
+    
   Logger.info('Advanced Sound Engine ready');
 });
 
@@ -106,38 +131,7 @@ function openVolumePanel(): void {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// Control Button
-// ─────────────────────────────────────────────────────────────
 
-function addControlButton(): void {
-  Hooks.on('renderSceneControls', () => {
-    // Проверяем, не добавлена ли уже кнопка
-    if (document.getElementById('ase-control-btn')) return;
-    
-    const controls = document.querySelector('#controls');
-    if (!controls) return;
-    
-    const isGM = game.user?.isGM ?? false;
-    
-    const btn = document.createElement('li');
-    btn.id = 'ase-control-btn';
-    btn.className = 'scene-control';
-    btn.dataset.tooltip = isGM ? 'Sound Mixer' : 'Sound Volume';
-    btn.innerHTML = `<i class="fas ${isGM ? 'fa-sliders-h' : 'fa-volume-up'}"></i>`;
-    btn.style.cursor = 'pointer';
-    
-    btn.addEventListener('click', () => {
-      if (isGM) {
-        openMixer();
-      } else {
-        openVolumePanel();
-      }
-    });
-    
-    controls.appendChild(btn);
-  });
-}
 
 // ─────────────────────────────────────────────────────────────
 // Autoplay Policy Handler
