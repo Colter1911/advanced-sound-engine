@@ -451,3 +451,291 @@ $ase-warning: #ffc107;
   font-size: 10px;
   color: $ase-text-secondary;
 }
+
+// ─────────────────────────────────────────────────────────────
+// Library
+// ─────────────────────────────────────────────────────────────
+
+.library {
+  .window-content {
+    background: $ase-bg-primary;
+    padding: 0;
+  }
+}
+
+.library-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  color: $ase-text-primary;
+  background: $ase-bg-primary;
+}
+
+// Header
+.library-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  background: $ase-bg-secondary;
+  border-bottom: 2px solid $ase-bg-tertiary;
+}
+
+.library-tabs {
+  display: flex;
+  gap: 8px;
+
+  .item {
+    padding: 8px 16px;
+    background: $ase-bg-tertiary;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.2s;
+
+    &.active {
+      background: $ase-accent;
+      color: white;
+    }
+
+    &.disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    &:hover:not(.disabled) {
+      background: $ase-accent-hover;
+    }
+  }
+}
+
+.library-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.add-track-btn {
+  padding: 8px 16px;
+  background: $ase-success;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: opacity 0.2s;
+
+  &:hover {
+    opacity: 0.8;
+  }
+
+  i {
+    margin-right: 6px;
+  }
+}
+
+// Toolbar
+.library-toolbar {
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+  background: $ase-bg-secondary;
+  align-items: center;
+}
+
+.search-box {
+  flex: 1;
+
+  input {
+    width: 100%;
+    padding: 8px 12px;
+    background: $ase-bg-primary;
+    border: 1px solid $ase-bg-tertiary;
+    border-radius: 4px;
+    color: $ase-text-primary;
+
+    &:focus {
+      outline: none;
+      border-color: $ase-accent;
+    }
+  }
+}
+
+.filter-channels {
+  display: flex;
+  gap: 8px;
+
+  .channel-filter {
+    padding: 6px 12px;
+    background: $ase-bg-tertiary;
+    border: 2px solid transparent;
+    border-radius: 4px;
+    color: $ase-text-secondary;
+    cursor: pointer;
+    transition: all 0.2s;
+
+    &.active {
+      border-color: $ase-success;
+      color: $ase-text-primary;
+    }
+
+    &:hover {
+      color: $ase-text-primary;
+    }
+  }
+}
+
+// Tags
+.library-tags {
+  padding: 12px;
+  background: $ase-bg-secondary;
+  border-bottom: 1px solid $ase-bg-tertiary;
+}
+
+.tags-container {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+// Tracks
+.library-tracks {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+.tracks-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.track-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  background: $ase-bg-secondary;
+  border-radius: 6px;
+  transition: background 0.2s;
+
+  &:hover {
+    background: lighten($ase-bg-secondary, 5%);
+  }
+}
+
+.track-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.track-name {
+  font-weight: bold;
+  color: $ase-text-primary;
+  margin-bottom: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.track-meta {
+  display: flex;
+  gap: 12px;
+  font-size: 12px;
+  color: $ase-text-secondary;
+}
+
+.track-duration {
+  color: $ase-text-secondary;
+}
+
+.track-tags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+
+  .tag {
+    padding: 2px 8px;
+    background: $ase-bg-tertiary;
+    border-radius: 12px;
+    font-size: 11px;
+    color: $ase-accent;
+  }
+}
+
+.track-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.track-action-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: $ase-bg-tertiary;
+  border: none;
+  border-radius: 4px;
+  color: $ase-text-secondary;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover {
+    background: $ase-bg-primary;
+    color: $ase-text-primary;
+  }
+
+  &.favorite-btn.active {
+    color: $ase-warning;
+  }
+
+  &.delete-btn:hover {
+    color: $ase-accent;
+  }
+}
+
+// Empty State
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: $ase-text-secondary;
+  text-align: center;
+
+  i {
+    font-size: 64px;
+    margin-bottom: 16px;
+    opacity: 0.3;
+  }
+
+  p {
+    margin: 4px 0;
+  }
+
+  .hint {
+    font-size: 12px;
+    opacity: 0.7;
+  }
+}
+
+// Footer
+.library-footer {
+  padding: 12px;
+  background: $ase-bg-secondary;
+  border-top: 1px solid $ase-bg-tertiary;
+}
+
+.library-stats {
+  display: flex;
+  gap: 16px;
+  font-size: 12px;
+  color: $ase-text-secondary;
+
+  span {
+    padding: 4px 8px;
+    background: $ase-bg-primary;
+    border-radius: 4px;
+  }
+}
