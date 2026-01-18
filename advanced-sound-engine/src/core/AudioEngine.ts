@@ -2,9 +2,14 @@ import type { TrackConfig, TrackState, MixerState, TrackGroup, ChannelVolumes } 
 import { StreamingPlayer } from './StreamingPlayer';
 import { Logger } from '@utils/logger';
 import { getServerTime } from '@utils/time';
+import { generateUUID } from '@utils/uuid';
+import { validateAudioFile } from '@utils/audio-validation';
 
 const MODULE_ID = 'advanced-sound-engine';
-const MAX_SIMULTANEOUS = 8;
+
+function getMaxSimultaneous(): number {
+  return (game.settings.get(MODULE_ID, 'maxSimultaneousTracks') as number) || 8;
+}
 
 export class AudioEngine {
   private ctx: AudioContext;
@@ -89,14 +94,25 @@ export class AudioEngine {
   // ─────────────────────────────────────────────────────────────
 
   async createTrack(config: TrackConfig): Promise<StreamingPlayer> {
-    if (this.players.has(config.id)) {
-      return this.players.get(config.id)!;
+    // Generate UUID if not provided
+    const trackId = config.id || generateUUID();
+
+    if (this.players.has(trackId)) {
+      return this.players.get(trackId)!;
+    }
+
+    // Validate audio file format
+    const validation = validateAudioFile(config.url);
+    if (!validation.valid) {
+      const error = new Error(validation.error || 'Invalid audio file');
+      Logger.error(`Track validation failed: ${validation.error}`);
+      throw error;
     }
 
     const channelOutput = this.channelGains[config.group];
-    
+
     const player = new StreamingPlayer(
-      config.id,
+      trackId,
       this.ctx,
       channelOutput,
       config.group
@@ -111,10 +127,10 @@ export class AudioEngine {
 
     await player.load(config.url);
 
-    this.players.set(config.id, player);
+    this.players.set(trackId, player);
     this.scheduleSave();
-    
-    Logger.info(`Track created: ${config.id}`);
+
+    Logger.info(`Track created: ${trackId} (${validation.extension})`);
     return player;
   }
 
@@ -160,16 +176,17 @@ export class AudioEngine {
       Logger.warn(`Track not found: ${id}`);
       return;
     }
-    
+
+    const maxSimultaneous = getMaxSimultaneous();
     const playingCount = this.getAllTracks().filter(t => t.state === 'playing').length;
     const isCurrentlyPlaying = player.state === 'playing';
-    
-    if (!isCurrentlyPlaying && playingCount >= MAX_SIMULTANEOUS) {
-      Logger.warn(`Maximum simultaneous tracks (${MAX_SIMULTANEOUS}) reached`);
-      ui.notifications?.warn(`Cannot play more than ${MAX_SIMULTANEOUS} tracks simultaneously`);
+
+    if (!isCurrentlyPlaying && playingCount >= maxSimultaneous) {
+      Logger.warn(`Maximum simultaneous tracks (${maxSimultaneous}) reached`);
+      ui.notifications?.warn(`Cannot play more than ${maxSimultaneous} tracks simultaneously`);
       return;
     }
-    
+
     await player.play(offset);
   }
 

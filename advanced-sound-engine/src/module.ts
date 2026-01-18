@@ -162,6 +162,20 @@ function registerSettings(): void {
     type: String,
     default: ''
   });
+
+  game.settings.register(MODULE_ID, 'maxSimultaneousTracks', {
+    name: 'Maximum Simultaneous Tracks',
+    hint: 'Maximum number of tracks that can play simultaneously (1-16)',
+    scope: 'world',
+    config: true,
+    type: Number,
+    default: 8,
+    range: {
+      min: 1,
+      max: 16,
+      step: 1
+    }
+  });
 }
 
 // ─────────────────────────────────────────────────────────────
