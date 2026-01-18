@@ -1,0 +1,96 @@
+<div class="library-container">
+  <div class="library-header">
+    <div class="library-tabs tabs">
+      <a class="item active" data-tab="library">Local Library</a>
+      <a class="item disabled" data-tab="online">Online Library (coming soon)</a>
+      <a class="item disabled" data-tab="sfx">Sound Effects (coming soon)</a>
+    </div>
+
+    <div class="library-actions">
+      <button type="button" class="add-track-btn" data-action="add-track">
+        <i class="fas fa-plus"></i>
+        Add Track
+      </button>
+    </div>
+  </div>
+
+  <div class="library-content content">
+    <div class="tab active" data-tab="library">
+
+      <!-- Search & Filters (A2) - Placeholder for now -->
+      <div class="library-toolbar">
+        <div class="search-box">
+          <input type="text" placeholder="Search tracks..." class="library-search" />
+        </div>
+        <div class="filter-channels">
+          <button class="channel-filter" data-channel="music">Music</button>
+          <button class="channel-filter" data-channel="ambience">Ambience</button>
+          <button class="channel-filter" data-channel="sfx">SFX</button>
+        </div>
+      </div>
+
+      <!-- Tags (A3) - Placeholder for now -->
+      <div class="library-tags">
+        <div class="tags-container">
+          <!-- Tags will be added in Этап 3 -->
+        </div>
+      </div>
+
+      <!-- Tracks List (A4) -->
+      <div class="library-tracks">
+        {{#if items.length}}
+          <div class="tracks-list">
+            {{#each items}}
+              <div class="track-item" data-item-id="{{this.id}}">
+                <div class="track-info">
+                  <div class="track-name">{{this.name}}</div>
+                  <div class="track-meta">
+                    <span class="track-duration">{{this.duration}}</span>
+                    {{#if this.tags.length}}
+                      <span class="track-tags">
+                        {{#each this.tags}}
+                          <span class="tag">#{{this}}</span>
+                        {{/each}}
+                      </span>
+                    {{/if}}
+                  </div>
+                </div>
+
+                <div class="track-actions">
+                  <button
+                    type="button"
+                    class="track-action-btn favorite-btn {{#if this.favorite}}active{{/if}}"
+                    data-action="toggle-favorite"
+                    title="{{#if this.favorite}}Remove from favorites{{else}}Add to favorites{{/if}}">
+                    <i class="fas fa-star"></i>
+                  </button>
+                  <button
+                    type="button"
+                    class="track-action-btn delete-btn"
+                    data-action="delete-track"
+                    title="Delete track">
+                    <i class="fas fa-trash"></i>
+                  </button>
+                </div>
+              </div>
+            {{/each}}
+          </div>
+        {{else}}
+          <div class="empty-state">
+            <i class="fas fa-music"></i>
+            <p>No tracks in library</p>
+            <p class="hint">Click "Add Track" to get started</p>
+          </div>
+        {{/if}}
+      </div>
+
+      <!-- Stats Footer -->
+      <div class="library-footer">
+        <div class="library-stats">
+          <span>{{stats.total}} tracks</span>
+          <span>{{stats.favorites}} favorites</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

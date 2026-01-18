@@ -2,11 +2,12 @@ export type TrackGroup = 'music' | 'ambience' | 'sfx';
 export type PlaybackState = 'stopped' | 'playing' | 'paused' | 'loading';
 
 export interface TrackConfig {
-  id: string;
+  id?: string;                   // UUID v4 (генерируется автоматически, если не указан)
   url: string;
   group: TrackGroup;
   volume?: number;
   loop?: boolean;
+  libraryItemId?: string;        // UUID ссылка на LibraryItem (для будущего использования)
 }
 
 export interface TrackState {

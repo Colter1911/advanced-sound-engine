@@ -5,9 +5,13 @@ import { StreamingPlayer } from '@core/StreamingPlayer';
 import { Logger } from '@utils/logger';
 import { formatTime } from '@utils/time';
 import { throttle } from '@utils/throttle';
+import { generateUUID } from '@utils/uuid';
 
 const MODULE_ID = 'advanced-sound-engine';
-const MAX_SIMULTANEOUS = 8;
+
+function getMaxSimultaneous(): number {
+  return (game.settings.get(MODULE_ID, 'maxSimultaneousTracks') as number) || 8;
+}
 
 interface MixerData {
   tracks: TrackViewData[];
@@ -69,7 +73,7 @@ export class SoundMixerApp extends Application {
     const tracks = this.engine.getAllTracks().map(player => this.getTrackViewData(player));
     const volumes = this.engine.volumes;
     const playingCount = tracks.filter(t => t.isPlaying).length;
-    
+
     return {
       tracks,
       volumes: {
@@ -79,7 +83,7 @@ export class SoundMixerApp extends Application {
         sfx: Math.round(volumes.sfx * 100)
       },
       playingCount,
-      maxSimultaneous: MAX_SIMULTANEOUS,
+      maxSimultaneous: getMaxSimultaneous(),
       syncEnabled: this.socket.syncEnabled
     };
   }
@@ -298,8 +302,8 @@ export class SoundMixerApp extends Application {
   }
 
   async addTrackFromPath(path: string, group: TrackGroup = 'music'): Promise<void> {
-    const trackId = `track-${Date.now()}`;
-    
+    const trackId = generateUUID();
+
     try {
       await this.engine.createTrack({
         id: trackId,
@@ -308,13 +312,14 @@ export class SoundMixerApp extends Application {
         volume: 1,
         loop: false
       });
-      
+
       this.render();
       ui.notifications?.info(`Added: ${this.extractFileName(path)}`);
-      
+
     } catch (error) {
       Logger.error('Failed to add track:', error);
-      ui.notifications?.error(`Failed to load: ${path}`);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      ui.notifications?.error(`Failed to load: ${errorMessage}`);
     }
   }
 
