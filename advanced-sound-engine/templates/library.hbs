@@ -1,182 +1,257 @@
 <div class="library-container">
-  <!-- Header with tabs and Add Track -->
-  <div class="library-header">
-    <div class="library-tabs tabs">
-      <a class="item active" data-tab="library">Local Library</a>
-      <a class="item disabled" data-tab="online">Online Library (coming soon)</a>
-      <a class="item disabled" data-tab="sfx">Sound Effects (coming soon)</a>
-    </div>
-
-    <div class="library-actions">
-      <button type="button" class="add-track-btn" data-action="add-track">
-        <i class="fas fa-plus"></i>
-        Add Track
-      </button>
-    </div>
-  </div>
-
-  <!-- Main body with 3-column layout -->
-  <div class="library-body">
-    <!-- Left Sidebar: Playlists (A5) + Favorites (A6) -->
-    <div class="library-sidebar">
-      <!-- Playlists Section -->
-      <div class="sidebar-section playlists-section">
-        <div class="section-header">
-          <h3><i class="fas fa-list"></i> Playlists</h3>
-          <button type="button" class="create-playlist-btn" data-action="create-playlist" title="Create Playlist">
-            <i class="fas fa-plus"></i>
-          </button>
-        </div>
-        <div class="playlists-list">
-          {{#if playlists.length}}
-            {{#each playlists}}
-              <div class="playlist-item {{#if this.selected}}selected{{/if}}" data-playlist-id="{{this.id}}">
-                <div class="playlist-info">
-                  <i class="fas fa-music"></i>
-                  <span class="playlist-name">{{this.name}}</span>
-                  <span class="playlist-count">({{this.itemCount}})</span>
-                </div>
-                <div class="playlist-actions">
-                  <button class="playlist-action-btn" data-action="add-playlist-to-queue" title="Add to queue">
-                    <i class="fas fa-play-circle"></i>
-                  </button>
-                  <button class="playlist-action-btn" data-action="toggle-playlist-favorite" title="{{#if this.favorite}}Remove from favorites{{else}}Add to favorites{{/if}}">
-                    <i class="fas fa-star {{#if this.favorite}}active{{/if}}"></i>
-                  </button>
-                </div>
-              </div>
-            {{/each}}
-          {{else}}
-            <div class="empty-message">
-              <p>No playlists yet</p>
-              <p class="hint">Click + to create one</p>
-            </div>
-          {{/if}}
-        </div>
-      </div>
-
-      <!-- Favorites Section -->
-      <div class="sidebar-section favorites-section">
-        <div class="section-header">
-          <h3><i class="fas fa-star"></i> Favorites</h3>
-        </div>
-        <div class="favorites-list">
-          {{#if favorites.length}}
-            {{#each favorites}}
-              <div class="favorite-item" data-favorite-id="{{this.id}}" data-favorite-type="{{this.type}}">
-                <div class="favorite-info">
-                  {{#if (eq this.type 'playlist')}}
-                    <i class="fas fa-list"></i>
-                  {{else}}
-                    <i class="fas fa-music"></i>
-                  {{/if}}
-                  <span class="favorite-name">{{this.name}}</span>
-                </div>
-                <div class="favorite-actions">
-                  <button class="favorite-action-btn" data-action="add-to-queue" title="Add to queue">
-                    <i class="fas fa-play-circle"></i>
-                  </button>
-                  <button class="favorite-action-btn" data-action="remove-from-favorites" title="Remove from favorites">
-                    <i class="fas fa-times"></i>
-                  </button>
-                </div>
-              </div>
-            {{/each}}
-          {{else}}
-            <div class="empty-message">
-              <p>No favorites yet</p>
-              <p class="hint">Star tracks or playlists to add them here</p>
-            </div>
-          {{/if}}
-        </div>
-      </div>
-    </div>
-
-    <!-- Main Content Area: Tracks (A4) -->
-    <div class="library-main">
-      <!-- Search & Filters (A2) -->
-      <div class="library-toolbar">
-        <div class="search-box">
-          <input type="text" placeholder="Search tracks..." class="library-search" data-action="search" />
-        </div>
-        <div class="filter-channels">
-          <button class="channel-filter" data-channel="music" data-action="filter-channel">Music</button>
-          <button class="channel-filter" data-channel="ambience" data-action="filter-channel">Ambience</button>
-          <button class="channel-filter" data-channel="sfx" data-action="filter-channel">SFX</button>
-        </div>
-        <button class="all-tracks-btn" data-action="show-all-tracks" title="Show all tracks">
-          All Tracks
-        </button>
-      </div>
-
-      <!-- Tags (A3) - Placeholder for Этап 3 -->
-      <div class="library-tags">
-        <div class="tags-scroll">
-          <div class="tags-container">
-            <!-- Tags will be added in Этап 3 -->
-            <span class="tag-placeholder">Tags will appear here</span>
-          </div>
-        </div>
-        <button class="add-tag-btn" data-action="add-tag" title="Add tag">
+  <!-- Left Sidebar: Playlists (A5) + Favorites (A6) -->
+  <div class="library-sidebar">
+    <!-- Playlists Section (A5) -->
+    <div class="sidebar-section playlists-section">
+      <div class="section-header">
+        <h3>Playlists</h3>
+        <button type="button" class="icon-btn create-playlist-btn" data-action="create-playlist" title="Create Playlist">
           <i class="fas fa-plus"></i>
         </button>
       </div>
-
-      <!-- Tracks List (A4) -->
-      <div class="library-tracks">
-        {{#if items.length}}
-          <div class="tracks-list">
-            {{#each items}}
-              <div class="track-item" data-item-id="{{this.id}}" draggable="true">
-                <div class="track-info">
-                  <div class="track-name">{{this.name}}</div>
-                  <div class="track-meta">
-                    <span class="track-duration">{{this.duration}}</span>
-                    {{#if this.tags.length}}
-                      <span class="track-tags">
-                        {{#each this.tags}}
-                          <span class="tag">#{{this}}</span>
-                        {{/each}}
-                      </span>
-                    {{/if}}
-                  </div>
-                </div>
-
-                <div class="track-actions">
-                  <button
-                    type="button"
-                    class="track-action-btn favorite-btn {{#if this.favorite}}active{{/if}}"
-                    data-action="toggle-favorite"
-                    title="{{#if this.favorite}}Remove from favorites{{else}}Add to favorites{{/if}}">
-                    <i class="fas fa-star"></i>
-                  </button>
-                  <button
-                    type="button"
-                    class="track-action-btn delete-btn"
-                    data-action="delete-track"
-                    title="Delete track">
-                    <i class="fas fa-trash"></i>
-                  </button>
-                </div>
+      <div class="playlists-list scrollable">
+        {{#if playlists.length}}
+          {{#each playlists}}
+            <div class="playlist-item {{#if this.selected}}selected{{/if}}"
+                 data-playlist-id="{{this.id}}"
+                 data-action="select-playlist">
+              <div class="playlist-info">
+                <span class="playlist-name">{{this.name}}</span>
+                <span class="playlist-count">({{this.itemCount}})</span>
               </div>
-            {{/each}}
-          </div>
+              <div class="playlist-actions">
+                <button class="icon-btn"
+                        data-action="toggle-playlist-favorite"
+                        data-playlist-id="{{this.id}}"
+                        title="{{#if this.favorite}}Remove from favorites{{else}}Add to favorites{{/if}}">
+                  <i class="fas fa-star {{#if this.favorite}}active{{/if}}"></i>
+                </button>
+                <button class="icon-btn"
+                        data-action="playlist-menu"
+                        data-playlist-id="{{this.id}}"
+                        title="More options">
+                  <i class="fas fa-ellipsis-v"></i>
+                </button>
+              </div>
+            </div>
+          {{/each}}
         {{else}}
-          <div class="empty-state">
-            <i class="fas fa-music"></i>
-            <p>No tracks in library</p>
-            <p class="hint">Click "Add Track" to get started</p>
+          <div class="empty-message">
+            <p>No playlists yet</p>
           </div>
         {{/if}}
       </div>
+    </div>
 
-      <!-- Stats Footer -->
-      <div class="library-footer">
-        <div class="library-stats">
-          <span><i class="fas fa-music"></i> {{stats.total}} tracks</span>
-          <span><i class="fas fa-star"></i> {{stats.favorites}} favorites</span>
-          <span><i class="fas fa-list"></i> {{stats.playlists}} playlists</span>
+    <!-- Favorites Section (A6) -->
+    <div class="sidebar-section favorites-section">
+      <div class="section-header">
+        <h3>Favorites</h3>
+      </div>
+      <div class="favorites-list scrollable">
+        {{#if favorites.length}}
+          {{#each favorites}}
+            <div class="favorite-item"
+                 data-favorite-id="{{this.id}}"
+                 data-favorite-type="{{this.type}}">
+              <div class="favorite-info">
+                {{#if (eq this.type 'playlist')}}
+                  <i class="fas fa-list"></i>
+                {{else}}
+                  <i class="fas fa-music"></i>
+                {{/if}}
+                <span class="favorite-name">{{this.name}}</span>
+              </div>
+              <button class="icon-btn"
+                      data-action="remove-from-favorites"
+                      data-favorite-id="{{this.id}}"
+                      data-favorite-type="{{this.type}}"
+                      title="Remove from favorites">
+                <i class="fas fa-times"></i>
+              </button>
+            </div>
+          {{/each}}
+        {{else}}
+          <div class="empty-message">
+            <p>No favorites</p>
+          </div>
+        {{/if}}
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Content: Search, Filters, Tags, Tracks (A2, A3, A4) -->
+  <div class="library-main">
+    <!-- Search & Filters (A2) -->
+    <div class="library-toolbar">
+      <div class="search-container">
+        <i class="fas fa-search"></i>
+        <input type="text"
+               placeholder="Search tracks..."
+               class="library-search"
+               value="{{searchQuery}}"
+               data-action="search" />
+      </div>
+
+      <div class="filter-group">
+        <div class="filter-channels">
+          <button class="filter-btn {{#if (eq selectedChannel 'all')}}active{{/if}}"
+                  data-channel="all"
+                  data-action="filter-channel">
+            All
+          </button>
+          <button class="filter-btn {{#if (eq selectedChannel 'music')}}active{{/if}}"
+                  data-channel="music"
+                  data-action="filter-channel">
+            Music
+          </button>
+          <button class="filter-btn {{#if (eq selectedChannel 'ambience')}}active{{/if}}"
+                  data-channel="ambience"
+                  data-action="filter-channel">
+            Ambience
+          </button>
+          <button class="filter-btn {{#if (eq selectedChannel 'sfx')}}active{{/if}}"
+                  data-channel="sfx"
+                  data-action="filter-channel">
+            SFX
+          </button>
         </div>
+
+        {{#if hasActiveFilters}}
+          <button class="filter-btn clear-filters-btn" data-action="clear-filters" title="Clear all filters">
+            <i class="fas fa-times"></i>
+            Clear
+          </button>
+        {{/if}}
+
+        <button class="btn-primary add-track-btn" data-action="add-track">
+          <i class="fas fa-plus"></i>
+          Add Track
+        </button>
+      </div>
+    </div>
+
+    <!-- Tags (A3) -->
+    <div class="library-tags">
+      <div class="tags-scroll">
+        <div class="tags-container">
+          {{#if tags.length}}
+            {{#each tags}}
+              <button class="tag-chip {{#if this.selected}}selected{{/if}}"
+                      data-tag="{{this.name}}"
+                      data-action="toggle-tag">
+                {{this.name}}
+              </button>
+            {{/each}}
+          {{else}}
+            <span class="tag-placeholder">No tags yet</span>
+          {{/if}}
+        </div>
+      </div>
+      <button class="icon-btn add-tag-btn" data-action="add-tag" title="Add tag">
+        <i class="fas fa-plus"></i>
+      </button>
+    </div>
+
+    <!-- Sorting (B.S.1) -->
+    <div class="library-sort">
+      <label>Sorting:</label>
+      <select class="sort-select" data-action="change-sort">
+        <option value="name-asc" {{#if (eq sortBy 'name-asc')}}selected{{/if}}>Name (A-Z)</option>
+        <option value="name-desc" {{#if (eq sortBy 'name-desc')}}selected{{/if}}>Name (Z-A)</option>
+        <option value="date-asc" {{#if (eq sortBy 'date-asc')}}selected{{/if}}>Date Added (Oldest)</option>
+        <option value="date-desc" {{#if (eq sortBy 'date-desc')}}selected{{/if}}>Date Added (Newest)</option>
+        <option value="duration-asc" {{#if (eq sortBy 'duration-asc')}}selected{{/if}}>Duration (Shortest)</option>
+        <option value="duration-desc" {{#if (eq sortBy 'duration-desc')}}selected{{/if}}>Duration (Longest)</option>
+      </select>
+    </div>
+
+    <!-- Tracks List (A4 / B.S.2) -->
+    <div class="library-tracks scrollable">
+      {{#if items.length}}
+        {{#each items}}
+          <div class="track-item"
+               data-item-id="{{this.id}}"
+               data-track-group="{{this.group}}"
+               draggable="true">
+            <!-- Track Controls -->
+            <div class="track-controls">
+              <button class="icon-btn play-btn"
+                      data-action="play-track"
+                      data-item-id="{{this.id}}"
+                      title="Play">
+                <i class="fas fa-play"></i>
+              </button>
+              <button class="icon-btn stop-btn"
+                      data-action="stop-track"
+                      data-item-id="{{this.id}}"
+                      title="Stop">
+                <i class="fas fa-stop"></i>
+              </button>
+            </div>
+
+            <!-- Track Info -->
+            <div class="track-info">
+              <div class="track-name">{{this.name}}</div>
+              <div class="track-tags">
+                {{#if this.tags.length}}
+                  {{#each this.tags}}
+                    <span class="tag-chip mini">{{this}}</span>
+                  {{/each}}
+                {{/if}}
+              </div>
+            </div>
+
+            <!-- Track Duration -->
+            <div class="track-duration">
+              {{#if this.duration}}
+                {{formatDuration this.duration}}
+              {{else}}
+                --:--
+              {{/if}}
+            </div>
+
+            <!-- Track Actions -->
+            <div class="track-actions">
+              <button class="icon-btn favorite-btn {{#if this.favorite}}active{{/if}}"
+                      data-action="toggle-favorite"
+                      data-item-id="{{this.id}}"
+                      title="{{#if this.favorite}}Remove from favorites{{else}}Add to favorites{{/if}}">
+                <i class="fas fa-star"></i>
+              </button>
+
+              <button class="icon-btn add-to-playlist-btn"
+                      data-action="add-to-playlist"
+                      data-item-id="{{this.id}}"
+                      title="Add to playlist">
+                <i class="fas fa-list-ul"></i>
+              </button>
+
+              <button class="icon-btn menu-btn"
+                      data-action="track-menu"
+                      data-item-id="{{this.id}}"
+                      title="More options">
+                <i class="fas fa-ellipsis-v"></i>
+              </button>
+            </div>
+          </div>
+        {{/each}}
+      {{else}}
+        <div class="empty-state">
+          <i class="fas fa-music"></i>
+          <p>No tracks in library</p>
+          <p class="hint">Click "Add Track" to get started</p>
+        </div>
+      {{/if}}
+    </div>
+
+    <!-- Stats Footer -->
+    <div class="library-footer">
+      <div class="library-stats">
+        <span><i class="fas fa-music"></i> {{stats.totalItems}} tracks</span>
+        <span><i class="fas fa-star"></i> {{stats.favoriteItems}} favorites</span>
+        <span><i class="fas fa-list"></i> {{stats.playlists}} playlists</span>
+        <span><i class="fas fa-tag"></i> {{stats.tagCount}} tags</span>
       </div>
     </div>
   </div>
