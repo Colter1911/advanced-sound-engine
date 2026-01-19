@@ -4,6 +4,7 @@ import { generateUUID } from '@utils/uuid';
 import { validateAudioFile } from '@utils/audio-validation';
 import { Logger } from '@utils/logger';
 import { debounce } from '@utils/throttle';
+import { PlaylistManager } from './PlaylistManager';
 
 const MODULE_ID = 'advanced-sound-engine';
 const LIBRARY_VERSION = 1;
@@ -11,12 +12,14 @@ const LIBRARY_VERSION = 1;
 export class LibraryManager {
   private items: Map<string, LibraryItem> = new Map();
   private saveScheduled = false;
+  public readonly playlists: PlaylistManager;
 
   private debouncedSave = debounce(() => {
     this.saveToSettings();
   }, 500);
 
   constructor() {
+    this.playlists = new PlaylistManager(() => this.scheduleSave());
     this.loadFromSettings();
   }
 
@@ -123,6 +126,9 @@ export class LibraryManager {
     if (!item) {
       throw new Error(`Library item not found: ${id}`);
     }
+
+    // Remove from all playlists first
+    this.playlists.removeLibraryItemFromAllPlaylists(id);
 
     this.items.delete(id);
     this.scheduleSave();
@@ -328,7 +334,10 @@ export class LibraryManager {
         this.items.set(item.id, item);
       });
 
-      Logger.info(`Library loaded: ${this.items.size} items`);
+      // Load playlists
+      this.playlists.load(state.playlists || {});
+
+      Logger.info(`Library loaded: ${this.items.size} items, ${this.playlists.getAllPlaylists().length} playlists`);
     } catch (error) {
       Logger.error('Failed to load library state:', error);
     }
@@ -338,7 +347,7 @@ export class LibraryManager {
     try {
       const state: LibraryState = {
         items: Object.fromEntries(this.items),
-        playlists: {},
+        playlists: this.playlists.export(),
         version: LIBRARY_VERSION,
         lastModified: Date.now()
       };
@@ -346,7 +355,7 @@ export class LibraryManager {
       game.settings.set(MODULE_ID, 'libraryState', JSON.stringify(state));
       this.saveScheduled = false;
 
-      Logger.debug(`Library saved: ${this.items.size} items`);
+      Logger.debug(`Library saved: ${this.items.size} items, ${this.playlists.getAllPlaylists().length} playlists`);
     } catch (error) {
       Logger.error('Failed to save library state:', error);
     }
@@ -376,11 +385,14 @@ export class LibraryManager {
    */
   getStats() {
     const items = this.getAllItems();
+    const playlistStats = this.playlists.getStats();
+
     return {
       totalItems: items.length,
       favoriteItems: items.filter(i => i.favorite).length,
       totalDuration: items.reduce((sum, i) => sum + i.duration, 0),
-      tagCount: this.getAllTags().length
+      tagCount: this.getAllTags().length,
+      playlists: playlistStats.totalPlaylists
     };
   }
 
@@ -389,6 +401,7 @@ export class LibraryManager {
    */
   clear(): void {
     this.items.clear();
+    this.playlists.clear();
     this.scheduleSave();
     Logger.warn('Library cleared');
   }
