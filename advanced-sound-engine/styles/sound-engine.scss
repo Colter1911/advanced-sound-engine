@@ -640,6 +640,10 @@ $ase-danger: #f44336;
   gap: 2px;
   opacity: 0;
   transition: opacity 0.2s;
+
+  &.always-visible {
+    opacity: 1;
+  }
 }
 
 .playlist-item:hover .playlist-actions {
@@ -939,18 +943,51 @@ $ase-danger: #f44336;
     text-transform: uppercase;
   }
 
-  select {
-    padding: 5px 8px;
-    background: $ase-bg-primary;
-    border: 1px solid rgba($ase-bg-tertiary, 0.4);
+  .sort-select {
+    padding: 6px 10px;
+    background: $ase-bg-tertiary;
+    border: 1px solid rgba($ase-accent, 0.3);
     border-radius: 4px;
     color: $ase-text-primary;
-    font-size: 11px;
+    font-size: 12px;
+    font-weight: 500;
     cursor: pointer;
+    transition: all 0.2s ease;
+    min-width: 180px;
+
+    // Override Foundry defaults
+    font-family: inherit;
+    box-shadow: none;
+
+    &:hover {
+      background: lighten($ase-bg-tertiary, 5%);
+      border-color: $ase-accent;
+    }
 
     &:focus {
       outline: none;
       border-color: $ase-accent;
+      box-shadow: 0 0 0 2px rgba($ase-accent, 0.2);
+    }
+
+    // Style the dropdown arrow
+    appearance: none;
+    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%234fc3f7' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    background-size: 16px;
+    padding-right: 32px;
+
+    // Style options (limited browser support but worth including)
+    option {
+      background: $ase-bg-secondary;
+      color: $ase-text-primary;
+      padding: 6px 10px;
+
+      &:hover, &:focus, &:checked {
+        background: $ase-bg-tertiary;
+        color: $ase-accent;
+      }
     }
   }
 }
@@ -982,7 +1019,7 @@ $ase-danger: #f44336;
 
 .track-item {
   display: grid;
-  grid-template-columns: auto 1fr auto auto;
+  grid-template-columns: auto auto 1fr auto auto;
   gap: 10px;
   align-items: center;
   padding: 10px 12px;
@@ -1040,6 +1077,58 @@ $ase-danger: #f44336;
   }
 }
 
+.track-group {
+  display: flex;
+  align-items: center;
+
+  .group-select {
+    padding: 4px 8px;
+    background: $ase-bg-tertiary;
+    border: 1px solid rgba($ase-accent, 0.2);
+    border-radius: 3px;
+    color: $ase-text-primary;
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    min-width: 95px;
+
+    // Override Foundry defaults
+    font-family: inherit;
+    box-shadow: none;
+
+    &:hover {
+      background: lighten($ase-bg-tertiary, 5%);
+      border-color: $ase-accent;
+    }
+
+    &:focus {
+      outline: none;
+      border-color: $ase-accent;
+      box-shadow: 0 0 0 2px rgba($ase-accent, 0.15);
+    }
+
+    // Custom dropdown arrow
+    appearance: none;
+    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%234fc3f7' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+    background-repeat: no-repeat;
+    background-position: right 4px center;
+    background-size: 14px;
+    padding-right: 24px;
+
+    option {
+      background: $ase-bg-secondary;
+      color: $ase-text-primary;
+      padding: 4px 8px;
+
+      &:hover, &:focus, &:checked {
+        background: $ase-bg-tertiary;
+        color: $ase-accent;
+      }
+    }
+  }
+}
+
 .track-info {
   flex: 1;
   min-width: 0;
@@ -1076,6 +1165,10 @@ $ase-danger: #f44336;
   gap: 4px;
   opacity: 0;
   transition: opacity 0.2s;
+
+  &.always-visible {
+    opacity: 1;
+  }
 }
 
 .favorite-btn,
