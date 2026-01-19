@@ -1,0 +1,74 @@
+<div class="ase-window-layout">
+  <!-- A1: Navigation Tabs -->
+  <nav class="ase-main-nav">
+    <div class="ase-nav-left">
+      <h1 class="ase-window-title">Sound Mixer (GM)</h1>
+    </div>
+    
+    <div class="ase-nav-center">
+      <button class="ase-nav-tab {{#if (eq activeTab 'mixer')}}active{{/if}}" data-tab="mixer">
+        Mixer
+      </button>
+      <button class="ase-nav-tab {{#if (eq activeTab 'library')}}active{{/if}}" data-tab="library">
+        Local Library
+      </button>
+      <button class="ase-nav-tab" data-tab="online" disabled>
+        Online Library (coming soon)
+      </button>
+      <button class="ase-nav-tab" data-tab="sfx" disabled>
+        Sound Effects (coming soon)
+      </button>
+    </div>
+
+    <div class="ase-nav-right">
+        <!-- Close button handled by window header usually, but we can have custom controls here -->
+    </div>
+  </nav>
+
+  <!-- Content Area -->
+  <main class="ase-main-content">
+    {{!-- Dynamic content injected here --}}
+    {{{tabContent}}}
+  </main>
+
+  <!-- A7: Persistent Footer (Player) -->
+  <footer class="ase-player-footer">
+    <!-- Left: Transport Controls (Mini) -->
+    <div class="ase-player-controls-mini">
+        <!-- Placeholder for specialized indicators if needed -->
+    </div>
+
+    <!-- Center: Master Volume & Sync -->
+    <div class="ase-player-master-section">
+        <div class="ase-master-volume">
+            <i class="fas fa-volume-up"></i>
+            <span class="label">MASTER</span>
+             <input type="range" class="ase-slider master-slider" 
+                   min="0" max="100" value="{{volumes.master}}"
+                   data-action="set-master-volume">
+             <span class="value-text">{{volumes.master}}%</span>
+        </div>
+        
+        <div class="ase-sync-control">
+            <button class="ase-btn-sync {{#if syncEnabled}}active{{/if}}" data-action="toggle-sync">
+                <i class="fas fa-broadcast-tower"></i>
+                <span class="sync-text">SYNC {{#if syncEnabled}}ON{{else}}OFF{{/if}}</span>
+                <div class="sync-toggle-switch"></div>
+            </button>
+        </div>
+    </div>
+
+    <!-- Right: Main Transport -->
+    <div class="ase-player-transport">
+        <button class="ase-transport-btn play-btn" data-action="global-play">
+            <i class="fas fa-play"></i>
+        </button>
+        <button class="ase-transport-btn pause-btn" data-action="global-pause">
+            <i class="fas fa-pause"></i>
+        </button>
+        <button class="ase-transport-btn stop-btn" data-action="global-stop">
+            <i class="fas fa-stop"></i>
+        </button>
+    </div>
+  </footer>
+</div>

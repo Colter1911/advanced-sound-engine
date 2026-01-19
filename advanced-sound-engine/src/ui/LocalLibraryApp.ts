@@ -8,7 +8,7 @@ const MODULE_ID = 'advanced-sound-engine';
 
 interface FilterState {
   searchQuery: string;
-  selectedChannel: 'all' | TrackGroup;
+  selectedChannels: Set<TrackGroup>;
   selectedPlaylistId: string | null;
   selectedTags: Set<string>;
   sortBy: 'name-asc' | 'name-desc' | 'date-asc' | 'date-desc' | 'duration-asc' | 'duration-desc';
@@ -26,7 +26,11 @@ interface LibraryData {
     tagCount: number;
   };
   searchQuery: string;
-  selectedChannel: 'all' | TrackGroup;
+  filters: {
+    music: boolean;
+    ambience: boolean;
+    sfx: boolean;
+  };
   selectedPlaylistId: string | null;
   sortBy: string;
   hasActiveFilters: boolean;
@@ -84,7 +88,7 @@ export class LocalLibraryApp extends Application {
     this.library = library;
     this.filterState = {
       searchQuery: '',
-      selectedChannel: 'all',
+      selectedChannels: new Set(['music', 'ambience', 'sfx']), // Default all selected? Or none? User said "Green for active". Usually start with all or none. Let's start with all.
       selectedPlaylistId: null,
       selectedTags: new Set(),
       sortBy: 'date-desc'
@@ -131,10 +135,11 @@ export class LocalLibraryApp extends Application {
       selected: p.id === this.filterState.selectedPlaylistId
     }));
 
-    // Check if any filters are active
+    // Check if any filters are active (if NOT all channels are selected, or other filters exist)
+    const allChannelsSelected = this.filterState.selectedChannels.size === 3; // Assuming 3 channels
     const hasActiveFilters = !!(
       this.filterState.searchQuery ||
-      this.filterState.selectedChannel !== 'all' ||
+      !allChannelsSelected ||
       this.filterState.selectedPlaylistId ||
       this.filterState.selectedTags.size > 0
     );
@@ -152,7 +157,11 @@ export class LocalLibraryApp extends Application {
       },
       // Filter state for UI
       searchQuery: this.filterState.searchQuery,
-      selectedChannel: this.filterState.selectedChannel,
+      filters: {
+        music: this.filterState.selectedChannels.has('music'),
+        ambience: this.filterState.selectedChannels.has('ambience'),
+        sfx: this.filterState.selectedChannels.has('sfx')
+      },
       selectedPlaylistId: this.filterState.selectedPlaylistId,
       sortBy: this.filterState.sortBy,
       hasActiveFilters
@@ -207,12 +216,16 @@ export class LocalLibraryApp extends Application {
       );
     }
 
-    // Channel filter
-    if (this.filterState.selectedChannel !== 'all') {
+    // Channel filter (OR logic: Show item if its group is in selectedChannels)
+    if (this.filterState.selectedChannels.size > 0) {
       filtered = filtered.filter(item => {
-        const group = this.inferGroupFromTags(item.tags);
-        return group === this.filterState.selectedChannel;
+        const group = this.inferGroupFromTags(item.tags) as TrackGroup;
+        return this.filterState.selectedChannels.has(group);
       });
+    } else {
+      // If no channels selected, strictly show nothing? Or all? 
+      // Usually if checkboxes, unchecked means don't show.
+      filtered = [];
     }
 
     // Playlist filter
@@ -277,10 +290,15 @@ export class LocalLibraryApp extends Application {
 
     // Track actions
     html.find('[data-action="play-track"]').on('click', this.onPlayTrack.bind(this));
+    html.find('[data-action="pause-track"]').on('click', this.onPauseTrack.bind(this));
     html.find('[data-action="stop-track"]').on('click', this.onStopTrack.bind(this));
+    html.find('[data-action="add-to-queue"]').on('click', this.onAddToQueue.bind(this));
     html.find('[data-action="toggle-favorite"]').on('click', this.onToggleFavorite.bind(this));
     html.find('[data-action="add-to-playlist"]').on('click', this.onAddToPlaylist.bind(this));
     html.find('[data-action="track-menu"]').on('click', this.onTrackMenu.bind(this));
+
+    // In-track tag management
+    html.find('[data-action="add-tag-to-track"]').on('click', this.onAddTagToTrack.bind(this));
 
     // Playlist actions
     html.find('[data-action="select-playlist"]').on('click', this.onSelectPlaylist.bind(this));
@@ -414,11 +432,16 @@ export class LocalLibraryApp extends Application {
 
   private onFilterChannel(event: JQuery.ClickEvent): void {
     event.preventDefault();
-    const channel = $(event.currentTarget).data('channel') as ('all' | TrackGroup);
+    const channel = $(event.currentTarget).data('channel') as TrackGroup;
 
-    this.filterState.selectedChannel = channel;
+    if (this.filterState.selectedChannels.has(channel)) {
+      this.filterState.selectedChannels.delete(channel);
+    } else {
+      this.filterState.selectedChannels.add(channel);
+    }
+
     this.render();
-    Logger.debug('Filter channel:', channel);
+    Logger.debug('Filter channel toggled:', channel);
   }
 
   private onChangeSort(event: JQuery.ChangeEvent): void {
@@ -433,7 +456,7 @@ export class LocalLibraryApp extends Application {
 
     // Reset all filters except sortBy
     this.filterState.searchQuery = '';
-    this.filterState.selectedChannel = 'all';
+    this.filterState.selectedChannels = new Set(['music', 'ambience', 'sfx']); // Reset to all
     this.filterState.selectedPlaylistId = null;
     this.filterState.selectedTags.clear();
 
@@ -481,8 +504,11 @@ export class LocalLibraryApp extends Application {
     const itemId = $(event.currentTarget).data('item-id') as string;
 
     Logger.debug('Play track:', itemId);
-    // TODO: Integrate with AudioEngine to play track
-    ui.notifications?.info('Play functionality coming soon');
+    Logger.debug('Play track:', itemId);
+    window.ASE.engine?.playTrack(itemId);
+    // Also add to queue if needed? 
+    // User requested "Play adds to list of reproduction".
+    // window.ASE.engine?.addToQueue(itemId); // TODO: Implement Queue
   }
 
   private onStopTrack(event: JQuery.ClickEvent): void {
@@ -491,7 +517,35 @@ export class LocalLibraryApp extends Application {
     const itemId = $(event.currentTarget).data('item-id') as string;
 
     Logger.debug('Stop track:', itemId);
-    // TODO: Integrate with AudioEngine to stop track
+    window.ASE.engine?.stopTrack(itemId);
+  }
+
+  private onPauseTrack(event: JQuery.ClickEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+    const itemId = $(event.currentTarget).data('item-id') as string;
+    Logger.debug('Pause track:', itemId);
+    window.ASE.engine?.pauseTrack(itemId);
+  }
+
+  private onAddToQueue(event: JQuery.ClickEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+    const itemId = $(event.currentTarget).data('item-id') as string;
+    Logger.debug('Add to queue:', itemId);
+    // Implementation depends on Queue manager
+    ui.notifications?.info('Added to queue (Simulated)');
+  }
+
+  private async onAddTagToTrack(event: JQuery.ClickEvent): Promise<void> {
+    event.preventDefault();
+    event.stopPropagation();
+    const itemId = $(event.currentTarget).data('item-id') as string;
+    Logger.debug('Add tag to track:', itemId);
+
+    // Open dialog to select or create tags for this track
+    // Implementation placeholder
+    ui.notifications?.info('Tag selection dialog coming soon');
   }
 
   private async onAddToPlaylist(event: JQuery.ClickEvent): Promise<void> {
@@ -621,6 +675,42 @@ export class LocalLibraryApp extends Application {
       $(event.currentTarget).removeClass('drag-over');
 
       await this.handleDropTrackToPlaylist(itemId, playlistId);
+    });
+
+    // Drop zone from OS (Main Library Area)
+    html.find('.library-main').on('dragover', (event: JQuery.DragOverEvent) => {
+      event.preventDefault();
+      $(event.currentTarget).addClass('drag-over-import');
+    });
+
+    html.find('.library-main').on('dragleave', (event: JQuery.DragLeaveEvent) => {
+      $(event.currentTarget).removeClass('drag-over-import');
+    });
+
+    html.find('.library-main').on('drop', async (event: JQuery.DropEvent) => {
+      event.preventDefault();
+      $(event.currentTarget).removeClass('drag-over-import');
+
+      // Handle files from OS
+      const files = event.originalEvent?.dataTransfer?.files;
+      if (files && files.length > 0) {
+        Logger.debug(`Dropped ${files.length} files from OS`);
+        // Processing files...
+        // Note: Foundry FilePicker/Upload API is needed here.
+        // For now, we simulate the drop if it's external, or handle internal drops logic separately.
+
+        // Check if it's an internal drag (track item)
+        // If dataTransfer has 'text/plain' equal to item ID, it's internal.
+        const internalId = event.originalEvent?.dataTransfer?.getData('text/plain');
+        if (internalId && !files.length) {
+          // Internal drop on main area -> Maybe remove from current playlist if we are in one? 
+          // Currently do nothing.
+          return;
+        }
+
+        // Real file upload
+        await this.handleFileUpload(files);
+      }
     });
   }
 

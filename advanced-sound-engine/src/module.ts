@@ -5,15 +5,16 @@ import { SocketManager } from '@sync/SocketManager';
 import { SoundMixerApp } from '@ui/SoundMixerApp';
 import { PlayerVolumePanel } from '@ui/PlayerVolumePanel';
 import { LocalLibraryApp } from '@ui/LocalLibraryApp';
+import { AdvancedSoundEngineApp } from '@ui/AdvancedSoundEngineApp';
 import { LibraryManager } from '@lib/LibraryManager';
 import { Logger } from '@utils/logger';
 
 const MODULE_ID = 'advanced-sound-engine';
 
 // GM
+// GM
 let gmEngine: AudioEngine | null = null;
-let mixerApp: SoundMixerApp | null = null;
-let libraryApp: LocalLibraryApp | null = null;
+let mainApp: AdvancedSoundEngineApp | null = null;
 let libraryManager: LibraryManager | null = null;
 
 // Player
@@ -27,7 +28,7 @@ declare global {
   interface Window {
     ASE: {
       isGM: boolean;
-      openPanel: () => void;
+      openPanel: (tab?: string) => void;
       openLibrary?: () => void;
       engine?: AudioEngine | PlayerAudioEngine;
       socket?: SocketManager;
@@ -55,14 +56,14 @@ Hooks.on('getSceneControlButtons', (controls: Record<string, any>) => {
     }
   };
 
-  // Add library button for GM
+  // Add library button for GM (Shortcut to Library Tab)
   if (isGM) {
     tools['open-library'] = {
       name: 'open-library',
       title: 'Sound Library',
       icon: 'fas fa-book',
       button: true,
-      onClick: () => window.ASE?.openLibrary?.()
+      onClick: () => window.ASE?.openPanel('library')
     };
   }
 
@@ -111,26 +112,27 @@ Hooks.once('init', () => {
 Hooks.once('ready', async () => {
   const isGM = game.user?.isGM ?? false;
   Logger.info(`Starting Advanced Sound Engine (${isGM ? 'GM' : 'Player'})...`);
-  
+
   socketManager = new SocketManager();
-  
+
   if (isGM) {
     await initializeGM();
   } else {
     await initializePlayer();
   }
-  
+
   window.ASE = {
     isGM,
-    openPanel: isGM ? openMixer : openVolumePanel,
-    openLibrary: isGM ? openLibrary : undefined,
+    isGM,
+    openPanel: isGM ? openMainApp : openVolumePanel,
+    openLibrary: () => isGM && openMainApp('library'),
     engine: isGM ? gmEngine ?? undefined : playerEngine ?? undefined,
     socket: socketManager ?? undefined,
     library: isGM ? libraryManager ?? undefined : undefined
   };
-  
+
   setupAutoplayHandler();
-    
+
   Logger.info('Advanced Sound Engine ready');
 });
 
@@ -145,7 +147,7 @@ async function initializeGM(): Promise<void> {
 async function initializePlayer(): Promise<void> {
   playerEngine = new PlayerAudioEngine();
   socketManager!.initializeAsPlayer(playerEngine);
-  
+
   // Restore saved local volume
   const savedVolume = PlayerVolumePanel.loadSavedVolume();
   playerEngine.setLocalVolume(savedVolume);
@@ -155,14 +157,16 @@ async function initializePlayer(): Promise<void> {
 // Panels
 // ─────────────────────────────────────────────────────────────
 
-function openMixer(): void {
-  if (!gmEngine || !socketManager) return;
-  
-  if (mixerApp && mixerApp.rendered) {
-    mixerApp.bringToTop();
+function openMainApp(tab: 'mixer' | 'library' = 'mixer'): void {
+  if (!gmEngine || !socketManager || !libraryManager) return;
+
+  if (mainApp && mainApp.rendered) {
+    mainApp.bringToTop();
+    // Switch tab if needed (assuming public method or we re-render with state update)
+    // For now, simpler to just focus. Ideally mainApp.activateTab(tab)
   } else {
-    mixerApp = new SoundMixerApp(gmEngine, socketManager);
-    mixerApp.render(true);
+    mainApp = new AdvancedSoundEngineApp(gmEngine, socketManager, libraryManager);
+    mainApp.render(true);
   }
 }
 
@@ -177,15 +181,9 @@ function openVolumePanel(): void {
   }
 }
 
+// Old openLibrary removed/redirected
 function openLibrary(): void {
-  if (!libraryManager) return;
-
-  if (libraryApp && libraryApp.rendered) {
-    libraryApp.bringToTop();
-  } else {
-    libraryApp = new LocalLibraryApp(libraryManager);
-    libraryApp.render(true);
-  }
+  openMainApp('library');
 }
 
 
@@ -199,10 +197,10 @@ function setupAutoplayHandler(): void {
     gmEngine?.resume();
     playerEngine?.resume();
   };
-  
+
   document.addEventListener('click', resumeAudio, { once: true });
   document.addEventListener('keydown', resumeAudio, { once: true });
-  
+
   Hooks.once('canvasReady', resumeAudio);
 }
 
@@ -249,8 +247,7 @@ function registerSettings(): void {
 // ─────────────────────────────────────────────────────────────
 
 Hooks.once('closeGame', () => {
-  mixerApp?.close();
-  libraryApp?.close();
+  mainApp?.close();
   volumePanel?.close();
   socketManager?.dispose();
   gmEngine?.dispose();
