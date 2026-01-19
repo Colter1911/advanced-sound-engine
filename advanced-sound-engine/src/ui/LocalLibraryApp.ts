@@ -294,6 +294,9 @@ export class LocalLibraryApp extends Application {
     // Drag and drop
     this.setupDragAndDrop(html);
 
+    // Context menus
+    this.setupContextMenus(html);
+
     Logger.debug('LocalLibraryApp listeners activated');
   }
 
@@ -339,36 +342,6 @@ export class LocalLibraryApp extends Application {
     }
   }
 
-  private async onDeleteTrack(event: JQuery.ClickEvent): Promise<void> {
-    event.preventDefault();
-    const itemId = $(event.currentTarget).closest('[data-item-id]').data('item-id') as string;
-    const item = this.library.getItem(itemId);
-
-    if (!item) {
-      ui.notifications?.error('Track not found');
-      return;
-    }
-
-    const confirmed = await Dialog.confirm({
-      title: 'Delete Track',
-      content: `<p>Are you sure you want to delete <strong>${item.name}</strong> from the library?</p>
-                <p class="notification warning">This will remove it from all playlists and favorites.</p>`,
-      yes: () => true,
-      no: () => false,
-      defaultYes: false
-    });
-
-    if (confirmed) {
-      try {
-        this.library.removeItem(itemId);
-        this.render();
-        ui.notifications?.info(`Deleted: ${item.name}`);
-      } catch (error) {
-        Logger.error('Failed to delete track:', error);
-        ui.notifications?.error('Failed to delete track');
-      }
-    }
-  }
 
   // ─────────────────────────────────────────────────────────────
   // Playlist Event Handlers
@@ -557,11 +530,20 @@ export class LocalLibraryApp extends Application {
   private onTrackMenu(event: JQuery.ClickEvent): void {
     event.preventDefault();
     event.stopPropagation();
+    // Context menu is now handled by right-click
+    // This button can trigger the same menu programmatically
     const itemId = $(event.currentTarget).data('item-id') as string;
+    const trackElement = $(event.currentTarget).closest('.track-item');
 
-    Logger.debug('Track menu:', itemId);
-    // TODO: Implement context menu
-    ui.notifications?.info('Context menu coming soon');
+    // Trigger a contextmenu event on the track item
+    const contextMenuEvent = new MouseEvent('contextmenu', {
+      bubbles: true,
+      cancelable: true,
+      view: window,
+      clientX: event.clientX,
+      clientY: event.clientY
+    });
+    trackElement[0]?.dispatchEvent(contextMenuEvent);
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -587,11 +569,20 @@ export class LocalLibraryApp extends Application {
   private onPlaylistMenu(event: JQuery.ClickEvent): void {
     event.preventDefault();
     event.stopPropagation();
+    // Context menu is now handled by right-click
+    // This button can trigger the same menu programmatically
     const playlistId = $(event.currentTarget).data('playlist-id') as string;
+    const playlistElement = $(event.currentTarget).closest('.playlist-item');
 
-    Logger.debug('Playlist menu:', playlistId);
-    // TODO: Implement context menu
-    ui.notifications?.info('Context menu coming soon');
+    // Trigger a contextmenu event on the playlist item
+    const contextMenuEvent = new MouseEvent('contextmenu', {
+      bubbles: true,
+      cancelable: true,
+      view: window,
+      clientX: event.clientX,
+      clientY: event.clientY
+    });
+    playlistElement[0]?.dispatchEvent(contextMenuEvent);
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -651,6 +642,454 @@ export class LocalLibraryApp extends Application {
       Logger.error('Failed to add track to playlist:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       ui.notifications?.error(`Failed to add to playlist: ${errorMessage}`);
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // Context Menus
+  // ─────────────────────────────────────────────────────────────
+
+  private setupContextMenus(html: JQuery): void {
+    // Track context menu
+    new ContextMenu(html, '.track-item', [
+      {
+        name: 'Edit Name',
+        icon: '<i class="fas fa-edit"></i>',
+        callback: async (li: JQuery) => {
+          const itemId = li.data('item-id') as string;
+          await this.onEditTrackName(itemId);
+        }
+      },
+      {
+        name: 'Edit Tags',
+        icon: '<i class="fas fa-tags"></i>',
+        callback: async (li: JQuery) => {
+          const itemId = li.data('item-id') as string;
+          await this.onEditTrackTags(itemId);
+        }
+      },
+      {
+        name: 'Add to Playlist',
+        icon: '<i class="fas fa-list-ul"></i>',
+        callback: async (li: JQuery) => {
+          const itemId = li.data('item-id') as string;
+          const item = this.library.getItem(itemId);
+          if (!item) return;
+
+          const playlists = this.library.playlists.getAllPlaylists();
+          if (playlists.length === 0) {
+            ui.notifications?.warn('No playlists available. Create one first.');
+            return;
+          }
+
+          const selectedPlaylistId = await this.promptPlaylistSelection(playlists);
+          if (!selectedPlaylistId) return;
+
+          try {
+            const group = this.inferGroupFromTags(item.tags) as TrackGroup;
+            this.library.playlists.addTrackToPlaylist(selectedPlaylistId, itemId, group);
+            this.render();
+            ui.notifications?.info(`Added "${item.name}" to playlist`);
+          } catch (error) {
+            Logger.error('Failed to add track to playlist:', error);
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            ui.notifications?.error(`Failed to add to playlist: ${errorMessage}`);
+          }
+        }
+      },
+      {
+        name: 'Toggle Favorite',
+        icon: '<i class="fas fa-star"></i>',
+        callback: (li: JQuery) => {
+          const itemId = li.data('item-id') as string;
+          try {
+            const isFavorite = this.library.toggleFavorite(itemId);
+            this.render();
+            ui.notifications?.info(isFavorite ? 'Added to favorites' : 'Removed from favorites');
+          } catch (error) {
+            Logger.error('Failed to toggle favorite:', error);
+            ui.notifications?.error('Failed to update favorite status');
+          }
+        }
+      },
+      {
+        name: 'Delete Track',
+        icon: '<i class="fas fa-trash"></i>',
+        callback: async (li: JQuery) => {
+          const itemId = li.data('item-id') as string;
+          await this.onDeleteTrackConfirm(itemId);
+        }
+      }
+    ]);
+
+    // Playlist context menu
+    new ContextMenu(html, '.playlist-item', [
+      {
+        name: 'Rename Playlist',
+        icon: '<i class="fas fa-edit"></i>',
+        callback: async (li: JQuery) => {
+          const playlistId = li.data('playlist-id') as string;
+          await this.onRenamePlaylist(playlistId);
+        }
+      },
+      {
+        name: 'Edit Description',
+        icon: '<i class="fas fa-align-left"></i>',
+        callback: async (li: JQuery) => {
+          const playlistId = li.data('playlist-id') as string;
+          await this.onEditPlaylistDescription(playlistId);
+        }
+      },
+      {
+        name: 'View Contents',
+        icon: '<i class="fas fa-list"></i>',
+        callback: async (li: JQuery) => {
+          const playlistId = li.data('playlist-id') as string;
+          await this.onViewPlaylistContents(playlistId);
+        }
+      },
+      {
+        name: 'Clear Playlist',
+        icon: '<i class="fas fa-eraser"></i>',
+        callback: async (li: JQuery) => {
+          const playlistId = li.data('playlist-id') as string;
+          await this.onClearPlaylist(playlistId);
+        }
+      },
+      {
+        name: 'Delete Playlist',
+        icon: '<i class="fas fa-trash"></i>',
+        callback: async (li: JQuery) => {
+          const playlistId = li.data('playlist-id') as string;
+          await this.onDeletePlaylistConfirm(playlistId);
+        }
+      }
+    ]);
+
+    // Tag context menu
+    new ContextMenu(html, '.tag-chip:not(.mini)', [
+      {
+        name: 'Rename Tag',
+        icon: '<i class="fas fa-edit"></i>',
+        callback: async (li: JQuery) => {
+          const tagName = li.data('tag') as string;
+          await this.onRenameTag(tagName);
+        }
+      },
+      {
+        name: 'Delete Tag',
+        icon: '<i class="fas fa-trash"></i>',
+        callback: async (li: JQuery) => {
+          const tagName = li.data('tag') as string;
+          await this.onDeleteTag(tagName);
+        }
+      }
+    ]);
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // Context Menu Handlers - Tracks
+  // ─────────────────────────────────────────────────────────────
+
+  private async onEditTrackName(itemId: string): Promise<void> {
+    const item = this.library.getItem(itemId);
+    if (!item) {
+      ui.notifications?.error('Track not found');
+      return;
+    }
+
+    const newName = await this.promptTextInput('Edit Track Name', 'Track Name', item.name);
+    if (!newName || newName === item.name) return;
+
+    try {
+      this.library.updateItem(itemId, { name: newName });
+      this.render();
+      ui.notifications?.info(`Renamed to: ${newName}`);
+    } catch (error) {
+      Logger.error('Failed to rename track:', error);
+      ui.notifications?.error('Failed to rename track');
+    }
+  }
+
+  private async onEditTrackTags(itemId: string): Promise<void> {
+    const item = this.library.getItem(itemId);
+    if (!item) {
+      ui.notifications?.error('Track not found');
+      return;
+    }
+
+    const tagsString = await this.promptTextInput(
+      'Edit Tags',
+      'Tags (comma-separated)',
+      item.tags.join(', ')
+    );
+    if (tagsString === null) return;
+
+    // Parse tags
+    const newTags = tagsString
+      .split(',')
+      .map(t => t.trim())
+      .filter(t => t.length > 0);
+
+    try {
+      this.library.updateItem(itemId, { tags: newTags });
+      this.render();
+      ui.notifications?.info('Tags updated');
+    } catch (error) {
+      Logger.error('Failed to update tags:', error);
+      ui.notifications?.error('Failed to update tags');
+    }
+  }
+
+  private async onDeleteTrackConfirm(itemId: string): Promise<void> {
+    const item = this.library.getItem(itemId);
+    if (!item) {
+      ui.notifications?.error('Track not found');
+      return;
+    }
+
+    const confirmed = await Dialog.confirm({
+      title: 'Delete Track',
+      content: `<p>Are you sure you want to delete <strong>${item.name}</strong> from the library?</p>
+                <p class="notification warning">This will remove it from all playlists and favorites.</p>`,
+      yes: () => true,
+      no: () => false,
+      defaultYes: false
+    });
+
+    if (confirmed) {
+      try {
+        this.library.removeItem(itemId);
+        this.render();
+        ui.notifications?.info(`Deleted: ${item.name}`);
+      } catch (error) {
+        Logger.error('Failed to delete track:', error);
+        ui.notifications?.error('Failed to delete track');
+      }
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // Context Menu Handlers - Playlists
+  // ─────────────────────────────────────────────────────────────
+
+  private async onRenamePlaylist(playlistId: string): Promise<void> {
+    const playlist = this.library.playlists.getPlaylist(playlistId);
+    if (!playlist) {
+      ui.notifications?.error('Playlist not found');
+      return;
+    }
+
+    const newName = await this.promptTextInput('Rename Playlist', 'Playlist Name', playlist.name);
+    if (!newName || newName === playlist.name) return;
+
+    try {
+      this.library.playlists.updatePlaylist(playlistId, { name: newName });
+      this.render();
+      ui.notifications?.info(`Renamed to: ${newName}`);
+    } catch (error) {
+      Logger.error('Failed to rename playlist:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      ui.notifications?.error(`Failed to rename playlist: ${errorMessage}`);
+    }
+  }
+
+  private async onEditPlaylistDescription(playlistId: string): Promise<void> {
+    const playlist = this.library.playlists.getPlaylist(playlistId);
+    if (!playlist) {
+      ui.notifications?.error('Playlist not found');
+      return;
+    }
+
+    const description = await this.promptTextInput(
+      'Edit Description',
+      'Description',
+      playlist.description || ''
+    );
+    if (description === null) return;
+
+    try {
+      this.library.playlists.updatePlaylist(playlistId, { description: description || undefined });
+      this.render();
+      ui.notifications?.info('Description updated');
+    } catch (error) {
+      Logger.error('Failed to update description:', error);
+      ui.notifications?.error('Failed to update description');
+    }
+  }
+
+  private async onViewPlaylistContents(playlistId: string): Promise<void> {
+    const playlist = this.library.playlists.getPlaylist(playlistId);
+    if (!playlist) {
+      ui.notifications?.error('Playlist not found');
+      return;
+    }
+
+    const items = playlist.items
+      .sort((a, b) => a.order - b.order)
+      .map((playlistItem, index) => {
+        const libraryItem = this.library.getItem(playlistItem.libraryItemId);
+        const name = libraryItem?.name || 'Unknown';
+        return `<li><strong>${index + 1}.</strong> ${name}</li>`;
+      })
+      .join('');
+
+    const content = `
+      <div>
+        <p><strong>${playlist.name}</strong></p>
+        ${playlist.description ? `<p><em>${playlist.description}</em></p>` : ''}
+        <p>Total tracks: ${playlist.items.length}</p>
+        ${playlist.items.length > 0 ? `<ul class="playlist-contents-list">${items}</ul>` : '<p>No tracks in playlist</p>'}
+      </div>
+    `;
+
+    new Dialog({
+      title: 'Playlist Contents',
+      content,
+      buttons: {
+        close: {
+          icon: '<i class="fas fa-times"></i>',
+          label: 'Close'
+        }
+      },
+      default: 'close'
+    }).render(true);
+  }
+
+  private async onClearPlaylist(playlistId: string): Promise<void> {
+    const playlist = this.library.playlists.getPlaylist(playlistId);
+    if (!playlist) {
+      ui.notifications?.error('Playlist not found');
+      return;
+    }
+
+    if (playlist.items.length === 0) {
+      ui.notifications?.warn('Playlist is already empty');
+      return;
+    }
+
+    const confirmed = await Dialog.confirm({
+      title: 'Clear Playlist',
+      content: `<p>Are you sure you want to remove all ${playlist.items.length} tracks from <strong>${playlist.name}</strong>?</p>
+                <p class="notification warning">This cannot be undone.</p>`,
+      yes: () => true,
+      no: () => false,
+      defaultYes: false
+    });
+
+    if (confirmed) {
+      try {
+        // Remove all items
+        const itemIds = [...playlist.items.map(i => i.id)];
+        itemIds.forEach(itemId => {
+          try {
+            this.library.playlists.removeTrackFromPlaylist(playlistId, itemId);
+          } catch (error) {
+            Logger.error('Failed to remove item:', error);
+          }
+        });
+
+        this.render();
+        ui.notifications?.info(`Cleared playlist: ${playlist.name}`);
+      } catch (error) {
+        Logger.error('Failed to clear playlist:', error);
+        ui.notifications?.error('Failed to clear playlist');
+      }
+    }
+  }
+
+  private async onDeletePlaylistConfirm(playlistId: string): Promise<void> {
+    const playlist = this.library.playlists.getPlaylist(playlistId);
+    if (!playlist) {
+      ui.notifications?.error('Playlist not found');
+      return;
+    }
+
+    const confirmed = await Dialog.confirm({
+      title: 'Delete Playlist',
+      content: `<p>Are you sure you want to delete <strong>${playlist.name}</strong>?</p>
+                <p class="notification info">The tracks will remain in your library.</p>`,
+      yes: () => true,
+      no: () => false,
+      defaultYes: false
+    });
+
+    if (confirmed) {
+      try {
+        // Clear playlist filter if this playlist is selected
+        if (this.filterState.selectedPlaylistId === playlistId) {
+          this.filterState.selectedPlaylistId = null;
+        }
+
+        this.library.playlists.deletePlaylist(playlistId);
+        this.render();
+        ui.notifications?.info(`Deleted playlist: ${playlist.name}`);
+      } catch (error) {
+        Logger.error('Failed to delete playlist:', error);
+        ui.notifications?.error('Failed to delete playlist');
+      }
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // Context Menu Handlers - Tags
+  // ─────────────────────────────────────────────────────────────
+
+  private async onRenameTag(oldTagName: string): Promise<void> {
+    const newTagName = await this.promptTextInput('Rename Tag', 'New Tag Name', oldTagName);
+    if (!newTagName || newTagName === oldTagName) return;
+
+    try {
+      // Find all items with this tag and update them
+      const items = this.library.getAllItems().filter(item => item.tags.includes(oldTagName));
+
+      items.forEach(item => {
+        const updatedTags = item.tags.map(tag => tag === oldTagName ? newTagName : tag);
+        this.library.updateItem(item.id, { tags: updatedTags });
+      });
+
+      // Update filter state if tag is selected
+      if (this.filterState.selectedTags.has(oldTagName)) {
+        this.filterState.selectedTags.delete(oldTagName);
+        this.filterState.selectedTags.add(newTagName);
+      }
+
+      this.render();
+      ui.notifications?.info(`Renamed tag "${oldTagName}" to "${newTagName}" in ${items.length} track(s)`);
+    } catch (error) {
+      Logger.error('Failed to rename tag:', error);
+      ui.notifications?.error('Failed to rename tag');
+    }
+  }
+
+  private async onDeleteTag(tagName: string): Promise<void> {
+    const items = this.library.getAllItems().filter(item => item.tags.includes(tagName));
+
+    const confirmed = await Dialog.confirm({
+      title: 'Delete Tag',
+      content: `<p>Are you sure you want to delete the tag <strong>${tagName}</strong>?</p>
+                <p class="notification warning">This will remove the tag from ${items.length} track(s).</p>`,
+      yes: () => true,
+      no: () => false,
+      defaultYes: false
+    });
+
+    if (confirmed) {
+      try {
+        items.forEach(item => {
+          const updatedTags = item.tags.filter(tag => tag !== tagName);
+          this.library.updateItem(item.id, { tags: updatedTags });
+        });
+
+        // Remove from filter state if selected
+        this.filterState.selectedTags.delete(tagName);
+
+        this.render();
+        ui.notifications?.info(`Deleted tag "${tagName}" from ${items.length} track(s)`);
+      } catch (error) {
+        Logger.error('Failed to delete tag:', error);
+        ui.notifications?.error('Failed to delete tag');
+      }
     }
   }
 
@@ -760,6 +1199,42 @@ export class LocalLibraryApp extends Application {
           }
         },
         default: 'create'
+      }).render(true);
+    });
+  }
+
+  private async promptTextInput(
+    title: string,
+    label: string,
+    defaultValue: string = ''
+  ): Promise<string | null> {
+    return new Promise((resolve) => {
+      new Dialog({
+        title,
+        content: `
+          <form>
+            <div class="form-group">
+              <label>${label}:</label>
+              <input type="text" name="text-input" value="${defaultValue}" autofocus />
+            </div>
+          </form>
+        `,
+        buttons: {
+          save: {
+            icon: '<i class="fas fa-check"></i>',
+            label: 'Save',
+            callback: (html: JQuery) => {
+              const value = (html.find('[name="text-input"]').val() as string || '').trim();
+              resolve(value || null);
+            }
+          },
+          cancel: {
+            icon: '<i class="fas fa-times"></i>',
+            label: 'Cancel',
+            callback: () => resolve(null)
+          }
+        },
+        default: 'save'
       }).render(true);
     });
   }
