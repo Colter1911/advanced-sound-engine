@@ -1,74 +1,112 @@
-<div class="ase-window-layout">
-  <!-- A1: Navigation Tabs -->
-  <nav class="ase-main-nav">
-    <div class="ase-nav-left">
-      <h1 class="ase-window-title">Sound Mixer (GM)</h1>
-    </div>
-    
-    <div class="ase-nav-center">
-      <button class="ase-nav-tab {{#if (eq activeTab 'mixer')}}active{{/if}}" data-tab="mixer">
-        Mixer
-      </button>
-      <button class="ase-nav-tab {{#if (eq activeTab 'library')}}active{{/if}}" data-tab="library">
-        Local Library
-      </button>
-      <button class="ase-nav-tab" data-tab="online" disabled>
-        Online Library (coming soon)
-      </button>
-      <button class="ase-nav-tab" data-tab="sfx" disabled>
-        Sound Effects (coming soon)
-      </button>
-    </div>
-
-    <div class="ase-nav-right">
-        <!-- Close button handled by window header usually, but we can have custom controls here -->
-    </div>
-  </nav>
-
-  <!-- Content Area -->
-  <main class="ase-main-content">
-    {{!-- Dynamic content injected here --}}
-    {{{tabContent}}}
-  </main>
-
-  <!-- A7: Persistent Footer (Player) -->
-  <footer class="ase-player-footer">
-    <!-- Left: Transport Controls (Mini) -->
-    <div class="ase-player-controls-mini">
-        <!-- Placeholder for specialized indicators if needed -->
-    </div>
-
-    <!-- Center: Master Volume & Sync -->
-    <div class="ase-player-master-section">
-        <div class="ase-master-volume">
-            <i class="fas fa-volume-up"></i>
-            <span class="label">MASTER</span>
-             <input type="range" class="ase-slider master-slider" 
-                   min="0" max="100" value="{{volumes.master}}"
-                   data-action="set-master-volume">
-             <span class="value-text">{{volumes.master}}%</span>
+<div class="ase-app-container">
+    <!-- Header -->
+    <header class="ase-top-bar">
+        <div class="ase-app-title">Sound Mixer (GM)</div>
+        <div class="ase-window-controls">
+            <!-- <i class="fa-solid fa-xmark"></i> -->
         </div>
-        
-        <div class="ase-sync-control">
-            <button class="ase-btn-sync {{#if syncEnabled}}active{{/if}}" data-action="toggle-sync">
-                <i class="fas fa-broadcast-tower"></i>
-                <span class="sync-text">SYNC {{#if syncEnabled}}ON{{else}}OFF{{/if}}</span>
-                <div class="sync-toggle-switch"></div>
-            </button>
+    </header>
+
+    <!-- Tabs -->
+    <nav class="ase-main-tabs">
+        <div class="ase-tab {{#if (eq activeTab 'mixer')}}active{{/if}}" data-tab="mixer" data-action="tab-switch">
+            Mixer
         </div>
+        <div class="ase-tab {{#if (eq activeTab 'library')}}active{{/if}}" data-tab="library" data-action="tab-switch">
+            Local Library
+        </div>
+        <div class="ase-tab" disabled style="opacity: 0.5; cursor: default;">
+            Online Library (coming soon)
+        </div>
+        <div class="ase-tab" disabled style="opacity: 0.5; cursor: default;">
+            Sound Effects (coming soon)
+        </div>
+    </nav>
+
+    <!-- Main Workspace Injection -->
+    <div class="ase-main-content">
+        {{{tabContent}}}
     </div>
 
-    <!-- Right: Main Transport -->
-    <div class="ase-player-transport">
-        <button class="ase-transport-btn play-btn" data-action="global-play">
-            <i class="fas fa-play"></i>
-        </button>
-        <button class="ase-transport-btn pause-btn" data-action="global-pause">
-            <i class="fas fa-pause"></i>
-        </button>
-        <button class="ase-transport-btn stop-btn" data-action="global-stop">
-            <i class="fas fa-stop"></i>
-        </button>
+    <!-- Footer (Universal Mixer) -->
+    <footer class="ase-mixer-footer">
+
+        <!-- SFX Group -->
+        <div class="ase-mixer-group">
+            <div class="ase-mixer-top">
+                <div
+                    class="ase-status-light {{#if status.sfx.playing}}active-green{{else if status.sfx.paused}}active{{/if}}">
+                </div>
+                <div class="ase-mixer-controls">
+                    <i class="fa-solid fa-bolt"></i> SFX
+                </div>
+            </div>
+            <div class="ase-slider-wrapper">
+                <input type="range" class="ase-volume-slider" data-channel="sfx" min="0" max="100"
+                    value="{{volumes.sfx}}">
+                <span class="ase-percentage">{{volumes.sfx}}%</span>
+            </div>
+        </div>
+
+        <!-- Ambience Group -->
+        <div class="ase-mixer-group">
+            <div class="ase-mixer-top">
+                <div
+                    class="ase-status-light {{#if status.ambience.playing}}active-green{{else if status.ambience.paused}}active{{/if}}">
+                </div>
+                <div class="ase-mixer-controls">
+                    <i class="fa-solid fa-bell"></i> AMBIENCE
+                </div>
+            </div>
+            <div class="ase-slider-wrapper">
+                <input type="range" class="ase-volume-slider" data-channel="ambience" min="0" max="100"
+                    value="{{volumes.ambience}}">
+                <span class="ase-percentage">{{volumes.ambience}}%</span>
+            </div>
+        </div>
+
+        <!-- Music Group -->
+        <div class="ase-mixer-group">
+            <div class="ase-mixer-top">
+                <div
+                    class="ase-status-light {{#if status.music.playing}}active-green{{else if status.music.paused}}active{{/if}}">
+                </div>
+                <div class="ase-mixer-controls">
+                    <i class="fa-solid fa-music"></i> MUSIC
+                </div>
+            </div>
+            <div class="ase-slider-wrapper">
+                <input type="range" class="ase-volume-slider" data-channel="music" min="0" max="100"
+                    value="{{volumes.music}}">
+                <span class="ase-percentage">{{volumes.music}}%</span>
+            </div>
+        </div>
+
+        <!-- Master Group -->
+        <div class="ase-master-group">
+            <div class="ase-master-label"><i class="fa-solid fa-volume-high"></i> MASTER</div>
+            <input type="range" class="ase-volume-slider ase-master-slider" min="0" max="100"
+                value="{{volumes.master}}">
+            <div class="ase-percentage ase-master-perc">{{volumes.master}}%</div>
+        </div>
+
+        <!-- Global Controls -->
+        <div class="ase-global-controls">
+            <div class="ase-sync-wrapper" data-action="toggle-sync" title="Toggle Sync">
+                <div class="ase-sync-light {{#if syncEnabled}}active{{/if}}"></div>
+                <span class="ase-sync-label">SYNC {{#if syncEnabled}}ON{{else}}OFF{{/if}}</span>
+            </div>
+            <div class="ase-big-buttons">
+                <i class="fa-solid fa-play" data-action="global-play" title="Resume All"></i>
+                <i class="fa-solid fa-pause" data-action="global-pause" title="Pause All"></i>
+                <i class="fa-solid fa-stop" data-action="global-stop" title="Stop All"></i>
+            </div>
+        </div>
+
+    </footer>
+    <div class="ase-bottom-bar-info">
+        <span>SoundKotz © Sound Advanced Mixer</span>
+        <span><!-- Track count placeholder --></span>
+        <span>v 0.1.0</span>
     </div>
-  </footer>
 </div>

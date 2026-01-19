@@ -11,6 +11,7 @@ const LIBRARY_VERSION = 1;
 
 export class LibraryManager {
   private items: Map<string, LibraryItem> = new Map();
+  private customTags: Set<string> = new Set();
   private saveScheduled = false;
   public readonly playlists: PlaylistManager;
 
@@ -204,11 +205,21 @@ export class LibraryManager {
    * Get all unique tags
    */
   getAllTags(): string[] {
-    const tagSet = new Set<string>();
+    const tagSet = new Set<string>(this.customTags);
     this.items.forEach(item => {
       item.tags.forEach(tag => tagSet.add(tag));
     });
     return Array.from(tagSet).sort();
+  }
+
+  /**
+   * Add a custom tag explicitly (even if not used on any track)
+   */
+  addCustomTag(tag: string): void {
+    if (!this.customTags.has(tag)) {
+      this.customTags.add(tag);
+      this.scheduleSave();
+    }
   }
 
   /**
@@ -259,8 +270,18 @@ export class LibraryManager {
     });
 
     if (count > 0) {
+      if (this.customTags.has(oldTag)) {
+        this.customTags.delete(oldTag);
+        this.customTags.add(newTag);
+      }
       this.scheduleSave();
       Logger.info(`Tag renamed: "${oldTag}" → "${newTag}" (${count} items)`);
+    } else if (this.customTags.has(oldTag)) {
+      // Renaming a tag that is ONLY in customTags (no items)
+      this.customTags.delete(oldTag);
+      this.customTags.add(newTag);
+      this.scheduleSave();
+      Logger.info(`Custom tag renamed: "${oldTag}" → "${newTag}"`);
     }
 
     return count;
@@ -281,8 +302,16 @@ export class LibraryManager {
     });
 
     if (count > 0) {
+      if (this.customTags.has(tag)) {
+        this.customTags.delete(tag);
+      }
       this.scheduleSave();
       Logger.info(`Tag deleted: "${tag}" (${count} items)`);
+    } else if (this.customTags.has(tag)) {
+      // Deleting a tag that is ONLY in customTags
+      this.customTags.delete(tag);
+      this.scheduleSave();
+      Logger.info(`Custom tag deleted: "${tag}"`);
     }
 
     return count;
@@ -334,10 +363,13 @@ export class LibraryManager {
         this.items.set(item.id, item);
       });
 
+      // Load custom tags
+      this.customTags = new Set(state.customTags || []);
+
       // Load playlists
       this.playlists.load(state.playlists || {});
 
-      Logger.info(`Library loaded: ${this.items.size} items, ${this.playlists.getAllPlaylists().length} playlists`);
+      Logger.info(`Library loaded: ${this.items.size} items, ${this.playlists.getAllPlaylists().length} playlists, ${this.customTags.size} custom tags`);
     } catch (error) {
       Logger.error('Failed to load library state:', error);
     }
@@ -348,6 +380,7 @@ export class LibraryManager {
       const state: LibraryState = {
         items: Object.fromEntries(this.items),
         playlists: this.playlists.export(),
+        customTags: Array.from(this.customTags),
         version: LIBRARY_VERSION,
         lastModified: Date.now()
       };

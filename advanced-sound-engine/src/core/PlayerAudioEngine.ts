@@ -12,7 +12,7 @@ export class PlayerAudioEngine {
   private gmGain: GainNode; // Громкость от GM
   private channelGains: Record<TrackGroup, GainNode>;
   private players: Map<string, StreamingPlayer> = new Map();
-  
+
   private _localVolume: number = 1; // Личная громкость игрока
   private _gmVolumes: ChannelVolumes = {
     master: 1,
@@ -23,24 +23,24 @@ export class PlayerAudioEngine {
 
   constructor() {
     this.ctx = new AudioContext();
-    
+
     // Chain: tracks -> channels -> gmGain -> masterGain -> destination
     this.masterGain = this.ctx.createGain();
     this.masterGain.connect(this.ctx.destination);
-    
+
     this.gmGain = this.ctx.createGain();
     this.gmGain.connect(this.masterGain);
-    
+
     this.channelGains = {
       music: this.ctx.createGain(),
       ambience: this.ctx.createGain(),
       sfx: this.ctx.createGain()
     };
-    
+
     this.channelGains.music.connect(this.gmGain);
     this.channelGains.ambience.connect(this.gmGain);
     this.channelGains.sfx.connect(this.gmGain);
-    
+
     Logger.info('PlayerAudioEngine initialized');
   }
 
@@ -66,7 +66,7 @@ export class PlayerAudioEngine {
 
   setGMVolume(channel: TrackGroup | 'master', value: number): void {
     const safeValue = Math.max(0, Math.min(1, value));
-    
+
     if (channel === 'master') {
       this._gmVolumes.master = safeValue;
       this.gmGain.gain.linearRampToValueAtTime(safeValue, this.ctx.currentTime + 0.01);
@@ -78,11 +78,32 @@ export class PlayerAudioEngine {
 
   setAllGMVolumes(volumes: ChannelVolumes): void {
     this._gmVolumes = { ...volumes };
-    
+
     this.gmGain.gain.setValueAtTime(volumes.master, this.ctx.currentTime);
     this.channelGains.music.gain.setValueAtTime(volumes.music, this.ctx.currentTime);
     this.channelGains.ambience.gain.setValueAtTime(volumes.ambience, this.ctx.currentTime);
     this.channelGains.sfx.gain.setValueAtTime(volumes.sfx, this.ctx.currentTime);
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // Local Playback Control (Interface Compliance)
+  // ─────────────────────────────────────────────────────────────
+
+  async playTrack(id: string, offset: number = 0): Promise<void> {
+    const player = this.players.get(id);
+    if (player) {
+      await player.play(offset);
+    } else {
+      Logger.warn(`PlayerAudioEngine: Track ${id} not found locally.`);
+    }
+  }
+
+  pauseTrack(id: string): void {
+    this.players.get(id)?.pause();
+  }
+
+  stopTrack(id: string): void {
+    this.players.get(id)?.stop();
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -91,7 +112,7 @@ export class PlayerAudioEngine {
 
   async handlePlay(payload: TrackPlayPayload): Promise<void> {
     let player = this.players.get(payload.trackId);
-    
+
     // Create if doesn't exist
     if (!player) {
       player = new StreamingPlayer(
@@ -100,18 +121,18 @@ export class PlayerAudioEngine {
         this.channelGains[payload.group],
         payload.group
       );
-      
+
       await player.load(payload.url);
       this.players.set(payload.trackId, player);
     }
-    
+
     player.setVolume(payload.volume);
     player.setLoop(payload.loop);
-    
+
     // Calculate offset based on time elapsed since GM started
     const elapsed = (getServerTime() - payload.startTimestamp) / 1000;
     const adjustedOffset = Math.max(0, payload.offset + elapsed);
-    
+
     await player.play(adjustedOffset);
     Logger.debug(`Player: track ${payload.trackId} playing at ${adjustedOffset.toFixed(2)}s`);
   }
@@ -127,7 +148,7 @@ export class PlayerAudioEngine {
   handleSeek(trackId: string, time: number, isPlaying: boolean, seekTimestamp: number): void {
     const player = this.players.get(trackId);
     if (!player) return;
-    
+
     if (isPlaying) {
       const elapsed = (getServerTime() - seekTimestamp) / 1000;
       player.seek(time + elapsed);
@@ -151,10 +172,10 @@ export class PlayerAudioEngine {
   async syncState(tracks: SyncTrackState[], volumes: ChannelVolumes): Promise<void> {
     // Set volumes
     this.setAllGMVolumes(volumes);
-    
+
     // Handle tracks
     const newTrackIds = new Set(tracks.map(t => t.id));
-    
+
     // Remove tracks not in sync
     for (const [id, player] of this.players) {
       if (!newTrackIds.has(id)) {
@@ -162,11 +183,11 @@ export class PlayerAudioEngine {
         this.players.delete(id);
       }
     }
-    
+
     // Add/update tracks
     for (const trackState of tracks) {
       let player = this.players.get(trackState.id);
-      
+
       if (!player) {
         player = new StreamingPlayer(
           trackState.id,
@@ -174,14 +195,14 @@ export class PlayerAudioEngine {
           this.channelGains[trackState.group],
           trackState.group
         );
-        
+
         await player.load(trackState.url);
         this.players.set(trackState.id, player);
       }
-      
+
       player.setVolume(trackState.volume);
       player.setLoop(trackState.loop);
-      
+
       if (trackState.isPlaying) {
         const elapsed = (getServerTime() - trackState.startTimestamp) / 1000;
         const adjustedTime = trackState.currentTime + elapsed;
@@ -190,7 +211,7 @@ export class PlayerAudioEngine {
         player.stop();
       }
     }
-    
+
     Logger.info('Player: synced state from GM');
   }
 

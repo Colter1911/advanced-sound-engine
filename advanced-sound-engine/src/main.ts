@@ -28,7 +28,7 @@ declare global {
   interface Window {
     ASE: {
       isGM: boolean;
-      openPanel: (tab?: string) => void;
+      openPanel: (tab?: string, forceRender?: boolean) => void;
       openLibrary?: () => void;
       engine?: AudioEngine | PlayerAudioEngine;
       socket?: SocketManager;
@@ -37,43 +37,152 @@ declare global {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// Control Button (в начале файла, после импортов)
-// ─────────────────────────────────────────────────────────────
 
-Hooks.on('getSceneControlButtons', (controls: Record<string, any>) => {
-  console.log('ASE: Hook fired', controls);
 
-  const isGM = game.user?.isGM ?? false;
+// Add button to scene controls
+// Add button to scene controls
+Hooks.on('getSceneControlButtons' as any, (controls: any[]) => {
+  try {
+    const isGM = game.user?.isGM ?? false;
 
-  const tools: Record<string, any> = {
-    'open-panel': {
-      name: 'open-panel',
-      title: isGM ? 'Sound Mixer' : 'Sound Volume',
-      icon: isGM ? 'fas fa-sliders-h' : 'fas fa-volume-up',
-      button: true,
-      onClick: () => window.ASE?.openPanel()
+    const aseTools: any[] = [
+      {
+        name: 'ase-open-mixer',
+        title: isGM ? 'Open Sound Mixer' : 'Open Sound Volume',
+        icon: isGM ? 'fas fa-sliders-h' : 'fas fa-volume-up',
+        button: true,
+        onClick: () => {
+          console.log('ASE | Button clicked: Open Mixer/Volume');
+          if (window.ASE) {
+            console.log('ASE | Window.ASE exists', window.ASE);
+            window.ASE.openPanel();
+          } else {
+            console.error('ASE | Window.ASE is undefined!');
+          }
+        }
+      }
+    ];
+
+    if (isGM) {
+      aseTools.push({
+        name: 'ase-open-library',
+        title: 'Open Sound Library',
+        icon: 'fas fa-book-open',
+        button: true,
+        onClick: () => {
+          console.log('ASE | Button clicked: Open Library');
+          if (window.ASE && window.ASE.openLibrary) {
+            window.ASE.openLibrary();
+          } else {
+            console.error('ASE | Window.ASE or openLibrary undefined');
+          }
+        }
+      });
     }
-  };
 
-  // Add library button for GM (Shortcut to Library Tab)
-  if (isGM) {
-    tools['open-library'] = {
-      name: 'open-library',
-      title: 'Sound Library',
-      icon: 'fas fa-book',
-      button: true,
-      onClick: () => window.ASE?.openPanel('library')
-    };
+    // Debug what we received
+    console.log('ASE | getSceneControlButtons called with:', controls);
+
+    // V13+ Compatibility: controls might be an object/record instead of an array
+    if (!Array.isArray(controls) && typeof controls === 'object' && controls !== null) {
+      console.log('ASE | Detected non-array controls structure (V13?)');
+
+      // Check if "sounds" exists as a property
+      const soundsLayer = (controls as any).sounds;
+
+      if (soundsLayer && Array.isArray(soundsLayer.tools)) {
+        soundsLayer.tools.push(...aseTools);
+        console.log('ASE | Added tools to "sounds" layer (V13 Object Mode)');
+      } else {
+        // Fallback: Add as a new property
+        (controls as any)['advanced-sound-engine'] = {
+          name: 'advanced-sound-engine',
+          title: 'Advanced Sound Engine',
+          icon: 'fas fa-music',
+          visible: true,
+          tools: aseTools
+        };
+        console.log('ASE | Created dedicated control group (V13 Object Mode)');
+      }
+      return;
+    }
+
+    // V10-V12 Compatibility: controls is an array
+    if (Array.isArray(controls)) {
+      // Try to find the "sounds" layer control group
+      const soundsLayer = controls.find(c => c.name === 'sounds');
+
+      if (soundsLayer) {
+        // Add our tools to the existing sounds layer
+        soundsLayer.tools.push(...aseTools);
+        console.log('ASE | Added tools to "sounds" layer');
+      } else {
+        // Fallback: Create a dedicated group if "sounds" layer is missing
+        controls.push({
+          name: 'advanced-sound-engine',
+          title: 'Advanced Sound Engine',
+          icon: 'fas fa-music',
+          visible: true,
+          tools: aseTools
+        });
+        console.log('ASE | Created dedicated control group');
+      }
+    } else {
+      console.warn('ASE | Unknown controls structure:', controls);
+    }
+
+  } catch (error) {
+    console.error('ASE | Failed to initialize scene controls:', error);
   }
+});
 
-  controls['advanced-sound-engine'] = {
-    name: 'advanced-sound-engine',
-    title: isGM ? 'Advanced Sound Engine' : 'Sound Volume',
-    icon: isGM ? 'fas fa-sliders-h' : 'fas fa-volume-up',
-    visible: true,
-    tools
-  };
+// Manually bind click listeners in case standard onClick fails (V13 compat)
+Hooks.on('renderSceneControls', (controls: any, html: any) => {
+  try {
+    // Detect if html is jQuery or native Element
+    // In V13+, hooks might return native HTMLElements.
+    // jQuery objects have a .jquery property or .find method.
+
+    const findElement = (selector: string): HTMLElement | null => {
+      if (typeof html.find === 'function') {
+        const el = html.find(selector);
+        return el.length ? el[0] : null;
+      } else if (html instanceof HTMLElement) {
+        return html.querySelector(selector);
+      } else if (html.length && html[0] instanceof HTMLElement) {
+        // Maybe an array of elements or jQuery-like structure without .find?
+        // Unlikely for renderSceneControls which usually passes the container, but possible.
+        return (html[0] as HTMLElement).querySelector(selector) ?? null;
+      }
+      return null;
+    };
+
+    const mixerBtn = findElement('[data-tool="ase-open-mixer"]');
+    if (mixerBtn) {
+      // Use native events for maximum compatibility
+      mixerBtn.onclick = (event: any) => {
+        event.preventDefault();
+        event.stopPropagation();
+        console.log('ASE | Manual click handler (native): Open Mixer');
+        window.ASE?.openPanel();
+      };
+      console.log('ASE | Bound manual click listener to mixer button');
+    }
+
+    const libraryBtn = findElement('[data-tool="ase-open-library"]');
+    if (libraryBtn) {
+      // Use native events for maximum compatibility
+      libraryBtn.onclick = (event: any) => {
+        event.preventDefault();
+        event.stopPropagation();
+        console.log('ASE | Manual click handler (native): Open Library');
+        window.ASE?.openLibrary?.();
+      };
+      console.log('ASE | Bound manual click listener to library button');
+    }
+  } catch (error) {
+    console.warn('ASE | Failed to bind manual click listeners:', error);
+  }
 });
 // ─────────────────────────────────────────────────────────────
 // Initialization
@@ -123,7 +232,6 @@ Hooks.once('ready', async () => {
 
   window.ASE = {
     isGM,
-    isGM,
     openPanel: isGM ? openMainApp : openVolumePanel,
     openLibrary: () => isGM && openMainApp('library'),
     engine: isGM ? gmEngine ?? undefined : playerEngine ?? undefined,
@@ -156,16 +264,24 @@ async function initializePlayer(): Promise<void> {
 // ─────────────────────────────────────────────────────────────
 // Panels
 // ─────────────────────────────────────────────────────────────
-
-function openMainApp(tab: 'mixer' | 'library' = 'mixer'): void {
+// Open main app with specific tab
+function openMainApp(tab?: string, forceRender: boolean = false): void {
   if (!gmEngine || !socketManager || !libraryManager) return;
 
   if (mainApp && mainApp.rendered) {
-    mainApp.bringToTop();
-    // Switch tab if needed (assuming public method or we re-render with state update)
-    // For now, simpler to just focus. Ideally mainApp.activateTab(tab)
+    if (tab && mainApp.state.activeTab !== tab) {
+      mainApp.state.activeTab = tab as any;
+      forceRender = true;
+    }
+
+    if (forceRender) {
+      mainApp.render(false); // Re-render content, keep window position
+    } else {
+      mainApp.bringToTop();
+    }
   } else {
     mainApp = new AdvancedSoundEngineApp(gmEngine, socketManager, libraryManager);
+    if (tab) mainApp.state.activeTab = tab as any;
     mainApp.render(true);
   }
 }
@@ -209,7 +325,7 @@ function setupAutoplayHandler(): void {
 // ─────────────────────────────────────────────────────────────
 
 function registerSettings(): void {
-  game.settings.register(MODULE_ID, 'mixerState', {
+  game.settings.register(MODULE_ID as any, 'mixerState', {
     name: 'Mixer State',
     hint: 'Internal storage for mixer state',
     scope: 'world',
@@ -218,7 +334,7 @@ function registerSettings(): void {
     default: ''
   });
 
-  game.settings.register(MODULE_ID, 'maxSimultaneousTracks', {
+  game.settings.register(MODULE_ID as any, 'maxSimultaneousTracks', {
     name: 'Maximum Simultaneous Tracks',
     hint: 'Maximum number of tracks that can play simultaneously (1-32)',
     scope: 'world',
@@ -232,7 +348,7 @@ function registerSettings(): void {
     }
   });
 
-  game.settings.register(MODULE_ID, 'libraryState', {
+  game.settings.register(MODULE_ID as any, 'libraryState', {
     name: 'Library State',
     hint: 'Internal storage for library items and playlists',
     scope: 'world',
@@ -246,7 +362,7 @@ function registerSettings(): void {
 // Cleanup
 // ─────────────────────────────────────────────────────────────
 
-Hooks.once('closeGame', () => {
+Hooks.once('closeGame' as any, () => {
   mainApp?.close();
   volumePanel?.close();
   socketManager?.dispose();

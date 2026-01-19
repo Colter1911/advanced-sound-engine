@@ -12,8 +12,12 @@
       "name": "Your Name"
     }
   ],
-  "esmodules": ["dist/module.js"],
-  "styles": ["dist/styles/sound-engine.css"],
+  "esmodules": [
+    "dist/module.js"
+  ],
+  "styles": [
+    "dist/styles/sound-engine-v3.css"
+  ],
   "languages": [
     {
       "lang": "en",

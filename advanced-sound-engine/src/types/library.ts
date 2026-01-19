@@ -60,6 +60,7 @@ export interface PlaylistItem {
 export interface LibraryState {
   items: Record<string, LibraryItem>;      // Map ID -> LibraryItem
   playlists: Record<string, Playlist>;     // Map ID -> Playlist
+  customTags?: string[];                   // Persistent list of custom tags (even if unused)
   version: number;                         // Версия схемы данных
   lastModified: number;                    // Timestamp последнего изменения
 }

@@ -21,7 +21,7 @@ export class AdvancedSoundEngineApp extends Application {
     private libraryApp: LocalLibraryApp;
     private mixerApp: SoundMixerApp; // We might need to refactor this later, but for now we'll wrap it
 
-    private state: AppState = {
+    public state: AppState = {
         activeTab: 'library', // Default to library as per user focus
         syncEnabled: false
     };
@@ -55,12 +55,26 @@ export class AdvancedSoundEngineApp extends Application {
     override async getData(): Promise<any> {
         const volumes = this.engine.volumes;
 
-        // Get content for the active tab
-        // This is a bit tricky with Handlebars. We need to render the sub-template to a string.
-        let tabContent = '';
+        // Helper to check channel status
+        const getChannelStatus = (group: 'music' | 'ambience' | 'sfx') => {
+            const tracks = this.engine.getTracksByGroup(group);
+            if (tracks.length === 0) return { playing: false, paused: false };
 
+            const isPlaying = tracks.some(t => t.state === 'playing');
+            const isPaused = tracks.some(t => t.state === 'paused');
+
+            return { playing: isPlaying, paused: isPaused && !isPlaying };
+        };
+
+        const status = {
+            music: getChannelStatus('music'),
+            ambience: getChannelStatus('ambience'),
+            sfx: getChannelStatus('sfx')
+        };
+
+        // Get content for the active tab
+        let tabContent = '';
         if (this.state.activeTab === 'library') {
-            // We need to get the data from the library app and render its template
             const libData = await this.libraryApp.getData();
             tabContent = await renderTemplate('modules/advanced-sound-engine/templates/library.hbs', libData);
         } else if (this.state.activeTab === 'mixer') {
@@ -71,8 +85,12 @@ export class AdvancedSoundEngineApp extends Application {
         return {
             activeTab: this.state.activeTab,
             tabContent,
+            status,
             volumes: {
-                master: Math.round(volumes.master * 100)
+                master: Math.round(volumes.master * 100),
+                music: Math.round(volumes.music * 100),
+                ambience: Math.round(volumes.ambience * 100),
+                sfx: Math.round(volumes.sfx * 100)
             },
             syncEnabled: this.socket.syncEnabled
         };
@@ -82,7 +100,7 @@ export class AdvancedSoundEngineApp extends Application {
         super.activateListeners(html);
 
         // Tab Navigation
-        html.find('.ase-nav-tab').on('click', this.onTabSwitch.bind(this));
+        html.find('.ase-tab').on('click', this.onTabSwitch.bind(this));
 
         // Footer Controls (A7)
         html.find('[data-action="toggle-sync"]').on('click', this.onToggleSync.bind(this));
@@ -90,14 +108,13 @@ export class AdvancedSoundEngineApp extends Application {
         html.find('[data-action="global-pause"]').on('click', this.onGlobalPause.bind(this));
         html.find('[data-action="global-stop"]').on('click', this.onGlobalStop.bind(this));
 
-        // Master Volume
-        html.find('.master-slider').on('input', this.onMasterVolumeInput.bind(this));
+        // Mixer Sliders (Inputs)
+        html.find('.ase-volume-slider').on('input', this.onVolumeInput.bind(this));
+
 
         // Delegate listeners to sub-apps
         if (this.state.activeTab === 'library') {
-            this.libraryApp.activateListeners(html); // CAUTION: This might attach listeners to the whole window.
-            // LocalLibraryApp needs to be careful not to rely on `this.element` being the root if it assumes specific scoping.
-            // Since we inject the HTML, `html` here covers the whole window. `LocalLibraryApp` selectors should be specific enough.
+            this.libraryApp.activateListeners(html);
         } else if (this.state.activeTab === 'mixer') {
             this.mixerApp.activateListeners(html);
         }
@@ -109,7 +126,7 @@ export class AdvancedSoundEngineApp extends Application {
         if (this.state.activeTab === tabName) return;
 
         this.state.activeTab = tabName;
-        this.render(true); // Re-render the whole app to switch tabs
+        this.render(true);
     }
 
     // Footer Actions
@@ -118,27 +135,34 @@ export class AdvancedSoundEngineApp extends Application {
         this.socket.setSyncEnabled(enabled);
         this.state.syncEnabled = enabled;
 
-        // Update UI partially if possible, or re-render
-        const btn = $(event.currentTarget);
-        btn.toggleClass('active', enabled);
-        btn.find('.sync-text').text(`SYNC ${enabled ? 'ON' : 'OFF'}`);
+        // Update UI
+        this.render(); // Re-render to ensure all sync indicators update (button + toggle)
     }
 
     private onGlobalPlay(): void {
-        // Resume audio context if needed
         this.engine.resume();
-        // For now, this might just unpause the active tracks?
-        // Concept: "Play" button in footer usually resumes playback of the active playlist/queue
-        // If nothing is playing, it might do nothing.
-        // For now, let's treat it as "Resume All"
-        // TODO: Implement queue logic
-        Logger.debug('Global Play Clicked');
+        // Resume all paused tracks
+        // TODO: This logic probably belongs in AudioEngine as resumeAll()
+        const tracks = this.engine.getAllTracks();
+        for (const track of tracks) {
+            if (track.state === 'paused') {
+                track.play();
+            }
+        }
+        Logger.debug('Global Play/Resume Clicked');
+        this.render();
     }
 
     private onGlobalPause(): void {
-        // Pause all
-        // this.engine.pauseAll(); // Assuming engine has this?
+        // Pause all playing tracks
+        const tracks = this.engine.getAllTracks();
+        for (const track of tracks) {
+            if (track.state === 'playing') {
+                track.pause();
+            }
+        }
         Logger.debug('Global Pause Clicked');
+        this.render();
     }
 
     private onGlobalStop(): void {
@@ -147,10 +171,22 @@ export class AdvancedSoundEngineApp extends Application {
         this.render(); // Update UI
     }
 
-    private onMasterVolumeInput(event: JQuery.TriggeredEvent): void {
-        const value = parseFloat((event.target as HTMLInputElement).value) / 100;
-        this.engine.setMasterVolume(value);
-        this.socket.broadcastChannelVolume('master', value);
-        $(event.currentTarget).siblings('.value-text').text(`${Math.round(value * 100)}%`);
+    private onVolumeInput(event: JQuery.TriggeredEvent): void {
+        const input = event.currentTarget as HTMLInputElement;
+        const value = parseFloat(input.value) / 100;
+        const channel = $(input).data('channel') as 'music' | 'ambience' | 'sfx' | undefined;
+
+        if (channel) {
+            this.engine.setChannelVolume(channel, value);
+            this.socket.broadcastChannelVolume(channel, value);
+        } else {
+            // Master
+            this.engine.setMasterVolume(value);
+            this.socket.broadcastChannelVolume('master', value);
+        }
+
+        // Update text locally for responsiveness
+        $(input).siblings('.ase-percentage').text(`${Math.round(value * 100)}%`);
+        $(input).siblings('.ase-master-perc').text(`${Math.round(value * 100)}%`);
     }
 }

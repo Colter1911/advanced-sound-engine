@@ -38,6 +38,7 @@ interface LibraryData {
 
 interface TagViewData {
   name: string;
+  value: string;
   selected: boolean;
 }
 
@@ -93,7 +94,7 @@ export class LocalLibraryApp extends Application {
       selectedTags: new Set(),
       // Default sort
       sortValue: 'date-desc'
-    } as any; // Type assertion to bypass strict checks if needed temporarily
+    } as any;
   }
 
   // Override render to delegate to main app
@@ -105,7 +106,7 @@ export class LocalLibraryApp extends Application {
       // We pass 'library' to ensure we are looking at the library.
       // But if we just want to update data without switching tabs (background update),
       // we might need a more subtle approach. For now, this ensures consistency.
-      window.ASE.openPanel('library');
+      window.ASE.openPanel('library', true);
       return;
     }
     return super.render(force, options);
@@ -139,11 +140,19 @@ export class LocalLibraryApp extends Application {
       }))
     ];
 
-    // Build tags list with selection state
-    const tags: TagViewData[] = allTags.map(tag => ({
-      name: tag,
-      selected: this.filterState.selectedTags.has(tag)
-    }));
+    // Build tags list with selection state, ensuring selected and recent tags are visible
+    const tagSet = new Set(allTags);
+    this.filterState.selectedTags.forEach(t => tagSet.add(t));
+
+    const tags: TagViewData[] = Array.from(tagSet).sort().map(tag => {
+      // Handle legacy tags that might have '#' stored in DB
+      const display = tag.startsWith('#') ? tag.substring(1) : tag;
+      return {
+        name: display, // This is what is shown after the # in template
+        value: tag,    // This is the actual data value
+        selected: this.filterState.selectedTags.has(tag)
+      };
+    });
 
     // Build playlists with selection state
     const playlistsViewData = playlists.map(p => ({
@@ -295,8 +304,10 @@ export class LocalLibraryApp extends Application {
 
     // Toolbar actions
     html.find('[data-action="add-track"]').on('click', this.onAddTrack.bind(this));
-    html.find('[data-action="search"]').on('input', this.onSearch.bind(this));
-    html.find('[data-action="filter-channel"]').on('click', this.onFilterChannel.bind(this));
+    // Listen for KeyDown (Enter) instead of Input
+    html.find('.ase-search-input').on('keydown', this.onSearchKeydown.bind(this));
+    html.find('.ase-search-clear').on('click', this.onClearSearch.bind(this));
+    html.find('[data-action="filter-channel"]').on('click', this._onFilterChannel.bind(this));
     html.find('[data-action="change-sort"]').on('change', this.onChangeSort.bind(this));
     html.find('[data-action="clear-filters"]').on('click', this.onClearFilters.bind(this));
 
@@ -328,8 +339,8 @@ export class LocalLibraryApp extends Application {
     // Drag and drop
     this.setupDragAndDrop(html);
 
-    // Context menus
-    this.setupContextMenus(html);
+    // Custom Context Menu (Manual implementation to avoid clipping)
+    html.find('.ase-tag').on('contextmenu', this.onTagContext.bind(this));
 
     Logger.debug('LocalLibraryApp listeners activated');
   }
@@ -439,25 +450,68 @@ export class LocalLibraryApp extends Application {
   // Toolbar Event Handlers
   // ─────────────────────────────────────────────────────────────
 
-  private onSearch(event: JQuery.TriggeredEvent): void {
-    const query = ($(event.currentTarget).val() as string || '').trim();
-    this.filterState.searchQuery = query;
-    this.render();
-    Logger.debug('Search:', query);
+  private onSearchInput(event: JQuery.TriggeredEvent): void {
+    // Only handle ENTER key for search execution
+    if (event.type === 'keydown' && (event as any).key !== 'Enter') return;
+
+    const query = ($(event.currentTarget).val() as string || '').trim().toLowerCase();
+
+    // Only re-render if query changed
+    if (this.filterState.searchQuery !== query) {
+      this.filterState.searchQuery = query;
+      this.render(); // Full re-render filters properly
+    }
   }
 
-  private onFilterChannel(event: JQuery.ClickEvent): void {
-    event.preventDefault();
-    const channel = $(event.currentTarget).data('channel') as TrackGroup;
+  // Also catch 'input' just for specific UI toggles if needed, but here we do fully via render.
+  // Actually, let's decouple: 'input' event just shows/hides X button? 
+  // User wants "When pressing Enter". So 'input' should NOT filter.
+  // But we need to update the X button visibility? 
+  // Let's keep it simple: 'keydown' on Enter -> sets state -> render.
+  // On 'input', we just let the value sit in the box. 
+  // But wait, the X button logic was in onSearchInput. 
+  // Let's make a separate handler for visual updates if needed, OR just rely on render.
+  // Render will re-create the X button state based on `searchQuery`? No, templates don't always track input value unless we pass it.
+  // We passed `value="{{searchQuery}}"` in template.
 
+  private onSearchKeydown(event: JQuery.KeyDownEvent): void {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      const query = ($(event.currentTarget).val() as string || '').trim().toLowerCase();
+      if (this.filterState.searchQuery !== query) {
+        this.filterState.searchQuery = query;
+        this.render();
+      }
+    }
+  }
+
+  private onClearSearch(event: JQuery.ClickEvent): void {
+    this.filterState.searchQuery = '';
+    const wrapper = $(event.currentTarget).closest('.ase-search-input-wrapper');
+    wrapper.find('.ase-search-input').val('').trigger('focus');
+    wrapper.find('.ase-search-clear').hide();
+    this.element.find('.ase-track-player-item').show();
+  }
+
+  private _onFilterChannel(event: JQuery.ClickEvent): void {
+    event.preventDefault();
+    const btn = $(event.currentTarget);
+    const channel = btn.data('channel') as TrackGroup;
+
+    // Toggle logic: If clicked, toggle it.
     if (this.filterState.selectedChannels.has(channel)) {
       this.filterState.selectedChannels.delete(channel);
+      btn.removeClass('active');
     } else {
       this.filterState.selectedChannels.add(channel);
+      btn.addClass('active');
     }
 
+    // Pass true to force render because complex logic might need re-evaluation of the list
+    // OR implement client-side hiding for this too if feeling brave. 
+    // Given 3 checkboxes, re-render is safer to ensure correct combinatorics.
     this.render();
-    Logger.debug('Filter channel toggled:', channel);
+    Logger.debug('Filter channel toggled:', channel, this.filterState.selectedChannels);
   }
 
   private onChangeSort(event: JQuery.ChangeEvent): void {
@@ -470,14 +524,22 @@ export class LocalLibraryApp extends Application {
   private onClearFilters(event: JQuery.ClickEvent): void {
     event.preventDefault();
 
-    // Reset all filters except sortBy
+    // Reset all filters except channels (as requested: "clear button... resets all except sound channels")
     this.filterState.searchQuery = '';
-    this.filterState.selectedChannels = new Set(['music', 'ambience', 'sfx']); // Reset to all
     this.filterState.selectedPlaylistId = null;
     this.filterState.selectedTags.clear();
 
+    // channels remain as is? "Kнопка clear... сбрасывает все фильтры кроме каналов звука"
+    // "All Tracks" button usually means SHOW ALL. 
+    // IF the button is named "All Tracks" (in template it is "Clear Filters" or similar?), let's verify.
+    // Template says: <button ... data-action="clear-filters">All Tracks</button>
+    // So YES, it should reset eveything relative to "viewing a slice", but the user EXPLICITLY said:
+    // "except sound channels... they work separately".
+
+    // So we DO NOT reset selectedChannels.
+
     this.render();
-    ui.notifications?.info('Filters cleared');
+    ui.notifications?.info('Filters cleared (Channels preserved)');
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -486,6 +548,8 @@ export class LocalLibraryApp extends Application {
 
   private onToggleTag(event: JQuery.ClickEvent): void {
     event.preventDefault();
+    // Use the right click context menu for edit/delete
+    // Left click just toggles filter
     const tag = $(event.currentTarget).data('tag') as string;
 
     if (this.filterState.selectedTags.has(tag)) {
@@ -495,7 +559,60 @@ export class LocalLibraryApp extends Application {
     }
 
     this.render();
-    Logger.debug('Toggle tag:', tag, 'Selected tags:', Array.from(this.filterState.selectedTags));
+  }
+
+  private onTagContext(event: JQuery.ContextMenuEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+    const tag = $(event.currentTarget).data('tag') as string;
+
+    // Create a custom context menu appended to body to avoid clipping
+    const menuHtml = `
+      <div id="ase-custom-context-menu" style="position: fixed; z-index: 10000; background: #222; border: 1px solid #444; border-radius: 4px; padding: 5px 0;">
+        <div class="ase-ctx-item" data-action="edit" style="padding: 5px 15px; cursor: pointer; color: white;">
+            <i class="fas fa-edit" style="margin-right: 5px;"></i> Edit
+        </div>
+        <div class="ase-ctx-item" data-action="delete" style="padding: 5px 15px; cursor: pointer; color: #ff6666;">
+            <i class="fas fa-trash" style="margin-right: 5px;"></i> Delete
+        </div>
+      </div>
+    `;
+
+    // Remove existing
+    $('#ase-custom-context-menu').remove();
+
+    const menu = $(menuHtml);
+    $('body').append(menu);
+
+    // Position
+    menu.css({
+      top: event.clientY,
+      left: event.clientX
+    });
+
+    // Handlers
+    menu.find('[data-action="edit"]').on('click', () => {
+      this.renameTag(tag);
+      menu.remove();
+    });
+
+    menu.find('[data-action="delete"]').on('click', () => {
+      this.deleteTag(tag);
+      menu.remove();
+    });
+
+    // Initial Hover effect
+    menu.find('.ase-ctx-item').hover(
+      function () { $(this).css('background', '#333'); },
+      function () { $(this).css('background', 'transparent'); }
+    );
+
+    // Close on click elsewhere
+    $(document).one('click', () => {
+      menu.remove();
+    });
+
+    console.log('Opened context menu for tag:', tag);
   }
 
   private async onAddTag(event: JQuery.ClickEvent): Promise<void> {
@@ -504,10 +621,95 @@ export class LocalLibraryApp extends Application {
     const tagName = await this.promptTagName();
     if (!tagName) return;
 
-    // Tags are automatically created when added to tracks
-    // This is just a placeholder for future tag management
-    Logger.debug('Add tag:', tagName);
-    ui.notifications?.info(`Tag "${tagName}" will be available once assigned to tracks`);
+    // Use a temporary Set to show the tag immediately even if not attached to tracks yet
+    // This gives "visual feedback" that it worked.
+    this.filterState.selectedTags.add(tagName);
+
+    // Add to library persistent tags
+    this.library.addCustomTag(tagName);
+
+    this.render();
+    ui.notifications?.info(`Tag "${tagName}" added to filter list. Assign it to a track to save it permanently.`);
+  }
+
+  // Helper for Context Menu Callbacks to ensure `this` binding and argument passing
+  private _onRenameTag(header: JQuery): void {
+    const tag = header.data('tag');
+    this.renameTag(tag);
+  }
+
+  private _onDeleteTag(header: JQuery): void {
+    const tag = header.data('tag');
+    this.deleteTag(tag);
+  }
+
+  // Correcting selector/listener activation for Context Menu if needed
+  // Foundry ContextMenu usually works fine. If z-index issue, it's CSS.
+  // We will force high z-index via CSS injection or ensure fixed position.
+  // BUT: user said "Buttons don't work". 
+  // This usually means the callback failed or `this` yielded undefined.
+  // The inline arrow functions `() => this.renameTag(tag)` in `activateListeners` SHOULD be fine if `this` is correct.
+  // Let's verify `activateListeners`.
+
+  // ─────────────────────────────────────────────────────────────
+  // Tag Management Logic
+  // ─────────────────────────────────────────────────────────────
+
+  private async renameTag(oldTag: string): Promise<void> {
+    const newTag = await this.promptTagName(oldTag);
+    if (!newTag || newTag === oldTag) return;
+
+    // Use LibraryManager's method
+    const count = this.library.renameTag(oldTag, newTag);
+
+    // Also update filter state if selected
+    if (this.filterState.selectedTags.has(oldTag)) {
+      this.filterState.selectedTags.delete(oldTag);
+      this.filterState.selectedTags.add(newTag);
+    }
+
+    if (count > 0) {
+      this.render();
+      ui.notifications?.info(`Renamed tag "${oldTag}" to "${newTag}" on ${count} tracks.`);
+    }
+  }
+
+  private async deleteTag(tag: string): Promise<void> {
+    const confirm = await Dialog.confirm({
+      title: "Delete Tag",
+      content: `Are you sure you want to delete tag "${tag}" from all tracks?`
+    });
+    if (!confirm) return;
+
+    // Use LibraryManager's method
+    const count = this.library.deleteTag(tag);
+
+    // Remove from filter
+    if (this.filterState.selectedTags.has(tag)) {
+      this.filterState.selectedTags.delete(tag);
+    }
+
+    if (count > 0) {
+      this.render();
+      ui.notifications?.info(`Deleted tag "${tag}" from ${count} tracks.`);
+    }
+  }
+
+  private async promptTagName(current: string = ""): Promise<string | null> {
+    return new Promise((resolve) => {
+      new Dialog({
+        title: current ? "Rename Tag" : "New Tag",
+        content: `<input type="text" id="tag-name" value="${current}" style="width:100%;box-sizing:border-box;"/>`,
+        buttons: {
+          ok: {
+            label: "OK",
+            callback: (html: JQuery) => resolve(html.find('#tag-name').val() as string)
+          }
+        },
+        default: "ok",
+        close: () => resolve(null)
+      }).render(true);
+    });
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -603,7 +805,7 @@ export class LocalLibraryApp extends Application {
     // Context menu is now handled by right-click
     // This button can trigger the same menu programmatically
     const itemId = $(event.currentTarget).data('item-id') as string;
-    const trackElement = $(event.currentTarget).closest('.track-item');
+    const trackElement = $(event.currentTarget).closest('.ase-track-player-item');
 
     // Trigger a contextmenu event on the track item
     const contextMenuEvent = new MouseEvent('contextmenu', {
@@ -642,7 +844,7 @@ export class LocalLibraryApp extends Application {
     // Context menu is now handled by right-click
     // This button can trigger the same menu programmatically
     const playlistId = $(event.currentTarget).data('playlist-id') as string;
-    const playlistElement = $(event.currentTarget).closest('.playlist-item');
+    const playlistElement = $(event.currentTarget).closest('.ase-list-item');
 
     // Trigger a contextmenu event on the playlist item
     const contextMenuEvent = new MouseEvent('contextmenu', {
@@ -661,30 +863,42 @@ export class LocalLibraryApp extends Application {
 
   private setupDragAndDrop(html: JQuery): void {
     // Drag start
-    html.find('.track-item[draggable="true"]').on('dragstart', (event: JQuery.DragStartEvent) => {
-      const itemId = $(event.currentTarget).data('item-id') as string;
+    html.find('.ase-track-player-item[draggable="true"]').on('dragstart', (event: JQuery.DragStartEvent) => {
+      const itemId = $(event.currentTarget).find('[data-item-id]').data('item-id') as string || $(event.currentTarget).data('item-id') as string;
+      // Note: Data-item-id might be on the action button/icon, but for the row it should be on the row or accessible.
+      // In template: <div class="ase-track-player-item"> doesn't have data-item-id directly? 
+      // Let's check template.
+      // Template: <div class="ase-track-player-item"> inside each item. 
+      // Actually, my template rewrite in 751:
+      // {{#each items}} <div class="ase-track-player-item"> ... <div class="ase-track-actions"> <i ... data-item-id="{{this.id}}"> 
+      // The row itself DOES NOT have data-item-id in the rewrite! 
+      // I NEED TO ADD IT TO THE TEMPLATE OR FIND IT.
+      // I will assume I will fix the template to include data-item-id on the row, or find it inside.
+      // For now, let's find it inside.
+      const id = $(event.currentTarget).find('[data-item-id]').first().data('item-id') as string;
+
       event.originalEvent!.dataTransfer!.effectAllowed = 'copy';
-      event.originalEvent!.dataTransfer!.setData('text/plain', itemId);
+      event.originalEvent!.dataTransfer!.setData('text/plain', id);
       $(event.currentTarget).addClass('dragging');
     });
 
     // Drag end
-    html.find('.track-item[draggable="true"]').on('dragend', (event: JQuery.DragEndEvent) => {
+    html.find('.ase-track-player-item[draggable="true"]').on('dragend', (event: JQuery.DragEndEvent) => {
       $(event.currentTarget).removeClass('dragging');
     });
 
     // Drop zones (playlists)
-    html.find('.playlist-item').on('dragover', (event: JQuery.DragOverEvent) => {
+    html.find('.ase-list-item[data-playlist-id]').on('dragover', (event: JQuery.DragOverEvent) => {
       event.preventDefault();
       event.originalEvent!.dataTransfer!.dropEffect = 'copy';
       $(event.currentTarget).addClass('drag-over');
     });
 
-    html.find('.playlist-item').on('dragleave', (event: JQuery.DragLeaveEvent) => {
+    html.find('.ase-list-item[data-playlist-id]').on('dragleave', (event: JQuery.DragLeaveEvent) => {
       $(event.currentTarget).removeClass('drag-over');
     });
 
-    html.find('.playlist-item').on('drop', async (event: JQuery.DropEvent) => {
+    html.find('.ase-list-item[data-playlist-id]').on('drop', async (event: JQuery.DropEvent) => {
       event.preventDefault();
       const itemId = event.originalEvent!.dataTransfer!.getData('text/plain');
       const playlistId = $(event.currentTarget).data('playlist-id') as string;
@@ -694,16 +908,16 @@ export class LocalLibraryApp extends Application {
     });
 
     // Drop zone from OS (Main Library Area)
-    html.find('.library-main').on('dragover', (event: JQuery.DragOverEvent) => {
+    html.find('.ase-content-area').on('dragover', (event: JQuery.DragOverEvent) => {
       event.preventDefault();
       $(event.currentTarget).addClass('drag-over-import');
     });
 
-    html.find('.library-main').on('dragleave', (event: JQuery.DragLeaveEvent) => {
+    html.find('.ase-content-area').on('dragleave', (event: JQuery.DragLeaveEvent) => {
       $(event.currentTarget).removeClass('drag-over-import');
     });
 
-    html.find('.library-main').on('drop', async (event: JQuery.DropEvent) => {
+    html.find('.ase-content-area').on('drop', async (event: JQuery.DropEvent) => {
       event.preventDefault();
       $(event.currentTarget).removeClass('drag-over-import');
 
@@ -728,6 +942,45 @@ export class LocalLibraryApp extends Application {
         await this.handleFileUpload(files);
       }
     });
+  }
+
+  private async handleFileUpload(files: FileList): Promise<void> {
+    if (!game.user?.isGM) {
+      ui.notifications?.warn('Only GM can upload files.');
+      return;
+    }
+
+    const targetSource = 'data';
+    const targetDir = 'modules/advanced-sound-engine/uploaded';
+
+    // Ensure directory exists (optional, FilePicker usually handles specifics or returns error)
+    // We'll just try to upload.
+
+    let importedCount = 0;
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      try {
+        // Upload
+        const response = await FilePicker.upload(targetSource, targetDir, file, {}) as any;
+        if (response.path) {
+          // Add to library
+          await this.library.addItem(
+            response.path,
+            file.name.split('.')[0],
+            'sfx' // Default group for dropped files
+          );
+          importedCount++;
+        }
+      } catch (err) {
+        Logger.error(`Failed to upload ${file.name}:`, err);
+      }
+    }
+
+    if (importedCount > 0) {
+      ui.notifications?.info(`Imported ${importedCount} files.`);
+      this.render();
+    }
   }
 
   private async handleDropTrackToPlaylist(itemId: string, playlistId: string): Promise<void> {
@@ -761,52 +1014,35 @@ export class LocalLibraryApp extends Application {
       {
         name: 'Edit Name',
         icon: '<i class="fas fa-edit"></i>',
-        callback: async (li: JQuery) => {
+        callback: (target: JQuery | HTMLElement) => {
+          const li = $(target);
           const itemId = li.data('item-id') as string;
-          await this.onEditTrackName(itemId);
+          this.onEditTrackName(itemId);
         }
       },
       {
         name: 'Edit Tags',
         icon: '<i class="fas fa-tags"></i>',
-        callback: async (li: JQuery) => {
+        callback: (target: JQuery | HTMLElement) => {
+          const li = $(target);
           const itemId = li.data('item-id') as string;
-          await this.onEditTrackTags(itemId);
+          this.onEditTrackTags(itemId);
         }
       },
       {
         name: 'Add to Playlist',
         icon: '<i class="fas fa-list-ul"></i>',
-        callback: async (li: JQuery) => {
+        callback: (target: JQuery | HTMLElement) => {
+          const li = $(target);
           const itemId = li.data('item-id') as string;
-          const item = this.library.getItem(itemId);
-          if (!item) return;
-
-          const playlists = this.library.playlists.getAllPlaylists();
-          if (playlists.length === 0) {
-            ui.notifications?.warn('No playlists available. Create one first.');
-            return;
-          }
-
-          const selectedPlaylistId = await this.promptPlaylistSelection(playlists);
-          if (!selectedPlaylistId) return;
-
-          try {
-            const group = this.inferGroupFromTags(item.tags) as TrackGroup;
-            this.library.playlists.addTrackToPlaylist(selectedPlaylistId, itemId, group);
-            this.render();
-            ui.notifications?.info(`Added "${item.name}" to playlist`);
-          } catch (error) {
-            Logger.error('Failed to add track to playlist:', error);
-            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-            ui.notifications?.error(`Failed to add to playlist: ${errorMessage}`);
-          }
+          this.handleAddToPlaylistFromContext(itemId);
         }
       },
       {
         name: 'Toggle Favorite',
         icon: '<i class="fas fa-star"></i>',
-        callback: (li: JQuery) => {
+        callback: (target: JQuery | HTMLElement) => {
+          const li = $(target);
           const itemId = li.data('item-id') as string;
           try {
             const isFavorite = this.library.toggleFavorite(itemId);
@@ -821,9 +1057,10 @@ export class LocalLibraryApp extends Application {
       {
         name: 'Delete Track',
         icon: '<i class="fas fa-trash"></i>',
-        callback: async (li: JQuery) => {
+        callback: (target: JQuery | HTMLElement) => {
+          const li = $(target);
           const itemId = li.data('item-id') as string;
-          await this.onDeleteTrackConfirm(itemId);
+          this.onDeleteTrackConfirm(itemId);
         }
       }
     ]);
@@ -833,41 +1070,46 @@ export class LocalLibraryApp extends Application {
       {
         name: 'Rename Playlist',
         icon: '<i class="fas fa-edit"></i>',
-        callback: async (li: JQuery) => {
+        callback: (target: JQuery | HTMLElement) => {
+          const li = $(target);
           const playlistId = li.data('playlist-id') as string;
-          await this.onRenamePlaylist(playlistId);
+          this.onRenamePlaylist(playlistId);
         }
       },
       {
         name: 'Edit Description',
         icon: '<i class="fas fa-align-left"></i>',
-        callback: async (li: JQuery) => {
+        callback: (target: JQuery | HTMLElement) => {
+          const li = $(target);
           const playlistId = li.data('playlist-id') as string;
-          await this.onEditPlaylistDescription(playlistId);
+          this.onEditPlaylistDescription(playlistId);
         }
       },
       {
         name: 'View Contents',
         icon: '<i class="fas fa-list"></i>',
-        callback: async (li: JQuery) => {
+        callback: (target: JQuery | HTMLElement) => {
+          const li = $(target);
           const playlistId = li.data('playlist-id') as string;
-          await this.onViewPlaylistContents(playlistId);
+          this.onViewPlaylistContents(playlistId);
         }
       },
       {
         name: 'Clear Playlist',
         icon: '<i class="fas fa-eraser"></i>',
-        callback: async (li: JQuery) => {
+        callback: (target: JQuery | HTMLElement) => {
+          const li = $(target);
           const playlistId = li.data('playlist-id') as string;
-          await this.onClearPlaylist(playlistId);
+          this.onClearPlaylist(playlistId);
         }
       },
       {
         name: 'Delete Playlist',
         icon: '<i class="fas fa-trash"></i>',
-        callback: async (li: JQuery) => {
+        callback: (target: JQuery | HTMLElement) => {
+          const li = $(target);
           const playlistId = li.data('playlist-id') as string;
-          await this.onDeletePlaylistConfirm(playlistId);
+          this.onDeletePlaylistConfirm(playlistId);
         }
       }
     ]);
@@ -877,17 +1119,19 @@ export class LocalLibraryApp extends Application {
       {
         name: 'Rename Tag',
         icon: '<i class="fas fa-edit"></i>',
-        callback: async (li: JQuery) => {
+        callback: (target: JQuery | HTMLElement) => {
+          const li = $(target);
           const tagName = li.data('tag') as string;
-          await this.onRenameTag(tagName);
+          this.onRenameTag(tagName);
         }
       },
       {
         name: 'Delete Tag',
         icon: '<i class="fas fa-trash"></i>',
-        callback: async (li: JQuery) => {
+        callback: (target: JQuery | HTMLElement) => {
+          const li = $(target);
           const tagName = li.data('tag') as string;
-          await this.onDeleteTag(tagName);
+          this.onDeleteTag(tagName);
         }
       }
     ]);
@@ -1203,41 +1447,7 @@ export class LocalLibraryApp extends Application {
   // Utilities
   // ─────────────────────────────────────────────────────────────
 
-  private async promptTagName(): Promise<string | null> {
-    return new Promise((resolve) => {
-      new Dialog({
-        title: 'Add Tag',
-        content: `
-          <form>
-            <div class="form-group">
-              <label>Tag Name:</label>
-              <input type="text" name="tag-name" placeholder="#Dramatic" autofocus />
-            </div>
-          </form>
-        `,
-        buttons: {
-          create: {
-            icon: '<i class="fas fa-check"></i>',
-            label: 'Add',
-            callback: (html: JQuery) => {
-              let name = (html.find('[name="tag-name"]').val() as string || '').trim();
-              // Remove # prefix if present
-              if (name.startsWith('#')) {
-                name = name.substring(1);
-              }
-              resolve(name || null);
-            }
-          },
-          cancel: {
-            icon: '<i class="fas fa-times"></i>',
-            label: 'Cancel',
-            callback: () => resolve(null)
-          }
-        },
-        default: 'create'
-      }).render(true);
-    });
-  }
+
 
   private async promptPlaylistSelection(playlists: Playlist[]): Promise<string | null> {
     const options = playlists.map(p =>
@@ -1343,5 +1553,33 @@ export class LocalLibraryApp extends Application {
         default: 'save'
       }).render(true);
     });
+  }
+
+  /**
+   * Handle adding track to playlist from context menu
+   */
+  private async handleAddToPlaylistFromContext(itemId: string): Promise<void> {
+    const item = this.library.getItem(itemId);
+    if (!item) return;
+
+    const playlists = this.library.playlists.getAllPlaylists();
+    if (playlists.length === 0) {
+      ui.notifications?.warn('No playlists available. Create one first.');
+      return;
+    }
+
+    const selectedPlaylistId = await this.promptPlaylistSelection(playlists);
+    if (!selectedPlaylistId) return;
+
+    try {
+      const group = this.inferGroupFromTags(item.tags) as any;
+      this.library.playlists.addTrackToPlaylist(selectedPlaylistId, itemId, group);
+      this.render();
+      ui.notifications?.info(`Added "${item.name}" to playlist`);
+    } catch (error) {
+      Logger.error('Failed to add track to playlist:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      ui.notifications?.error(`Failed to add to playlist: ${errorMessage}`);
+    }
   }
 }

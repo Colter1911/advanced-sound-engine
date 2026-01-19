@@ -7,7 +7,7 @@ export default defineConfig({
     emptyOutDir: true,
     sourcemap: true,
     lib: {
-      entry: path.resolve(__dirname, 'src/module.ts'),
+      entry: 'src/main.ts',
       formats: ['es'],
       fileName: () => 'module.js'
     },
@@ -15,7 +15,7 @@ export default defineConfig({
       output: {
         assetFileNames: (assetInfo) => {
           if (assetInfo.name?.endsWith('.css')) {
-            return 'styles/sound-engine.css';
+            return 'styles/sound-engine-v3.css';
           }
           return assetInfo.name || 'asset';
         }
