@@ -78,9 +78,34 @@ Hooks.on('getSceneControlButtons', (controls: Record<string, any>) => {
 // Initialization
 // ─────────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────
+// Handlebars Helpers
+// ─────────────────────────────────────────────────────────────
+
+function registerHandlebarsHelpers(): void {
+  // Format duration from seconds to MM:SS
+  Handlebars.registerHelper('formatDuration', (seconds: number): string => {
+    if (!seconds || seconds <= 0) return '--:--';
+
+    const minutes = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${minutes}:${secs.toString().padStart(2, '0')}`;
+  });
+
+  // Check equality (for {{#if (eq a b)}})
+  Handlebars.registerHelper('eq', (a: any, b: any): boolean => {
+    return a === b;
+  });
+}
+
+// ─────────────────────────────────────────────────────────────
+// Init Hooks
+// ─────────────────────────────────────────────────────────────
+
 Hooks.once('init', () => {
   Logger.info('Initializing Advanced Sound Engine...');
   registerSettings();
+  registerHandlebarsHelpers();
 });
 
 Hooks.once('ready', async () => {
