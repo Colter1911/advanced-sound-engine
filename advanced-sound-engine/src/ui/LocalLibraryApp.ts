@@ -6,6 +6,14 @@ import { formatTime } from '@utils/time';
 
 const MODULE_ID = 'advanced-sound-engine';
 
+interface FilterState {
+  searchQuery: string;
+  selectedChannel: 'all' | TrackGroup;
+  selectedPlaylistId: string | null;
+  selectedTags: Set<string>;
+  sortBy: 'name-asc' | 'name-desc' | 'date-asc' | 'date-desc' | 'duration-asc' | 'duration-desc';
+}
+
 interface LibraryData {
   items: LibraryItemViewData[];
   playlists: PlaylistViewData[];
@@ -17,6 +25,11 @@ interface LibraryData {
     playlists: number;
     tagCount: number;
   };
+  searchQuery: string;
+  selectedChannel: 'all' | TrackGroup;
+  selectedPlaylistId: string | null;
+  sortBy: string;
+  hasActiveFilters: boolean;
 }
 
 interface TagViewData {
@@ -51,6 +64,7 @@ interface FavoriteViewData {
 
 export class LocalLibraryApp extends Application {
   private library: LibraryManager;
+  private filterState: FilterState;
 
   static override get defaultOptions() {
     return foundry.utils.mergeObject(super.defaultOptions, {
@@ -68,13 +82,26 @@ export class LocalLibraryApp extends Application {
   constructor(library: LibraryManager, options = {}) {
     super(options);
     this.library = library;
+    this.filterState = {
+      searchQuery: '',
+      selectedChannel: 'all',
+      selectedPlaylistId: null,
+      selectedTags: new Set(),
+      sortBy: 'date-desc'
+    };
   }
 
   override getData(): LibraryData {
-    const items = this.library.getAllItems();
+    let items = this.library.getAllItems();
     const playlists = this.library.playlists.getAllPlaylists();
     const allTags = this.library.getAllTags();
     const stats = this.library.getStats();
+
+    // Apply filters
+    items = this.applyFilters(items);
+
+    // Apply sorting
+    items = this.applySorting(items);
 
     // Build favorites list (tracks + playlists)
     const favoriteItems = this.library.getFavorites();
@@ -92,15 +119,29 @@ export class LocalLibraryApp extends Application {
       }))
     ];
 
-    // Build tags list
+    // Build tags list with selection state
     const tags: TagViewData[] = allTags.map(tag => ({
       name: tag,
-      selected: false // TODO: implement filter state management
+      selected: this.filterState.selectedTags.has(tag)
     }));
+
+    // Build playlists with selection state
+    const playlistsViewData = playlists.map(p => ({
+      ...this.getPlaylistViewData(p),
+      selected: p.id === this.filterState.selectedPlaylistId
+    }));
+
+    // Check if any filters are active
+    const hasActiveFilters = !!(
+      this.filterState.searchQuery ||
+      this.filterState.selectedChannel !== 'all' ||
+      this.filterState.selectedPlaylistId ||
+      this.filterState.selectedTags.size > 0
+    );
 
     return {
       items: items.map(item => this.getItemViewData(item)),
-      playlists: playlists.map(p => this.getPlaylistViewData(p)),
+      playlists: playlistsViewData,
       favorites,
       tags,
       stats: {
@@ -108,7 +149,13 @@ export class LocalLibraryApp extends Application {
         favoriteItems: stats.favoriteItems,
         playlists: stats.playlists,
         tagCount: stats.tagCount
-      }
+      },
+      // Filter state for UI
+      searchQuery: this.filterState.searchQuery,
+      selectedChannel: this.filterState.selectedChannel,
+      selectedPlaylistId: this.filterState.selectedPlaylistId,
+      sortBy: this.filterState.sortBy,
+      hasActiveFilters
     };
   }
 
@@ -144,6 +191,76 @@ export class LocalLibraryApp extends Application {
     return 'music'; // default
   }
 
+  // ─────────────────────────────────────────────────────────────
+  // Filtering & Sorting
+  // ─────────────────────────────────────────────────────────────
+
+  private applyFilters(items: LibraryItem[]): LibraryItem[] {
+    let filtered = items;
+
+    // Search filter
+    if (this.filterState.searchQuery) {
+      const query = this.filterState.searchQuery.toLowerCase();
+      filtered = filtered.filter(item =>
+        item.name.toLowerCase().includes(query) ||
+        item.tags.some(tag => tag.toLowerCase().includes(query))
+      );
+    }
+
+    // Channel filter
+    if (this.filterState.selectedChannel !== 'all') {
+      filtered = filtered.filter(item => {
+        const group = this.inferGroupFromTags(item.tags);
+        return group === this.filterState.selectedChannel;
+      });
+    }
+
+    // Playlist filter
+    if (this.filterState.selectedPlaylistId) {
+      const playlist = this.library.playlists.getPlaylist(this.filterState.selectedPlaylistId);
+      if (playlist) {
+        const playlistItemIds = new Set(playlist.items.map(i => i.libraryItemId));
+        filtered = filtered.filter(item => playlistItemIds.has(item.id));
+      }
+    }
+
+    // Tags filter (OR logic - show items with ANY of the selected tags)
+    if (this.filterState.selectedTags.size > 0) {
+      filtered = filtered.filter(item =>
+        item.tags.some(tag => this.filterState.selectedTags.has(tag))
+      );
+    }
+
+    return filtered;
+  }
+
+  private applySorting(items: LibraryItem[]): LibraryItem[] {
+    const sorted = [...items];
+
+    switch (this.filterState.sortBy) {
+      case 'name-asc':
+        sorted.sort((a, b) => a.name.localeCompare(b.name));
+        break;
+      case 'name-desc':
+        sorted.sort((a, b) => b.name.localeCompare(a.name));
+        break;
+      case 'date-asc':
+        sorted.sort((a, b) => a.addedAt - b.addedAt);
+        break;
+      case 'date-desc':
+        sorted.sort((a, b) => b.addedAt - a.addedAt);
+        break;
+      case 'duration-asc':
+        sorted.sort((a, b) => a.duration - b.duration);
+        break;
+      case 'duration-desc':
+        sorted.sort((a, b) => b.duration - a.duration);
+        break;
+    }
+
+    return sorted;
+  }
+
   override activateListeners(html: JQuery): void {
     super.activateListeners(html);
 
@@ -152,6 +269,7 @@ export class LocalLibraryApp extends Application {
     html.find('[data-action="search"]').on('input', this.onSearch.bind(this));
     html.find('[data-action="filter-channel"]').on('click', this.onFilterChannel.bind(this));
     html.find('[data-action="change-sort"]').on('change', this.onChangeSort.bind(this));
+    html.find('[data-action="clear-filters"]').on('click', this.onClearFilters.bind(this));
 
     // Tag actions
     html.find('[data-action="toggle-tag"]').on('click', this.onToggleTag.bind(this));
@@ -316,26 +434,38 @@ export class LocalLibraryApp extends Application {
 
   private onSearch(event: JQuery.TriggeredEvent): void {
     const query = ($(event.currentTarget).val() as string || '').trim();
+    this.filterState.searchQuery = query;
+    this.render();
     Logger.debug('Search:', query);
-    // TODO: Implement search filtering
   }
 
   private onFilterChannel(event: JQuery.ClickEvent): void {
     event.preventDefault();
-    const channel = $(event.currentTarget).data('channel') as string;
+    const channel = $(event.currentTarget).data('channel') as ('all' | TrackGroup);
 
-    // Toggle active state
-    $(event.currentTarget).siblings().removeClass('active');
-    $(event.currentTarget).addClass('active');
-
+    this.filterState.selectedChannel = channel;
+    this.render();
     Logger.debug('Filter channel:', channel);
-    // TODO: Implement channel filtering
   }
 
   private onChangeSort(event: JQuery.ChangeEvent): void {
-    const sortValue = $(event.currentTarget).val() as string;
+    const sortValue = $(event.currentTarget).val() as FilterState['sortBy'];
+    this.filterState.sortBy = sortValue;
+    this.render();
     Logger.debug('Sort changed:', sortValue);
-    // TODO: Implement sorting
+  }
+
+  private onClearFilters(event: JQuery.ClickEvent): void {
+    event.preventDefault();
+
+    // Reset all filters except sortBy
+    this.filterState.searchQuery = '';
+    this.filterState.selectedChannel = 'all';
+    this.filterState.selectedPlaylistId = null;
+    this.filterState.selectedTags.clear();
+
+    this.render();
+    ui.notifications?.info('Filters cleared');
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -345,10 +475,15 @@ export class LocalLibraryApp extends Application {
   private onToggleTag(event: JQuery.ClickEvent): void {
     event.preventDefault();
     const tag = $(event.currentTarget).data('tag') as string;
-    $(event.currentTarget).toggleClass('selected');
 
-    Logger.debug('Toggle tag:', tag);
-    // TODO: Implement tag filtering
+    if (this.filterState.selectedTags.has(tag)) {
+      this.filterState.selectedTags.delete(tag);
+    } else {
+      this.filterState.selectedTags.add(tag);
+    }
+
+    this.render();
+    Logger.debug('Toggle tag:', tag, 'Selected tags:', Array.from(this.filterState.selectedTags));
   }
 
   private async onAddTag(event: JQuery.ClickEvent): Promise<void> {
@@ -357,9 +492,10 @@ export class LocalLibraryApp extends Application {
     const tagName = await this.promptTagName();
     if (!tagName) return;
 
-    // TODO: Implement tag creation
+    // Tags are automatically created when added to tracks
+    // This is just a placeholder for future tag management
     Logger.debug('Add tag:', tagName);
-    ui.notifications?.info(`Tag "${tagName}" created`);
+    ui.notifications?.info(`Tag "${tagName}" will be available once assigned to tracks`);
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -436,12 +572,16 @@ export class LocalLibraryApp extends Application {
     event.preventDefault();
     const playlistId = $(event.currentTarget).data('playlist-id') as string;
 
-    // Update selected state visually
-    $(event.currentTarget).siblings().removeClass('selected');
-    $(event.currentTarget).addClass('selected');
+    // Toggle playlist filter
+    if (this.filterState.selectedPlaylistId === playlistId) {
+      // Deselect if clicking the same playlist
+      this.filterState.selectedPlaylistId = null;
+    } else {
+      this.filterState.selectedPlaylistId = playlistId;
+    }
 
+    this.render();
     Logger.debug('Select playlist:', playlistId);
-    // TODO: Implement playlist filtering/view
   }
 
   private onPlaylistMenu(event: JQuery.ClickEvent): void {

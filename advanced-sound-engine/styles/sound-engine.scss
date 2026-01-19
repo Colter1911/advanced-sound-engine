@@ -792,6 +792,21 @@ $ase-danger: #f44336;
     background: rgba($ase-bg-tertiary, 0.3);
     color: $ase-text-primary;
   }
+
+  &.clear-filters-btn {
+    background: rgba($ase-danger, 0.1);
+    border-color: rgba($ase-danger, 0.3);
+    color: $ase-danger;
+
+    &:hover {
+      background: rgba($ase-danger, 0.2);
+      border-color: $ase-danger;
+    }
+
+    i {
+      margin-right: 4px;
+    }
+  }
 }
 
 .btn-primary {

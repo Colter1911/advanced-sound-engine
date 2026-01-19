@@ -89,32 +89,40 @@
         <input type="text"
                placeholder="Search tracks..."
                class="library-search"
+               value="{{searchQuery}}"
                data-action="search" />
       </div>
 
       <div class="filter-group">
         <div class="filter-channels">
-          <button class="filter-btn active"
+          <button class="filter-btn {{#if (eq selectedChannel 'all')}}active{{/if}}"
                   data-channel="all"
                   data-action="filter-channel">
             All
           </button>
-          <button class="filter-btn"
+          <button class="filter-btn {{#if (eq selectedChannel 'music')}}active{{/if}}"
                   data-channel="music"
                   data-action="filter-channel">
             Music
           </button>
-          <button class="filter-btn"
+          <button class="filter-btn {{#if (eq selectedChannel 'ambience')}}active{{/if}}"
                   data-channel="ambience"
                   data-action="filter-channel">
             Ambience
           </button>
-          <button class="filter-btn"
+          <button class="filter-btn {{#if (eq selectedChannel 'sfx')}}active{{/if}}"
                   data-channel="sfx"
                   data-action="filter-channel">
             SFX
           </button>
         </div>
+
+        {{#if hasActiveFilters}}
+          <button class="filter-btn clear-filters-btn" data-action="clear-filters" title="Clear all filters">
+            <i class="fas fa-times"></i>
+            Clear
+          </button>
+        {{/if}}
 
         <button class="btn-primary add-track-btn" data-action="add-track">
           <i class="fas fa-plus"></i>
@@ -149,12 +157,12 @@
     <div class="library-sort">
       <label>Sorting:</label>
       <select class="sort-select" data-action="change-sort">
-        <option value="name-asc">Name (A-Z)</option>
-        <option value="name-desc">Name (Z-A)</option>
-        <option value="date-asc">Date Added (Oldest)</option>
-        <option value="date-desc">Date Added (Newest)</option>
-        <option value="duration-asc">Duration (Shortest)</option>
-        <option value="duration-desc">Duration (Longest)</option>
+        <option value="name-asc" {{#if (eq sortBy 'name-asc')}}selected{{/if}}>Name (A-Z)</option>
+        <option value="name-desc" {{#if (eq sortBy 'name-desc')}}selected{{/if}}>Name (Z-A)</option>
+        <option value="date-asc" {{#if (eq sortBy 'date-asc')}}selected{{/if}}>Date Added (Oldest)</option>
+        <option value="date-desc" {{#if (eq sortBy 'date-desc')}}selected{{/if}}>Date Added (Newest)</option>
+        <option value="duration-asc" {{#if (eq sortBy 'duration-asc')}}selected{{/if}}>Duration (Shortest)</option>
+        <option value="duration-desc" {{#if (eq sortBy 'duration-desc')}}selected{{/if}}>Duration (Longest)</option>
       </select>
     </div>
 
