@@ -91,8 +91,24 @@ export class LocalLibraryApp extends Application {
       selectedChannels: new Set(['music', 'ambience', 'sfx']), // Default all selected? Or none? User said "Green for active". Usually start with all or none. Let's start with all.
       selectedPlaylistId: null,
       selectedTags: new Set(),
-      sortBy: 'date-desc'
-    };
+      // Default sort
+      sortValue: 'date-desc'
+    } as any; // Type assertion to bypass strict checks if needed temporarily
+  }
+
+  // Override render to delegate to main app
+  override render(force?: boolean, options?: any): any {
+    // If we are part of the unified app, we just trigger the main app to update
+    if (window.ASE?.openPanel) {
+      // If we are the active tab, this will re-render the main app
+      // If not, it switches to us. 
+      // We pass 'library' to ensure we are looking at the library.
+      // But if we just want to update data without switching tabs (background update),
+      // we might need a more subtle approach. For now, this ensures consistency.
+      window.ASE.openPanel('library');
+      return;
+    }
+    return super.render(force, options);
   }
 
   override getData(): LibraryData {
