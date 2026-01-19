@@ -57,6 +57,7 @@ export class LibraryManager {
       id: generateUUID(),
       url,
       name: itemName,
+      group,
       tags: [],
       duration: 0,
       favorite: false,

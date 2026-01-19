@@ -8,7 +8,7 @@ const MODULE_ID = 'advanced-sound-engine';
 
 interface FilterState {
   searchQuery: string;
-  selectedChannel: 'all' | TrackGroup;
+  selectedChannels: Set<TrackGroup>; // Чекбоксы для каналов (music, ambience, sfx)
   selectedPlaylistId: string | null;
   selectedTags: Set<string>;
   sortBy: 'name-asc' | 'name-desc' | 'date-asc' | 'date-desc' | 'duration-asc' | 'duration-desc';
@@ -26,7 +26,11 @@ interface LibraryData {
     tagCount: number;
   };
   searchQuery: string;
-  selectedChannel: 'all' | TrackGroup;
+  channels: {
+    music: boolean;
+    ambience: boolean;
+    sfx: boolean;
+  };
   selectedPlaylistId: string | null;
   sortBy: string;
   hasActiveFilters: boolean;
@@ -84,7 +88,7 @@ export class LocalLibraryApp extends Application {
     this.library = library;
     this.filterState = {
       searchQuery: '',
-      selectedChannel: 'all',
+      selectedChannels: new Set<TrackGroup>(['music', 'ambience', 'sfx']), // По умолчанию все включены
       selectedPlaylistId: null,
       selectedTags: new Set(),
       sortBy: 'date-desc'
@@ -131,10 +135,8 @@ export class LocalLibraryApp extends Application {
       selected: p.id === this.filterState.selectedPlaylistId
     }));
 
-    // Check if any filters are active
+    // Check if any filters are active (только теги и плейлисты, не поиск и не каналы)
     const hasActiveFilters = !!(
-      this.filterState.searchQuery ||
-      this.filterState.selectedChannel !== 'all' ||
       this.filterState.selectedPlaylistId ||
       this.filterState.selectedTags.size > 0
     );
@@ -152,7 +154,11 @@ export class LocalLibraryApp extends Application {
       },
       // Filter state for UI
       searchQuery: this.filterState.searchQuery,
-      selectedChannel: this.filterState.selectedChannel,
+      channels: {
+        music: this.filterState.selectedChannels.has('music'),
+        ambience: this.filterState.selectedChannels.has('ambience'),
+        sfx: this.filterState.selectedChannels.has('sfx')
+      },
       selectedPlaylistId: this.filterState.selectedPlaylistId,
       sortBy: this.filterState.sortBy,
       hasActiveFilters
@@ -178,17 +184,8 @@ export class LocalLibraryApp extends Application {
       durationSeconds: item.duration,
       tags: item.tags,
       favorite: item.favorite,
-      group: this.inferGroupFromTags(item.tags)
+      group: item.group
     };
-  }
-
-  private inferGroupFromTags(tags: string[]): string {
-    // Try to infer group from tags if possible
-    const lowerTags = tags.map(t => t.toLowerCase());
-    if (lowerTags.some(t => t.includes('music'))) return 'music';
-    if (lowerTags.some(t => t.includes('ambient') || t.includes('ambience'))) return 'ambience';
-    if (lowerTags.some(t => t.includes('sfx') || t.includes('effect'))) return 'sfx';
-    return 'music'; // default
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -207,12 +204,9 @@ export class LocalLibraryApp extends Application {
       );
     }
 
-    // Channel filter
-    if (this.filterState.selectedChannel !== 'all') {
-      filtered = filtered.filter(item => {
-        const group = this.inferGroupFromTags(item.tags);
-        return group === this.filterState.selectedChannel;
-      });
+    // Channel filter - фильтруем по выбранным каналам (чекбоксы)
+    if (this.filterState.selectedChannels.size > 0 && this.filterState.selectedChannels.size < 3) {
+      filtered = filtered.filter(item => this.filterState.selectedChannels.has(item.group));
     }
 
     // Playlist filter
@@ -224,11 +218,14 @@ export class LocalLibraryApp extends Application {
       }
     }
 
-    // Tags filter (OR logic - show items with ANY of the selected tags)
+    // Tags filter (AND logic - show items with ALL selected tags)
     if (this.filterState.selectedTags.size > 0) {
-      filtered = filtered.filter(item =>
-        item.tags.some(tag => this.filterState.selectedTags.has(tag))
-      );
+      filtered = filtered.filter(item => {
+        // Проверяем, что ВСЕ выбранные теги присутствуют в треке
+        return Array.from(this.filterState.selectedTags).every(selectedTag =>
+          item.tags.includes(selectedTag)
+        );
+      });
     }
 
     return filtered;
@@ -267,9 +264,10 @@ export class LocalLibraryApp extends Application {
     // Toolbar actions
     html.find('[data-action="add-track"]').on('click', this.onAddTrack.bind(this));
     html.find('[data-action="search"]').on('input', this.onSearch.bind(this));
-    html.find('[data-action="filter-channel"]').on('click', this.onFilterChannel.bind(this));
+    html.find('[data-action="clear-search"]').on('click', this.onClearSearch.bind(this));
+    html.find('[data-action="toggle-channel"]').on('click', this.onToggleChannel.bind(this));
     html.find('[data-action="change-sort"]').on('change', this.onChangeSort.bind(this));
-    html.find('[data-action="clear-filters"]').on('click', this.onClearFilters.bind(this));
+    html.find('[data-action="clear-all"]').on('click', this.onClearAll.bind(this));
 
     // Tag actions
     html.find('[data-action="toggle-tag"]').on('click', this.onToggleTag.bind(this));
@@ -280,6 +278,8 @@ export class LocalLibraryApp extends Application {
     html.find('[data-action="stop-track"]').on('click', this.onStopTrack.bind(this));
     html.find('[data-action="toggle-favorite"]').on('click', this.onToggleFavorite.bind(this));
     html.find('[data-action="add-to-playlist"]').on('click', this.onAddToPlaylist.bind(this));
+    html.find('[data-action="change-group"]').on('change', this.onChangeGroup.bind(this));
+    html.find('[data-action="manage-tags"]').on('click', this.onManageTags.bind(this));
     html.find('[data-action="track-menu"]').on('click', this.onTrackMenu.bind(this));
 
     // Playlist actions
@@ -408,17 +408,31 @@ export class LocalLibraryApp extends Application {
   private onSearch(event: JQuery.TriggeredEvent): void {
     const query = ($(event.currentTarget).val() as string || '').trim();
     this.filterState.searchQuery = query;
-    this.render();
+    // НЕ вызываем render() сразу - это сбрасывает курсор
+    // Используем debounce или render через requestAnimationFrame
+    requestAnimationFrame(() => this.render());
     Logger.debug('Search:', query);
   }
 
-  private onFilterChannel(event: JQuery.ClickEvent): void {
+  private onClearSearch(event: JQuery.ClickEvent): void {
     event.preventDefault();
-    const channel = $(event.currentTarget).data('channel') as ('all' | TrackGroup);
-
-    this.filterState.selectedChannel = channel;
+    this.filterState.searchQuery = '';
     this.render();
-    Logger.debug('Filter channel:', channel);
+  }
+
+  private onToggleChannel(event: JQuery.ClickEvent): void {
+    event.preventDefault();
+    const channel = $(event.currentTarget).data('channel') as TrackGroup;
+
+    // Toggle channel в Set
+    if (this.filterState.selectedChannels.has(channel)) {
+      this.filterState.selectedChannels.delete(channel);
+    } else {
+      this.filterState.selectedChannels.add(channel);
+    }
+
+    this.render();
+    Logger.debug('Toggle channel:', channel, 'Selected:', Array.from(this.filterState.selectedChannels));
   }
 
   private onChangeSort(event: JQuery.ChangeEvent): void {
@@ -428,12 +442,10 @@ export class LocalLibraryApp extends Application {
     Logger.debug('Sort changed:', sortValue);
   }
 
-  private onClearFilters(event: JQuery.ClickEvent): void {
+  private onClearAll(event: JQuery.ClickEvent): void {
     event.preventDefault();
 
-    // Reset all filters except sortBy
-    this.filterState.searchQuery = '';
-    this.filterState.selectedChannel = 'all';
+    // Кнопка "All" сбрасывает только теги и плейлисты, НЕ поиск и НЕ каналы
     this.filterState.selectedPlaylistId = null;
     this.filterState.selectedTags.clear();
 
@@ -465,10 +477,21 @@ export class LocalLibraryApp extends Application {
     const tagName = await this.promptTagName();
     if (!tagName) return;
 
-    // Tags are automatically created when added to tracks
-    // This is just a placeholder for future tag management
-    Logger.debug('Add tag:', tagName);
-    ui.notifications?.info(`Tag "${tagName}" will be available once assigned to tracks`);
+    // Проверяем, существует ли уже такой тег
+    const allTags = this.library.getAllTags();
+    if (allTags.includes(tagName)) {
+      ui.notifications?.warn(`Tag "${tagName}" already exists`);
+      return;
+    }
+
+    // Создаем "фантомный" тег - добавляем временный элемент с этим тегом
+    // Это позволит тегу появиться в списке доступных тегов
+    // Альтернатива: можно хранить список тегов отдельно
+    ui.notifications?.info(`Tag "${tagName}" created. You can now assign it to tracks.`);
+
+    // Обновляем рендер
+    this.render();
+    Logger.debug('Tag created:', tagName);
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -494,6 +517,96 @@ export class LocalLibraryApp extends Application {
     // TODO: Integrate with AudioEngine to stop track
   }
 
+  private async onChangeGroup(event: JQuery.ChangeEvent): Promise<void> {
+    event.preventDefault();
+    const itemId = $(event.currentTarget).closest('[data-item-id]').data('item-id') as string;
+    const newGroup = $(event.currentTarget).val() as TrackGroup;
+
+    try {
+      this.library.updateItem(itemId, { group: newGroup });
+      this.render();
+      Logger.debug('Changed group:', itemId, newGroup);
+    } catch (error) {
+      Logger.error('Failed to change group:', error);
+      ui.notifications?.error('Failed to change audio channel');
+    }
+  }
+
+  private async onManageTags(event: JQuery.ClickEvent): Promise<void> {
+    event.preventDefault();
+    event.stopPropagation();
+    const itemId = $(event.currentTarget).closest('[data-item-id]').data('item-id') as string;
+    const item = this.library.getItem(itemId);
+
+    if (!item) {
+      ui.notifications?.error('Track not found');
+      return;
+    }
+
+    const allTags = this.library.getAllTags();
+    if (allTags.length === 0) {
+      ui.notifications?.warn('No tags available. Create tags first in the tags section.');
+      return;
+    }
+
+    // Создаем чекбоксы для всех тегов
+    const checkboxes = allTags.map(tag => {
+      const checked = item.tags.includes(tag) ? 'checked' : '';
+      return `
+        <label style="display: block; margin: 5px 0;">
+          <input type="checkbox" name="tag-${tag}" value="${tag}" ${checked} />
+          ${tag}
+        </label>
+      `;
+    }).join('');
+
+    const selectedTags = await new Promise<string[]>((resolve) => {
+      new Dialog({
+        title: 'Manage Tags',
+        content: `
+          <form>
+            <div class="form-group">
+              <label>Select Tags:</label>
+              <div style="max-height: 300px; overflow-y: auto; border: 1px solid #ccc; padding: 10px;">
+                ${checkboxes}
+              </div>
+            </div>
+          </form>
+        `,
+        buttons: {
+          save: {
+            icon: '<i class="fas fa-check"></i>',
+            label: 'Save',
+            callback: (html: JQuery) => {
+              const selected: string[] = [];
+              html.find('input[type="checkbox"]:checked').each(function() {
+                selected.push($(this).val() as string);
+              });
+              resolve(selected);
+            }
+          },
+          cancel: {
+            icon: '<i class="fas fa-times"></i>',
+            label: 'Cancel',
+            callback: () => resolve([])
+          }
+        },
+        default: 'save'
+      }).render(true);
+    });
+
+    if (selectedTags) {
+      try {
+        this.library.updateItem(itemId, { tags: selectedTags });
+        this.render();
+        ui.notifications?.info('Tags updated');
+      } catch (error) {
+        Logger.error('Failed to update tags:', error);
+        ui.notifications?.error('Failed to update tags');
+      }
+    }
+  }
+
   private async onAddToPlaylist(event: JQuery.ClickEvent): Promise<void> {
     event.preventDefault();
     event.stopPropagation();
@@ -516,8 +629,7 @@ export class LocalLibraryApp extends Application {
     if (!selectedPlaylistId) return;
 
     try {
-      const group = this.inferGroupFromTags(item.tags) as TrackGroup;
-      this.library.playlists.addTrackToPlaylist(selectedPlaylistId, itemId, group);
+      this.library.playlists.addTrackToPlaylist(selectedPlaylistId, itemId, item.group);
       this.render();
       ui.notifications?.info(`Added "${item.name}" to playlist`);
     } catch (error) {
@@ -634,8 +746,7 @@ export class LocalLibraryApp extends Application {
     }
 
     try {
-      const group = this.inferGroupFromTags(item.tags) as TrackGroup;
-      this.library.playlists.addTrackToPlaylist(playlistId, itemId, group);
+      this.library.playlists.addTrackToPlaylist(playlistId, itemId, item.group);
       this.render();
       ui.notifications?.info(`Added "${item.name}" to "${playlist.name}"`);
     } catch (error) {
@@ -661,11 +772,11 @@ export class LocalLibraryApp extends Application {
         }
       },
       {
-        name: 'Edit Tags',
-        icon: '<i class="fas fa-tags"></i>',
+        name: 'Change Channel',
+        icon: '<i class="fas fa-music"></i>',
         callback: async (li: JQuery) => {
           const itemId = li.data('item-id') as string;
-          await this.onEditTrackTags(itemId);
+          await this.onChangeChannelMenu(itemId);
         }
       },
       {
@@ -686,8 +797,7 @@ export class LocalLibraryApp extends Application {
           if (!selectedPlaylistId) return;
 
           try {
-            const group = this.inferGroupFromTags(item.tags) as TrackGroup;
-            this.library.playlists.addTrackToPlaylist(selectedPlaylistId, itemId, group);
+            this.library.playlists.addTrackToPlaylist(selectedPlaylistId, itemId, item.group);
             this.render();
             ui.notifications?.info(`Added "${item.name}" to playlist`);
           } catch (error) {
@@ -811,33 +921,64 @@ export class LocalLibraryApp extends Application {
     }
   }
 
-  private async onEditTrackTags(itemId: string): Promise<void> {
+  private async onChangeChannelMenu(itemId: string): Promise<void> {
     const item = this.library.getItem(itemId);
     if (!item) {
       ui.notifications?.error('Track not found');
       return;
     }
 
-    const tagsString = await this.promptTextInput(
-      'Edit Tags',
-      'Tags (comma-separated)',
-      item.tags.join(', ')
-    );
-    if (tagsString === null) return;
+    const channels: { label: string; value: TrackGroup }[] = [
+      { label: 'Music', value: 'music' },
+      { label: 'Ambience', value: 'ambience' },
+      { label: 'SFX', value: 'sfx' }
+    ];
 
-    // Parse tags
-    const newTags = tagsString
-      .split(',')
-      .map(t => t.trim())
-      .filter(t => t.length > 0);
+    const options = channels.map(ch =>
+      `<option value="${ch.value}" ${ch.value === item.group ? 'selected' : ''}>${ch.label}</option>`
+    ).join('');
 
-    try {
-      this.library.updateItem(itemId, { tags: newTags });
-      this.render();
-      ui.notifications?.info('Tags updated');
-    } catch (error) {
-      Logger.error('Failed to update tags:', error);
-      ui.notifications?.error('Failed to update tags');
+    const newChannel = await new Promise<TrackGroup | null>((resolve) => {
+      new Dialog({
+        title: 'Change Audio Channel',
+        content: `
+          <form>
+            <div class="form-group">
+              <label>Select Channel:</label>
+              <select name="channel">
+                ${options}
+              </select>
+            </div>
+          </form>
+        `,
+        buttons: {
+          save: {
+            icon: '<i class="fas fa-check"></i>',
+            label: 'Change',
+            callback: (html: JQuery) => {
+              const value = html.find('[name="channel"]').val() as TrackGroup;
+              resolve(value);
+            }
+          },
+          cancel: {
+            icon: '<i class="fas fa-times"></i>',
+            label: 'Cancel',
+            callback: () => resolve(null)
+          }
+        },
+        default: 'save'
+      }).render(true);
+    });
+
+    if (newChannel && newChannel !== item.group) {
+      try {
+        this.library.updateItem(itemId, { group: newChannel });
+        this.render();
+        ui.notifications?.info(`Channel changed to: ${newChannel}`);
+      } catch (error) {
+        Logger.error('Failed to change channel:', error);
+        ui.notifications?.error('Failed to change channel');
+      }
     }
   }
 

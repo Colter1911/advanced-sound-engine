@@ -7,6 +7,7 @@ export interface LibraryItem {
   id: string;                    // UUID v4
   url: string;                   // Путь к аудио файлу
   name: string;                  // Отображаемое имя
+  group: TrackGroup;             // Аудиоканал: music/ambience/sfx
   tags: string[];                // Теги для фильтрации
   duration: number;              // Длительность в секундах
   favorite: boolean;             // Помечен как избранный

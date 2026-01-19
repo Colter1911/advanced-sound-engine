@@ -91,36 +91,39 @@
                class="library-search"
                value="{{searchQuery}}"
                data-action="search" />
+        {{#if searchQuery}}
+          <button class="icon-btn clear-search-btn" data-action="clear-search" title="Clear search">
+            <i class="fas fa-times"></i>
+          </button>
+        {{/if}}
       </div>
 
       <div class="filter-group">
         <div class="filter-channels">
-          <button class="filter-btn {{#if (eq selectedChannel 'all')}}active{{/if}}"
-                  data-channel="all"
-                  data-action="filter-channel">
-            All
-          </button>
-          <button class="filter-btn {{#if (eq selectedChannel 'music')}}active{{/if}}"
+          <button class="filter-btn checkbox-btn {{#if channels.music}}active{{/if}}"
                   data-channel="music"
-                  data-action="filter-channel">
+                  data-action="toggle-channel">
+            <i class="fas fa-{{#if channels.music}}check-square{{else}}square{{/if}}"></i>
             Music
           </button>
-          <button class="filter-btn {{#if (eq selectedChannel 'ambience')}}active{{/if}}"
+          <button class="filter-btn checkbox-btn {{#if channels.ambience}}active{{/if}}"
                   data-channel="ambience"
-                  data-action="filter-channel">
+                  data-action="toggle-channel">
+            <i class="fas fa-{{#if channels.ambience}}check-square{{else}}square{{/if}}"></i>
             Ambience
           </button>
-          <button class="filter-btn {{#if (eq selectedChannel 'sfx')}}active{{/if}}"
+          <button class="filter-btn checkbox-btn {{#if channels.sfx}}active{{/if}}"
                   data-channel="sfx"
-                  data-action="filter-channel">
+                  data-action="toggle-channel">
+            <i class="fas fa-{{#if channels.sfx}}check-square{{else}}square{{/if}}"></i>
             SFX
           </button>
         </div>
 
         {{#if hasActiveFilters}}
-          <button class="filter-btn clear-filters-btn" data-action="clear-filters" title="Clear all filters">
+          <button class="filter-btn clear-all-btn" data-action="clear-all" title="Clear tags and playlist filters">
             <i class="fas fa-times"></i>
-            Clear
+            All
           </button>
         {{/if}}
 
@@ -190,6 +193,15 @@
               </button>
             </div>
 
+            <!-- Track Group Selector -->
+            <div class="track-group">
+              <select class="group-select" data-action="change-group" data-item-id="{{this.id}}">
+                <option value="music" {{#if (eq this.group 'music')}}selected{{/if}}>Music</option>
+                <option value="ambience" {{#if (eq this.group 'ambience')}}selected{{/if}}>Ambience</option>
+                <option value="sfx" {{#if (eq this.group 'sfx')}}selected{{/if}}>SFX</option>
+              </select>
+            </div>
+
             <!-- Track Info -->
             <div class="track-info">
               <div class="track-name">{{this.name}}</div>
@@ -212,7 +224,13 @@
             </div>
 
             <!-- Track Actions -->
-            <div class="track-actions">
+            <div class="track-actions always-visible">
+              <button class="icon-btn tags-btn"
+                      data-action="manage-tags"
+                      data-item-id="{{this.id}}"
+                      title="Manage tags">
+                <i class="fas fa-tags"></i>
+              </button>
               <button class="icon-btn favorite-btn {{#if this.favorite}}active{{/if}}"
                       data-action="toggle-favorite"
                       data-item-id="{{this.id}}"
