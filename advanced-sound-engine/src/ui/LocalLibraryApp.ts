@@ -1,4 +1,4 @@
-import type { LibraryItem } from '@t/library';
+import type { LibraryItem, Playlist } from '@t/library';
 import type { TrackGroup } from '@t/audio';
 import { LibraryManager } from '@lib/LibraryManager';
 import { Logger } from '@utils/logger';
@@ -8,9 +8,12 @@ const MODULE_ID = 'advanced-sound-engine';
 
 interface LibraryData {
   items: LibraryItemViewData[];
+  playlists: PlaylistViewData[];
+  favorites: FavoriteViewData[];
   stats: {
     total: number;
     favorites: number;
+    playlists: number;
   };
 }
 
@@ -23,6 +26,20 @@ interface LibraryItemViewData {
   tags: string[];
   favorite: boolean;
   group: string;
+}
+
+interface PlaylistViewData {
+  id: string;
+  name: string;
+  itemCount: number;
+  favorite: boolean;
+  selected?: boolean;
+}
+
+interface FavoriteViewData {
+  id: string;
+  name: string;
+  type: 'track' | 'playlist';
 }
 
 export class LocalLibraryApp extends Application {
@@ -48,14 +65,44 @@ export class LocalLibraryApp extends Application {
 
   override getData(): LibraryData {
     const items = this.library.getAllItems();
+    const playlists = this.library.playlists.getAllPlaylists();
     const stats = this.library.getStats();
+
+    // Build favorites list (tracks + playlists)
+    const favoriteItems = this.library.getFavorites();
+    const favoritePlaylists = this.library.playlists.getFavoritePlaylists();
+    const favorites: FavoriteViewData[] = [
+      ...favoriteItems.map(item => ({
+        id: item.id,
+        name: item.name,
+        type: 'track' as const
+      })),
+      ...favoritePlaylists.map(playlist => ({
+        id: playlist.id,
+        name: playlist.name,
+        type: 'playlist' as const
+      }))
+    ];
 
     return {
       items: items.map(item => this.getItemViewData(item)),
+      playlists: playlists.map(p => this.getPlaylistViewData(p)),
+      favorites,
       stats: {
         total: stats.totalItems,
-        favorites: stats.favoriteItems
+        favorites: stats.favoriteItems,
+        playlists: stats.playlists
       }
+    };
+  }
+
+  private getPlaylistViewData(playlist: Playlist): PlaylistViewData {
+    return {
+      id: playlist.id,
+      name: playlist.name,
+      itemCount: playlist.items.length,
+      favorite: playlist.favorite,
+      selected: false
     };
   }
 
@@ -90,6 +137,13 @@ export class LocalLibraryApp extends Application {
     // Track actions
     html.find('[data-action="toggle-favorite"]').on('click', this.onToggleFavorite.bind(this));
     html.find('[data-action="delete-track"]').on('click', this.onDeleteTrack.bind(this));
+
+    // Playlist actions
+    html.find('[data-action="create-playlist"]').on('click', this.onCreatePlaylist.bind(this));
+    html.find('[data-action="toggle-playlist-favorite"]').on('click', this.onTogglePlaylistFavorite.bind(this));
+
+    // Favorite actions
+    html.find('[data-action="remove-from-favorites"]').on('click', this.onRemoveFromFavorites.bind(this));
 
     Logger.debug('LocalLibraryApp listeners activated');
   }
@@ -165,5 +219,99 @@ export class LocalLibraryApp extends Application {
         ui.notifications?.error('Failed to delete track');
       }
     }
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // Playlist Event Handlers
+  // ─────────────────────────────────────────────────────────────
+
+  private async onCreatePlaylist(event: JQuery.ClickEvent): Promise<void> {
+    event.preventDefault();
+
+    const name = await this.promptPlaylistName();
+    if (!name) return;
+
+    try {
+      const playlist = this.library.playlists.createPlaylist(name);
+      this.render();
+      ui.notifications?.info(`Created playlist: ${playlist.name}`);
+    } catch (error) {
+      Logger.error('Failed to create playlist:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      ui.notifications?.error(`Failed to create playlist: ${errorMessage}`);
+    }
+  }
+
+  private async onTogglePlaylistFavorite(event: JQuery.ClickEvent): Promise<void> {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const playlistId = $(event.currentTarget).closest('[data-playlist-id]').data('playlist-id') as string;
+
+    try {
+      const isFavorite = this.library.playlists.togglePlaylistFavorite(playlistId);
+      this.render();
+      ui.notifications?.info(isFavorite ? 'Added to favorites' : 'Removed from favorites');
+    } catch (error) {
+      Logger.error('Failed to toggle playlist favorite:', error);
+      ui.notifications?.error('Failed to update favorite status');
+    }
+  }
+
+  private async onRemoveFromFavorites(event: JQuery.ClickEvent): Promise<void> {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const favoriteId = $(event.currentTarget).closest('[data-favorite-id]').data('favorite-id') as string;
+    const favoriteType = $(event.currentTarget).closest('[data-favorite-type]').data('favorite-type') as string;
+
+    try {
+      if (favoriteType === 'track') {
+        this.library.toggleFavorite(favoriteId);
+      } else if (favoriteType === 'playlist') {
+        this.library.playlists.togglePlaylistFavorite(favoriteId);
+      }
+      this.render();
+      ui.notifications?.info('Removed from favorites');
+    } catch (error) {
+      Logger.error('Failed to remove from favorites:', error);
+      ui.notifications?.error('Failed to remove from favorites');
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // Utilities
+  // ─────────────────────────────────────────────────────────────
+
+  private async promptPlaylistName(): Promise<string | null> {
+    return new Promise((resolve) => {
+      new Dialog({
+        title: 'Create Playlist',
+        content: `
+          <form>
+            <div class="form-group">
+              <label>Playlist Name:</label>
+              <input type="text" name="playlist-name" autofocus />
+            </div>
+          </form>
+        `,
+        buttons: {
+          create: {
+            icon: '<i class="fas fa-check"></i>',
+            label: 'Create',
+            callback: (html: JQuery) => {
+              const name = (html.find('[name="playlist-name"]').val() as string || '').trim();
+              resolve(name || null);
+            }
+          },
+          cancel: {
+            icon: '<i class="fas fa-times"></i>',
+            label: 'Cancel',
+            callback: () => resolve(null)
+          }
+        },
+        default: 'create'
+      }).render(true);
+    });
   }
 }

@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 $ase-bg-primary: #0d0d0d;
 $ase-bg-secondary: #1a1a1a;
 $ase-bg-tertiary: #2d2d2d;
@@ -7,6 +8,19 @@ $ase-text-primary: #e0e0e0;
 $ase-text-secondary: #999999;
 $ase-success: #707070;
 $ase-warning: #a0a0a0;
+=======
+// Color scheme from UX/UI concept
+$ase-bg-primary: #0d1b2a;
+$ase-bg-secondary: #1b263b;
+$ase-bg-tertiary: #415a77;
+$ase-accent: #4fc3f7;
+$ase-accent-hover: #29b6f6;
+$ase-text-primary: #e0e1dd;
+$ase-text-secondary: #778da9;
+$ase-success: #4caf50;
+$ase-warning: #ffc107;
+$ase-danger: #f44336;
+>>>>>>> 8fb7c96024bde7f7faccf475e960cd4be96586a3
 
 // ─────────────────────────────────────────────────────────────
 // GM Mixer
@@ -453,7 +467,7 @@ $ase-warning: #a0a0a0;
 }
 
 // ─────────────────────────────────────────────────────────────
-// Library
+// Library - 3-column layout
 // ─────────────────────────────────────────────────────────────
 
 .library {
@@ -476,7 +490,7 @@ $ase-warning: #a0a0a0;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px;
+  padding: 12px 16px;
   background: $ase-bg-secondary;
   border-bottom: 2px solid $ase-bg-tertiary;
 }
@@ -487,14 +501,16 @@ $ase-warning: #a0a0a0;
 
   .item {
     padding: 8px 16px;
-    background: $ase-bg-tertiary;
-    border-radius: 4px;
+    background: transparent;
+    border-bottom: 2px solid transparent;
     cursor: pointer;
-    transition: background 0.2s;
+    transition: all 0.2s;
+    color: $ase-text-secondary;
+    font-weight: 500;
 
     &.active {
-      background: $ase-accent;
-      color: white;
+      border-bottom-color: $ase-accent;
+      color: $ase-accent;
     }
 
     &.disabled {
@@ -503,7 +519,7 @@ $ase-warning: #a0a0a0;
     }
 
     &:hover:not(.disabled) {
-      background: $ase-accent-hover;
+      color: $ase-text-primary;
     }
   }
 }
@@ -515,16 +531,16 @@ $ase-warning: #a0a0a0;
 
 .add-track-btn {
   padding: 8px 16px;
-  background: $ase-success;
+  background: $ase-accent;
   color: white;
   border: none;
   border-radius: 4px;
   cursor: pointer;
   font-weight: bold;
-  transition: opacity 0.2s;
+  transition: background 0.2s;
 
   &:hover {
-    opacity: 0.8;
+    background: $ase-accent-hover;
   }
 
   i {
@@ -532,13 +548,206 @@ $ase-warning: #a0a0a0;
   }
 }
 
+// 3-column body
+.library-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+// Left Sidebar (Playlists + Favorites)
+.library-sidebar {
+  width: 280px;
+  background: $ase-bg-secondary;
+  border-right: 1px solid $ase-bg-tertiary;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sidebar-section {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+
+  &.playlists-section {
+    flex: 1;
+    border-bottom: 1px solid $ase-bg-tertiary;
+  }
+
+  &.favorites-section {
+    flex: 1;
+  }
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: $ase-bg-primary;
+  border-bottom: 1px solid $ase-bg-tertiary;
+
+  h3 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: $ase-text-primary;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    i {
+      color: $ase-accent;
+      font-size: 12px;
+    }
+  }
+}
+
+.create-playlist-btn {
+  width: 28px;
+  height: 28px;
+  background: $ase-bg-tertiary;
+  border: none;
+  border-radius: 4px;
+  color: $ase-accent;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover {
+    background: $ase-accent;
+    color: white;
+  }
+}
+
+// Playlists list
+.playlists-list,
+.favorites-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.playlist-item,
+.favorite-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  margin-bottom: 4px;
+  background: transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.2s;
+
+  &:hover {
+    background: rgba(#fff, 0.05);
+  }
+
+  &.selected {
+    background: $ase-bg-tertiary;
+  }
+}
+
+.playlist-info,
+.favorite-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+
+  i {
+    color: $ase-accent;
+    font-size: 12px;
+    flex-shrink: 0;
+  }
+}
+
+.playlist-name,
+.favorite-name {
+  font-size: 13px;
+  color: $ase-text-primary;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.playlist-count {
+  font-size: 11px;
+  color: $ase-text-secondary;
+  flex-shrink: 0;
+}
+
+.playlist-actions,
+.favorite-actions {
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.playlist-item:hover .playlist-actions,
+.favorite-item:hover .favorite-actions {
+  opacity: 1;
+}
+
+.playlist-action-btn,
+.favorite-action-btn {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  color: $ase-text-secondary;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover {
+    background: $ase-bg-primary;
+    color: $ase-accent;
+  }
+
+  i.active {
+    color: $ase-warning;
+  }
+}
+
+.empty-message {
+  padding: 24px 16px;
+  text-align: center;
+  color: $ase-text-secondary;
+
+  p {
+    margin: 4px 0;
+    font-size: 13px;
+  }
+
+  .hint {
+    font-size: 11px;
+    opacity: 0.7;
+  }
+}
+
+// Main content area
+.library-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 // Toolbar
 .library-toolbar {
   display: flex;
   gap: 12px;
-  padding: 12px;
+  padding: 12px 16px;
   background: $ase-bg-secondary;
   align-items: center;
+  border-bottom: 1px solid $ase-bg-tertiary;
 }
 
 .search-box {
@@ -556,12 +765,17 @@ $ase-warning: #a0a0a0;
       outline: none;
       border-color: $ase-accent;
     }
+
+    &::placeholder {
+      color: $ase-text-secondary;
+      opacity: 0.6;
+    }
   }
 }
 
 .filter-channels {
   display: flex;
-  gap: 8px;
+  gap: 6px;
 
   .channel-filter {
     padding: 6px 12px;
@@ -571,10 +785,11 @@ $ase-warning: #a0a0a0;
     color: $ase-text-secondary;
     cursor: pointer;
     transition: all 0.2s;
+    font-size: 12px;
 
     &.active {
-      border-color: $ase-success;
-      color: $ase-text-primary;
+      border-color: $ase-accent;
+      color: $ase-accent;
     }
 
     &:hover {
@@ -583,24 +798,107 @@ $ase-warning: #a0a0a0;
   }
 }
 
-// Tags
+.all-tracks-btn {
+  padding: 6px 12px;
+  background: $ase-bg-tertiary;
+  border: none;
+  border-radius: 4px;
+  color: $ase-text-secondary;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 12px;
+
+  &:hover {
+    background: $ase-accent;
+    color: white;
+  }
+}
+
+// Tags (horizontal scroll)
 .library-tags {
-  padding: 12px;
+  display: flex;
+  gap: 8px;
+  padding: 8px 16px;
   background: $ase-bg-secondary;
   border-bottom: 1px solid $ase-bg-tertiary;
+  align-items: center;
+}
+
+.tags-scroll {
+  flex: 1;
+  overflow-x: auto;
+  overflow-y: hidden;
+
+  &::-webkit-scrollbar {
+    height: 6px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: $ase-bg-primary;
+    border-radius: 3px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: $ase-bg-tertiary;
+    border-radius: 3px;
+
+    &:hover {
+      background: $ase-accent;
+    }
+  }
 }
 
 .tags-container {
   display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
+  gap: 6px;
+  padding: 2px 0;
 }
 
-// Tracks
+.tag-placeholder {
+  font-size: 12px;
+  color: $ase-text-secondary;
+  opacity: 0.5;
+}
+
+.add-tag-btn {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  background: $ase-bg-tertiary;
+  border: none;
+  border-radius: 4px;
+  color: $ase-accent;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover {
+    background: $ase-accent;
+    color: white;
+  }
+}
+
+// Tracks area
 .library-tracks {
   flex: 1;
   overflow-y: auto;
-  padding: 12px;
+  padding: 12px 16px;
+
+  &::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: $ase-bg-secondary;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: $ase-bg-tertiary;
+    border-radius: 4px;
+
+    &:hover {
+      background: $ase-accent;
+    }
+  }
 }
 
 .tracks-list {
@@ -615,11 +913,18 @@ $ase-warning: #a0a0a0;
   align-items: center;
   padding: 12px;
   background: $ase-bg-secondary;
+  border: 1px solid transparent;
   border-radius: 6px;
-  transition: background 0.2s;
+  transition: all 0.2s;
+  cursor: grab;
 
   &:hover {
-    background: lighten($ase-bg-secondary, 5%);
+    background: rgba($ase-accent, 0.1);
+    border-color: $ase-accent;
+  }
+
+  &:active {
+    cursor: grabbing;
   }
 }
 
@@ -629,12 +934,13 @@ $ase-warning: #a0a0a0;
 }
 
 .track-name {
-  font-weight: bold;
+  font-weight: 600;
   color: $ase-text-primary;
   margin-bottom: 4px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 14px;
 }
 
 .track-meta {
@@ -655,7 +961,7 @@ $ase-warning: #a0a0a0;
 
   .tag {
     padding: 2px 8px;
-    background: $ase-bg-tertiary;
+    background: rgba($ase-accent, 0.15);
     border-radius: 12px;
     font-size: 11px;
     color: $ase-accent;
@@ -664,7 +970,7 @@ $ase-warning: #a0a0a0;
 
 .track-actions {
   display: flex;
-  gap: 8px;
+  gap: 6px;
 }
 
 .track-action-btn {
@@ -690,17 +996,18 @@ $ase-warning: #a0a0a0;
   }
 
   &.delete-btn:hover {
-    color: $ase-accent;
+    color: $ase-danger;
   }
 }
 
-// Empty State
+// Empty state
 .empty-state {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   height: 100%;
+  min-height: 300px;
   color: $ase-text-secondary;
   text-align: center;
 
@@ -708,10 +1015,12 @@ $ase-warning: #a0a0a0;
     font-size: 64px;
     margin-bottom: 16px;
     opacity: 0.3;
+    color: $ase-accent;
   }
 
   p {
     margin: 4px 0;
+    font-size: 14px;
   }
 
   .hint {
@@ -722,7 +1031,7 @@ $ase-warning: #a0a0a0;
 
 // Footer
 .library-footer {
-  padding: 12px;
+  padding: 10px 16px;
   background: $ase-bg-secondary;
   border-top: 1px solid $ase-bg-tertiary;
 }
@@ -737,5 +1046,13 @@ $ase-warning: #a0a0a0;
     padding: 4px 8px;
     background: $ase-bg-primary;
     border-radius: 4px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+
+    i {
+      color: $ase-accent;
+      font-size: 11px;
+    }
   }
 }
