@@ -8,6 +8,7 @@ export interface LibraryItem {
   url: string;                   // Путь к аудио файлу
   name: string;                  // Отображаемое имя
   tags: string[];                // Теги для фильтрации
+  group: TrackGroup;             // Канал звука: music/ambience/sfx
   duration: number;              // Длительность в секундах
   favorite: boolean;             // Помечен как избранный
   addedAt: number;               // Timestamp добавления
@@ -24,6 +25,7 @@ export interface LibraryItemMetadata {
   genre?: string;
   year?: number;
   description?: string;
+  picture?: string;              // Base64 string or URL to cover art
   waveform?: number[];           // Для визуализации волны
 }
 

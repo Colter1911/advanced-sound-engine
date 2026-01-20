@@ -1,5 +1,131 @@
 # Session Report - Jan 19 & 20, 2026
 
+---
+
+## Track Entity
+
+### Data Type (`src/types/library.ts`)
+
+```typescript
+interface LibraryItem {
+  id: string;           // UUID v4 - уникальный идентификатор
+  url: string;          // Путь к аудио файлу
+  name: string;         // Отображаемое имя
+  tags: string[];       // Массив тегов (пользовательские, НЕ включают канал)
+  group: TrackGroup;    // Канал звука: 'music' | 'ambience' | 'sfx'
+  duration: number;     // Длительность в секундах
+  favorite: boolean;    // Помечен как избранный
+  addedAt: number;      // Timestamp добавления
+  updatedAt: number;    // Timestamp последнего изменения
+}
+```
+
+### UI Layout (Row 1 + Row 2)
+
+| Элемент | Класс CSS | Описание |
+|---------|-----------|----------|
+| Название | `.ase-track-name` | Название трека, обрезается ellipsis |
+| Длительность | `.ase-track-duration` | Формат `M:SS` |
+| Кнопки управления | `.ase-track-controls` | Абсолютное позиционирование справа, вертикально по центру |
+| Канал (dropdown) | `.ase-channel-select` | Выбор group: music/ambience/sfx |
+| Теги | `.ase-track-tags` | Массив `.ase-tag` + кнопка "+" |
+
+### Ключевые методы (`src/library/LibraryManager.ts`)
+
+| Метод | Описание |
+|-------|----------|
+| `addItem(url, name?, group?)` | Добавить трек в библиотеку |
+| `updateItem(id, updates)` | Обновить поля трека (включая `group`, `tags`) |
+| `removeItem(id)` | Удалить трек из библиотеки |
+| `getItem(id)` | Получить трек по ID |
+| `getAllItems()` | Получить все треки |
+
+---
+
+## Tag System
+
+### Глобальные теги vs Теги трека
+
+| Аспект | Глобальные теги | Теги трека |
+|--------|-----------------|------------|
+| Хранение | `LibraryManager.customTags: Set<string>` | `LibraryItem.tags: string[]` |
+| Персистенция | Сохраняются даже без треков | Привязаны к треку |
+| UI расположение | Верхняя панель `.ase-tags-inline` | Строка 2 трека `.ase-track-tags` |
+| Контекстное меню (ПКМ) | Edit / Delete (глобально) | Remove (только с трека) |
+
+### Ключевые методы (`src/library/LibraryManager.ts`)
+
+| Метод | Описание |
+|-------|----------|
+| `getAllTags()` | Возвращает объединение `customTags` + теги из всех треков |
+| `addCustomTag(tag)` | Добавить тег в глобальный список |
+| `addTagToItem(itemId, tag)` | Добавить тег к треку |
+| `removeTagFromItem(itemId, tag)` | Удалить тег с трека (НЕ из глобального списка) |
+| `deleteTag(tag)` | Удалить тег глобально (из `customTags` + из всех треков) |
+| `renameTag(oldTag, newTag)` | Переименовать тег везде |
+
+### Фильтрация по тегам (`src/ui/LocalLibraryApp.ts`)
+
+- **Логика**: AND — показывает треки, у которых есть **ВСЕ** выбранные теги
+- **Местоположение**: `applyFilters()` метод
+
+---
+
+## Channel System (TrackGroup)
+
+### Тип данных (`src/types/audio.ts`)
+
+```typescript
+type TrackGroup = 'music' | 'ambience' | 'sfx';
+```
+
+### Связь с UI
+
+| Элемент | Описание |
+|---------|----------|
+| Фильтр-кнопки | `.ase-btn-filter[data-channel]` — верхняя панель |
+| Dropdown на треке | `.ase-channel-select` — Row 2 трека |
+| Микшер (footer) | `.ase-mixer-footer` — каналы громкости |
+
+### Фильтрация по каналам
+
+- **Логика**: OR — показывает треки, чей `group` входит в `selectedChannels`
+- **При пустом выборе**: Показывает все треки
+
+---
+
+## Queue System (Очередь воспроизведения)
+
+### Тип данных (`src/types/queue.ts`)
+
+```typescript
+interface QueueItem {
+  id: string;           // UUID очереди (НЕ libraryItemId)
+  libraryItemId: string; // Ссылка на трек в библиотеке
+  group: TrackGroup;    // Канал
+  state: 'playing' | 'paused' | 'stopped';
+  volume: number;
+  loop: boolean;
+}
+```
+
+### Ключевые методы (`src/queue/PlaybackQueueManager.ts`)
+
+| Метод | Описание |
+|-------|----------|
+| `addItem(libraryItemId, options)` | Добавить трек в очередь |
+| `removeItem(queueItemId)` | Удалить по ID очереди |
+| `removeByLibraryItemId(libraryItemId)` | Удалить по ID трека |
+| `hasItem(libraryItemId)` | Проверить, есть ли трек в очереди |
+
+### Глобальный доступ
+
+```typescript
+window.ASE.queue  // PlaybackQueueManager instance
+```
+
+---
+
 ##  Completed Work (Jan 20)
 1.  **Search Bar Refinement**:
     *   **Visibility**: Fixed CSS `display: none` that hid the "X" button.
@@ -21,33 +147,6 @@
 
 2.  **Persistence**:
     *   Implemented `customTags` in `LibraryManager` to allow tags to exist without track assignments.
-
-## Playback Queue Architecture (Список воспроизведения)
-
-Implemented a runtime (session-based) system to manage tracks and playlists queued for playback/mixing.
-
-### 1. Data Types (`src/types/queue.ts`)
-*   **`QueueItem`**: Represents an entry in the queue.
-    *   `id`: Unique UUID for the queue entry.
-    *   `libraryItemId`: Reference to the source sound in the library.
-    *   `playlistId`: (Optional) ID of the playlist if added as a group.
-    *   `group`: `music` | `ambience` | `sfx`.
-    *   `state`: Current playback state (`playing`, `stopped`, etc.).
-    *   `volume` & `loop`: Instance-specific overrides for the item.
-*   **`PlaybackQueueState`**: The overall state object containing the list of items and the ID of the currently active item.
-
-### 2. Core Components (`src/queue/PlaybackQueueManager.ts`)
-*   **`PlaybackQueueManager`**: The central logic controller.
-    *   `addItem(libraryItemId, options)`: Adds a single track to the queue with optional overrides.
-    *   `addPlaylist(playlistId, items)`: Batch adds items from a playlist.
-    *   `removeItem(queueItemId)`: Removes a specific entry.
-    *   `setActive(queueItemId)`: Marks an item as the primary focus for mixer controls.
-    *   `on(event, callback)`: Event system for UI reactive updates (`add`, `remove`, `change`, `active`).
-
-### 3. Integration
-*   **Global Access**: Initialized in `main.ts` and exposed via `window.ASE.queue`.
-*   **Library Integration**: `LocalLibraryApp` uses the manager's `addItem` method when the "Add to Queue" button is clicked.
-*   **Mixer Integration**: Designed to be the primary data source for the upcoming Mixer UI.
 
 ## Known Issues
 - All reported bugs from Jan 19/20 have been addressed. Ready for further testing in live environment.

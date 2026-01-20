@@ -186,6 +186,19 @@ export class PlaybackQueueManager {
         return this.items.some(i => i.libraryItemId === libraryItemId);
     }
 
+    /**
+     * Remove all queue items that reference a specific library item
+     */
+    removeByLibraryItemId(libraryItemId: string): boolean {
+        const toRemove = this.items.filter(i => i.libraryItemId === libraryItemId);
+        if (toRemove.length === 0) return false;
+
+        for (const item of toRemove) {
+            this.removeItem(item.id);
+        }
+        return true;
+    }
+
     // ─────────────────────────────────────────────────────────────
     // Event System
     // ─────────────────────────────────────────────────────────────

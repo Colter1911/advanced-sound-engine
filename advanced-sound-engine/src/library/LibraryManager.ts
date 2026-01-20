@@ -12,8 +12,12 @@ const LIBRARY_VERSION = 1;
 export class LibraryManager {
   private items: Map<string, LibraryItem> = new Map();
   private customTags: Set<string> = new Set();
+  private favoritesOrder: Array<{ id: string, type: 'track' | 'playlist', addedAt: number }> = [];
   private saveScheduled = false;
   public readonly playlists: PlaylistManager;
+
+  // New property to track if we've initiated a scan this session
+  private hasScannedDurations = false;
 
   private debouncedSave = debounce(() => {
     this.saveToSettings();
@@ -59,11 +63,26 @@ export class LibraryManager {
       url,
       name: itemName,
       tags: [],
+      group: 'music',
       duration: 0,
       favorite: false,
       addedAt: now,
       updatedAt: now
     };
+
+    // Asynchronously extract duration
+    const audio = new Audio(url);
+    audio.addEventListener('loadedmetadata', () => {
+      if (audio.duration && isFinite(audio.duration)) {
+        item.duration = Math.round(audio.duration);
+        this.scheduleSave();
+        Logger.info(`Updated duration for ${item.name}: ${item.duration}s`);
+      }
+    });
+    // Handle error to avoid hanging if file is invalid/unreachable (though we don't block return)
+    audio.addEventListener('error', (e) => {
+      Logger.warn(`Failed to extract duration for ${item.name}:`, e);
+    });
 
     this.items.set(item.id, item);
     this.scheduleSave();
@@ -191,10 +210,86 @@ export class LibraryManager {
   }
 
   /**
-   * Get favorite items
+   * Get favorite items (sorted by favoritesOrder)
    */
   getFavorites(): LibraryItem[] {
     return this.getAllItems().filter(item => item.favorite);
+  }
+
+  /**
+   * Get ordered favorites list (tracks + playlists)
+   */
+  getOrderedFavorites(): Array<{ id: string, type: 'track' | 'playlist', addedAt: number }> {
+    // Clean up orphaned entries and ensure all favorites are in the order list
+    const validFavorites: Array<{ id: string, type: 'track' | 'playlist', addedAt: number }> = [];
+
+    // First, include items from the order list that still exist
+    for (const entry of this.favoritesOrder) {
+      if (entry.type === 'track') {
+        const item = this.items.get(entry.id);
+        if (item && item.favorite) {
+          validFavorites.push(entry);
+        }
+      } else {
+        const playlist = this.playlists.getPlaylist(entry.id);
+        if (playlist && playlist.favorite) {
+          validFavorites.push(entry);
+        }
+      }
+    }
+
+    // Add any favorites not in the order list (at the beginning = newest)
+    const inOrderSet = new Set(validFavorites.map(f => `${f.type}:${f.id}`));
+
+    // Tracks
+    for (const item of this.getAllItems()) {
+      if (item.favorite && !inOrderSet.has(`track:${item.id}`)) {
+        validFavorites.unshift({ id: item.id, type: 'track', addedAt: Date.now() });
+      }
+    }
+
+    // Playlists
+    for (const playlist of this.playlists.getFavoritePlaylists()) {
+      if (!inOrderSet.has(`playlist:${playlist.id}`)) {
+        validFavorites.unshift({ id: playlist.id, type: 'playlist', addedAt: Date.now() });
+      }
+    }
+
+    this.favoritesOrder = validFavorites;
+    return validFavorites;
+  }
+
+  /**
+   * Reorder favorites based on new order array
+   */
+  reorderFavorites(orderedItems: Array<{ id: string, type: 'track' | 'playlist' }>): void {
+    const now = Date.now();
+    this.favoritesOrder = orderedItems.map(item => ({
+      id: item.id,
+      type: item.type,
+      addedAt: this.favoritesOrder.find(f => f.id === item.id && f.type === item.type)?.addedAt ?? now
+    }));
+    this.scheduleSave();
+    Logger.info('Favorites reordered');
+  }
+
+  /**
+   * Add item to favorites order (at the beginning = newest)
+   */
+  addToFavoritesOrder(id: string, type: 'track' | 'playlist'): void {
+    // Remove if already exists
+    this.favoritesOrder = this.favoritesOrder.filter(f => !(f.id === id && f.type === type));
+    // Add at beginning (newest first)
+    this.favoritesOrder.unshift({ id, type, addedAt: Date.now() });
+    this.scheduleSave();
+  }
+
+  /**
+   * Remove item from favorites order
+   */
+  removeFromFavoritesOrder(id: string, type: 'track' | 'playlist'): void {
+    this.favoritesOrder = this.favoritesOrder.filter(f => !(f.id === id && f.type === type));
+    this.scheduleSave();
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -334,9 +429,70 @@ export class LibraryManager {
 
     item.favorite = !item.favorite;
     item.updatedAt = Date.now();
+
+    // Update favorites order
+    if (item.favorite) {
+      this.addToFavoritesOrder(itemId, 'track');
+    } else {
+      this.removeFromFavoritesOrder(itemId, 'track');
+    }
+
     this.scheduleSave();
 
     return item.favorite;
+  }
+
+
+  /**
+   * Scan library for items with missing duration (0) and try to extract it.
+   * Run this once per session or on demand.
+   */
+  public async scanMissingDurations(): Promise<void> {
+    if (this.hasScannedDurations) return;
+    this.hasScannedDurations = true;
+
+    const missing = Array.from(this.items.values()).filter(i => !i.duration || i.duration === 0);
+    if (missing.length === 0) return;
+
+    Logger.info(`Scanning ${missing.length} items for missing duration...`);
+    let updatedCount = 0;
+
+    // Process in batches to avoid network spam
+    const batchSize = 5;
+    for (let i = 0; i < missing.length; i += batchSize) {
+      const batch = missing.slice(i, i + batchSize);
+      await Promise.all(batch.map(item => new Promise<void>((resolve) => {
+        const audio = new Audio(item.url);
+
+        const cleanup = () => {
+          audio.onloadedmetadata = null;
+          audio.onerror = null;
+          resolve();
+        };
+
+        audio.onloadedmetadata = () => {
+          if (audio.duration && isFinite(audio.duration)) {
+            item.duration = Math.round(audio.duration);
+            updatedCount++;
+            // Don't save immediately for each item, batch it
+          }
+          cleanup();
+        };
+
+        audio.onerror = () => {
+          // Logger.warn(`Failed to extract duration for ${item.name} during scan`); // Optional: don't spam logs
+          cleanup();
+        };
+
+        // Timeout to prevent hanging
+        setTimeout(cleanup, 5000);
+      })));
+    }
+
+    if (updatedCount > 0) {
+      Logger.info(`Updated duration for ${updatedCount} items.`);
+      this.scheduleSave();
+    }
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -345,7 +501,7 @@ export class LibraryManager {
 
   private loadFromSettings(): void {
     try {
-      const saved = game.settings.get(MODULE_ID, 'libraryState') as string;
+      const saved = (game.settings as any)?.get(MODULE_ID, 'libraryState') as string;
       if (!saved) {
         Logger.info('No saved library state, starting fresh');
         return;
@@ -371,6 +527,9 @@ export class LibraryManager {
       // Load playlists
       this.playlists.load(state.playlists || {});
 
+      // Load favorites order
+      this.favoritesOrder = (state as any).favoritesOrder || [];
+
       Logger.info(`Library loaded: ${this.items.size} items, ${this.playlists.getAllPlaylists().length} playlists, ${this.customTags.size} custom tags`);
     } catch (error) {
       Logger.error('Failed to load library state:', error);
@@ -383,11 +542,12 @@ export class LibraryManager {
         items: Object.fromEntries(this.items),
         playlists: this.playlists.export(),
         customTags: Array.from(this.customTags),
+        favoritesOrder: this.favoritesOrder,
         version: LIBRARY_VERSION,
         lastModified: Date.now()
-      };
+      } as any;
 
-      game.settings.set(MODULE_ID, 'libraryState', JSON.stringify(state));
+      (game.settings as any)?.set(MODULE_ID, 'libraryState', JSON.stringify(state));
       this.saveScheduled = false;
 
       Logger.debug(`Library saved: ${this.items.size} items, ${this.playlists.getAllPlaylists().length} playlists`);

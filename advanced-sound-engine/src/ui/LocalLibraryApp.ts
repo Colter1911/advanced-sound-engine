@@ -47,10 +47,12 @@ interface LibraryItemViewData {
   name: string;
   url: string;
   duration: string;
+  durationFormatted: string;
   durationSeconds: number;
   tags: string[];
   favorite: boolean;
   group: string;
+  inQueue: boolean;
 }
 
 interface PlaylistViewData {
@@ -67,6 +69,8 @@ interface FavoriteViewData {
   id: string;
   name: string;
   type: 'track' | 'playlist';
+  group?: string; // music/ambience/sfx for tracks
+  inQueue?: boolean;
 }
 
 export class LocalLibraryApp extends Application {
@@ -120,6 +124,14 @@ export class LocalLibraryApp extends Application {
     const allTags = this.library.getAllTags();
     const stats = this.library.getStats();
 
+    // Trigger background scan for missing durations (run once per session)
+    this.library.scanMissingDurations().then(() => {
+      // If items were updated, we might want to re-render, but usually scheduleSave will trigger an event? 
+      // For now, we rely on the next interaction or auto-refresh if we implement signals.
+      // Or we can force a render if updates happened. 
+      // But scanMissingDurations is async and we don't await it here to avoid blocking UI.
+    });
+
     // Apply filters
     items = this.applyFilters(items);
 
@@ -127,20 +139,37 @@ export class LocalLibraryApp extends Application {
     items = this.applySorting(items);
 
     // Build favorites list (tracks + playlists)
-    const favoriteItems = this.library.getFavorites();
-    const favoritePlaylists = this.library.playlists.getFavoritePlaylists();
-    const favorites: FavoriteViewData[] = [
-      ...favoriteItems.map(item => ({
-        id: item.id,
-        name: item.name,
-        type: 'track' as const
-      })),
-      ...favoritePlaylists.map(playlist => ({
-        id: playlist.id,
-        name: playlist.name,
-        type: 'playlist' as const
-      }))
-    ];
+    // Use the ordered list from LibraryManager
+    const orderedFavorites = this.library.getOrderedFavorites();
+
+    const favorites: FavoriteViewData[] = orderedFavorites.map((entry): FavoriteViewData | null => {
+      const inQueue = entry.type === 'track'
+        ? (window.ASE?.queue?.hasItem(entry.id) ?? false)
+        : (window.ASE?.queue?.getItems().some(q => q.playlistId === entry.id) ?? false);
+
+      if (entry.type === 'track') {
+        const item = this.library.getItem(entry.id);
+        if (!item) return null; // Should be handled by getOrderedFavorites cleanup
+
+        return {
+          id: item.id,
+          name: item.name,
+          type: 'track' as const,
+          group: this.inferGroupFromTags(item.tags),
+          inQueue
+        };
+      } else {
+        const playlist = this.library.playlists.getPlaylist(entry.id);
+        if (!playlist) return null;
+
+        return {
+          id: playlist.id,
+          name: playlist.name,
+          type: 'playlist' as const,
+          inQueue
+        };
+      }
+    }).filter((f): f is FavoriteViewData => f !== null);
 
     // Build tags list with selection state, ensuring selected and recent tags are visible
     const tagSet = new Set(allTags);
@@ -214,15 +243,20 @@ export class LocalLibraryApp extends Application {
   }
 
   private getItemViewData(item: LibraryItem): LibraryItemViewData {
+    const inQueue = window.ASE?.queue?.hasItem(item.id) ?? false;
+    const durationFormatted = formatTime(item.duration);
+
     return {
       id: item.id,
       name: item.name,
       url: item.url,
-      duration: formatTime(item.duration),
+      duration: durationFormatted,
+      durationFormatted,
       durationSeconds: item.duration,
       tags: item.tags,
       favorite: item.favorite,
-      group: this.inferGroupFromTags(item.tags)
+      group: item.group || 'music',
+      inQueue
     };
   }
 
@@ -252,16 +286,14 @@ export class LocalLibraryApp extends Application {
     }
 
     // Channel filter (OR logic: Show item if its group is in selectedChannels)
+    // If no channels selected, show all items (default behavior)
     if (this.filterState.selectedChannels.size > 0) {
       filtered = filtered.filter(item => {
-        const group = this.inferGroupFromTags(item.tags) as TrackGroup;
+        const group = (item.group || 'music') as TrackGroup;
         return this.filterState.selectedChannels.has(group);
       });
-    } else {
-      // If no channels selected, strictly show nothing? Or all? 
-      // Usually if checkboxes, unchecked means don't show.
-      filtered = [];
     }
+    // If no channels selected, show all items (don't filter)
 
     // Playlist filter
     if (this.filterState.selectedPlaylistId) {
@@ -272,10 +304,11 @@ export class LocalLibraryApp extends Application {
       }
     }
 
-    // Tags filter (OR logic - show items with ANY of the selected tags)
+    // Tags filter (AND logic - show items that have ALL selected tags)
     if (this.filterState.selectedTags.size > 0) {
+      const selectedTagsArray = Array.from(this.filterState.selectedTags);
       filtered = filtered.filter(item =>
-        item.tags.some(tag => this.filterState.selectedTags.has(tag))
+        selectedTagsArray.every(tag => item.tags.includes(tag))
       );
     }
 
@@ -320,7 +353,7 @@ export class LocalLibraryApp extends Application {
     html.find('.ase-search-input').on('input', this.onSearchInput.bind(this));
     html.find('.ase-search-clear').on('click', this.onClearSearch.bind(this));
     html.find('[data-action="filter-channel"]').on('click', this._onFilterChannel.bind(this));
-    html.find('[data-action="change-sort"]').on('change', this.onChangeSort.bind(this));
+    html.find('[data-action="sort-change"]').on('change', this.onChangeSort.bind(this));
     html.find('[data-action="clear-filters"]').on('click', this.onClearFilters.bind(this));
 
     // Tag actions
@@ -339,6 +372,18 @@ export class LocalLibraryApp extends Application {
     // In-track tag management
     html.find('[data-action="add-tag-to-track"]').on('click', this.onAddTagToTrack.bind(this));
 
+    // Channel dropdown
+    html.find('[data-action="channel-dropdown"]').on('click', this.onChannelDropdown.bind(this));
+
+    // Delete track
+    html.find('[data-action="delete-track"]').on('click', this.onDeleteTrack.bind(this));
+
+    // Track context menu (right-click)
+    html.find('.ase-track-player-item').on('contextmenu', this.onTrackContext.bind(this));
+
+    // Tag context menu on track (right-click on tag)
+    html.find('.ase-track-tags .ase-tag').on('contextmenu', this.onTrackTagContext.bind(this));
+
     // Playlist actions
     html.find('[data-action="select-playlist"]').on('click', this.onSelectPlaylist.bind(this));
     html.find('[data-action="create-playlist"]').on('click', this.onCreatePlaylist.bind(this));
@@ -349,12 +394,13 @@ export class LocalLibraryApp extends Application {
 
     // Favorite actions
     html.find('[data-action="remove-from-favorites"]').on('click', this.onRemoveFromFavorites.bind(this));
+    html.find('[data-action="toggle-favorite-queue"]').on('click', this.onToggleFavoriteQueue.bind(this));
 
     // Drag and drop
     this.setupDragAndDrop(html);
 
-    // Custom Context Menu (Manual implementation to avoid clipping)
-    html.find('.ase-tag').on('contextmenu', this.onTagContext.bind(this));
+    // Custom Context Menu for GLOBAL tags only (in top panel)
+    html.find('.ase-tags-inline .ase-tag').on('contextmenu', this.onTagContext.bind(this));
 
     Logger.debug('LocalLibraryApp listeners activated');
   }
@@ -436,27 +482,6 @@ export class LocalLibraryApp extends Application {
     } catch (error) {
       Logger.error('Failed to toggle playlist favorite:', error);
       ui.notifications?.error('Failed to update favorite status');
-    }
-  }
-
-  private async onRemoveFromFavorites(event: JQuery.ClickEvent): Promise<void> {
-    event.preventDefault();
-    event.stopPropagation();
-
-    const favoriteId = $(event.currentTarget).closest('[data-favorite-id]').data('favorite-id') as string;
-    const favoriteType = $(event.currentTarget).closest('[data-favorite-type]').data('favorite-type') as string;
-
-    try {
-      if (favoriteType === 'track') {
-        this.library.toggleFavorite(favoriteId);
-      } else if (favoriteType === 'playlist') {
-        this.library.playlists.togglePlaylistFavorite(favoriteId);
-      }
-      this.render();
-      ui.notifications?.info('Removed from favorites');
-    } catch (error) {
-      Logger.error('Failed to remove from favorites:', error);
-      ui.notifications?.error('Failed to remove from favorites');
     }
   }
 
@@ -777,15 +802,22 @@ export class LocalLibraryApp extends Application {
       return;
     }
 
-    // Add to queue
-    window.ASE.queue.addItem(itemId, {
-      group: 'music', // Default, could be inferred from item metadata
-      volume: 1,
-      loop: false
-    });
+    // Toggle: if already in queue, remove; otherwise add
+    if (window.ASE.queue.hasItem(itemId)) {
+      window.ASE.queue.removeByLibraryItemId(itemId);
+      Logger.debug('Removed from queue:', itemId);
+      ui.notifications?.info(`"${item.name}" removed from queue`);
+    } else {
+      window.ASE.queue.addItem(itemId, {
+        group: item.group || 'music',
+        volume: 1,
+        loop: false
+      });
+      Logger.debug('Added to queue:', itemId);
+      ui.notifications?.info(`"${item.name}" added to queue`);
+    }
 
-    Logger.debug('Added to queue:', itemId);
-    ui.notifications?.info(`"${item.name}" added to queue`);
+    this.render();
   }
 
   private async onAddTagToTrack(event: JQuery.ClickEvent): Promise<void> {
@@ -794,9 +826,8 @@ export class LocalLibraryApp extends Application {
     const itemId = $(event.currentTarget).data('item-id') as string;
     Logger.debug('Add tag to track:', itemId);
 
-    // Open dialog to select or create tags for this track
-    // Implementation placeholder
-    ui.notifications?.info('Tag selection dialog coming soon');
+    // Open tag editor dialog
+    this.showTagEditor(itemId);
   }
 
   private async onAddToPlaylist(event: JQuery.ClickEvent): Promise<void> {
@@ -849,6 +880,391 @@ export class LocalLibraryApp extends Application {
       clientY: event.clientY
     });
     trackElement[0]?.dispatchEvent(contextMenuEvent);
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // Favorites Event Handlers
+  // ─────────────────────────────────────────────────────────────
+
+  private onRemoveFromFavorites(event: JQuery.ClickEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const favoriteId = String($(event.currentTarget).data('favorite-id'));
+    const favoriteType = String($(event.currentTarget).data('favorite-type'));
+
+    Logger.debug('Remove from favorites:', favoriteId, favoriteType);
+
+    if (favoriteType === 'playlist') {
+      const playlist = this.library.playlists.getPlaylist(favoriteId);
+      if (playlist) {
+        this.library.playlists.updatePlaylist(favoriteId, { favorite: false });
+        ui.notifications?.info(`Removed "${playlist.name}" from favorites`);
+      }
+    } else {
+      const item = this.library.getItem(favoriteId);
+      if (item) {
+        this.library.toggleFavorite(favoriteId);
+        ui.notifications?.info(`Removed "${item.name}" from favorites`);
+      }
+    }
+
+    this.render();
+  }
+
+  private onToggleFavoriteQueue(event: JQuery.ClickEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const favoriteId = String($(event.currentTarget).data('favorite-id'));
+    const favoriteType = String($(event.currentTarget).data('favorite-type'));
+
+    if (!window.ASE?.queue) {
+      Logger.warn('Queue manager not available');
+      return;
+    }
+
+    if (favoriteType === 'playlist') {
+      // Delegate to playlist queue handler
+      const playlist = this.library.playlists.getPlaylist(favoriteId);
+      if (!playlist) return;
+
+      const inQueue = window.ASE.queue.getItems().some(item => item.playlistId === favoriteId);
+
+      if (inQueue) {
+        const itemsToRemove = window.ASE.queue.getItems().filter(item => item.playlistId === favoriteId);
+        itemsToRemove.forEach(item => window.ASE!.queue!.removeItem(item.id));
+        ui.notifications?.info(`Removed "${playlist.name}" from queue`);
+      } else {
+        const playlistItems = playlist.items.map(pItem => ({
+          libraryItemId: pItem.libraryItemId,
+          group: pItem.group || 'music' as const,
+          volume: pItem.volume,
+          loop: pItem.loop
+        }));
+        window.ASE.queue.addPlaylist(favoriteId, playlistItems);
+        ui.notifications?.info(`Added "${playlist.name}" to queue`);
+      }
+    } else {
+      // Track
+      const item = this.library.getItem(favoriteId);
+      if (!item) return;
+
+      const inQueue = window.ASE.queue.hasItem(favoriteId);
+
+      if (inQueue) {
+        const queueItems = window.ASE.queue.getItems().filter(q => q.libraryItemId === favoriteId);
+        queueItems.forEach(q => window.ASE!.queue!.removeItem(q.id));
+        ui.notifications?.info(`Removed "${item.name}" from queue`);
+      } else {
+        window.ASE.queue.addItem(favoriteId, {
+          group: this.inferGroupFromTags(item.tags) as any,
+          volume: 1,
+          loop: false
+        });
+        ui.notifications?.info(`Added "${item.name}" to queue`);
+      }
+    }
+
+    this.render();
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // Track Control Handlers
+  // ─────────────────────────────────────────────────────────────
+
+  private onChannelDropdown(event: JQuery.ClickEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const itemId = String($(event.currentTarget).data('item-id'));
+    const item = this.library.getItem(itemId);
+    if (!item) return;
+
+    const currentGroup = item.group || 'music';
+    const channels = ['music', 'ambience', 'sfx'];
+
+    // Create dropdown menu
+    const menu = $(`
+      <div class="ase-dropdown-menu" style="position: fixed; z-index: 9999; background: #1e283d; border: 1px solid #334155; border-radius: 4px; min-width: 100px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+        ${channels.map(ch => `
+          <div class="ase-dropdown-item" data-channel="${ch}" style="padding: 8px 12px; cursor: pointer; color: ${ch === currentGroup ? 'var(--accent-cyan)' : '#94a3b8'}; font-size: 12px;">
+            ${ch.charAt(0).toUpperCase() + ch.slice(1)}
+          </div>
+        `).join('')}
+      </div>
+    `);
+
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    menu.css({ top: rect.bottom + 2, left: rect.left });
+
+    $('body').append(menu);
+
+    menu.find('.ase-dropdown-item').on('click', (e) => {
+      const newChannel = $(e.currentTarget).data('channel') as string;
+      this.updateTrackChannel(itemId, newChannel);
+      menu.remove();
+    });
+
+    // Close on outside click
+    setTimeout(() => {
+      $(document).one('click', () => menu.remove());
+    }, 10);
+  }
+
+  private updateTrackChannel(itemId: string, channel: string): void {
+    const item = this.library.getItem(itemId);
+    if (!item) return;
+
+    // Update group field directly (not as a tag)
+    this.library.updateItem(itemId, { group: channel as TrackGroup });
+    this.render();
+    ui.notifications?.info(`Channel set to ${channel}`);
+  }
+
+  private onDeleteTrack(event: JQuery.ClickEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const itemId = String($(event.currentTarget).data('item-id'));
+    const item = this.library.getItem(itemId);
+    if (!item) return;
+
+    new Dialog({
+      title: 'Delete Track',
+      content: `<p>Are you sure you want to delete "${item.name}"?</p>`,
+      buttons: {
+        delete: {
+          icon: '<i class="fas fa-trash"></i>',
+          label: 'Delete',
+          callback: () => {
+            this.library.removeItem(itemId);
+            this.render();
+            ui.notifications?.info(`Deleted "${item.name}"`);
+          }
+        },
+        cancel: {
+          icon: '<i class="fas fa-times"></i>',
+          label: 'Cancel'
+        }
+      },
+      default: 'cancel'
+    }).render(true);
+  }
+
+  private onTrackContext(event: JQuery.ContextMenuEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const itemId = String($(event.currentTarget).data('item-id'));
+    const item = this.library.getItem(itemId);
+    if (!item) return;
+
+    // Remove existing menus
+    $('.ase-context-menu').remove();
+
+    const menu = $(`
+      <div class="ase-context-menu" style="position: fixed; z-index: 9999; background: #1e283d; border: 1px solid #334155; border-radius: 4px; min-width: 150px; box-shadow: 0 4px 12px rgba(0,0,0,0.4);">
+        <div class="ase-menu-item" data-action="rename" style="padding: 8px 12px; cursor: pointer; color: #e5e5e5; font-size: 12px;">
+          <i class="fa-solid fa-pen" style="width: 16px;"></i> Rename
+        </div>
+        <div class="ase-menu-item" data-action="add-to-playlist" style="padding: 8px 12px; cursor: pointer; color: #e5e5e5; font-size: 12px;">
+          <i class="fa-solid fa-list" style="width: 16px;"></i> Add to Playlist
+        </div>
+        <div class="ase-menu-item" data-action="edit-tags" style="padding: 8px 12px; cursor: pointer; color: #e5e5e5; font-size: 12px;">
+          <i class="fa-solid fa-tags" style="width: 16px;"></i> Edit Tags
+        </div>
+        <div style="border-top: 1px solid #334155; margin: 4px 0;"></div>
+        <div class="ase-menu-item" data-action="delete" style="padding: 8px 12px; cursor: pointer; color: #f87171; font-size: 12px;">
+          <i class="fa-solid fa-trash" style="width: 16px;"></i> Delete
+        </div>
+      </div>
+    `);
+
+    menu.css({ top: event.clientY, left: event.clientX });
+    $('body').append(menu);
+
+    menu.find('.ase-menu-item').on('mouseenter', (e) => $(e.currentTarget).css('background', '#2d3a52'));
+    menu.find('.ase-menu-item').on('mouseleave', (e) => $(e.currentTarget).css('background', 'transparent'));
+
+    menu.find('[data-action="rename"]').on('click', async () => {
+      menu.remove();
+      await this.renameTrack(itemId);
+    });
+
+    menu.find('[data-action="add-to-playlist"]').on('click', async () => {
+      menu.remove();
+      await this.addTrackToPlaylistDialog(itemId);
+    });
+
+    menu.find('[data-action="edit-tags"]').on('click', () => {
+      menu.remove();
+      this.showTagEditor(itemId);
+    });
+
+    menu.find('[data-action="delete"]').on('click', () => {
+      menu.remove();
+      this.onDeleteTrack({ preventDefault: () => { }, stopPropagation: () => { }, currentTarget: $(`<div data-item-id="${itemId}">`)[0] } as any);
+    });
+
+    setTimeout(() => {
+      $(document).one('click', () => menu.remove());
+    }, 10);
+  }
+
+  private onTrackTagContext(event: JQuery.ContextMenuEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const tagName = String($(event.currentTarget).data('tag'));
+    const itemId = String($(event.currentTarget).data('item-id'));
+
+    $('.ase-context-menu').remove();
+
+    const menu = $(`
+      <div class="ase-context-menu" style="position: fixed; z-index: 9999; background: #1e283d; border: 1px solid #334155; border-radius: 4px; min-width: 120px; box-shadow: 0 4px 12px rgba(0,0,0,0.4);">
+        <div class="ase-menu-item" data-action="remove-tag" style="padding: 8px 12px; cursor: pointer; color: #f87171; font-size: 12px;">
+          <i class="fa-solid fa-times" style="width: 16px;"></i> Remove Tag
+        </div>
+      </div>
+    `);
+
+    menu.css({ top: event.clientY, left: event.clientX });
+    $('body').append(menu);
+
+    menu.find('.ase-menu-item').on('mouseenter', (e) => $(e.currentTarget).css('background', '#2d3a52'));
+    menu.find('.ase-menu-item').on('mouseleave', (e) => $(e.currentTarget).css('background', 'transparent'));
+
+    menu.find('[data-action="remove-tag"]').on('click', () => {
+      menu.remove();
+      this.library.removeTagFromItem(itemId, tagName);
+      this.render();
+      ui.notifications?.info(`Removed tag "${tagName}"`);
+    });
+
+    setTimeout(() => {
+      $(document).one('click', () => menu.remove());
+    }, 10);
+  }
+
+  private async renameTrack(itemId: string): Promise<void> {
+    const item = this.library.getItem(itemId);
+    if (!item) return;
+
+    const newName = await this.promptInput('Rename Track', 'Track Name:', item.name);
+    if (newName && newName !== item.name) {
+      this.library.updateItem(itemId, { name: newName });
+      this.render();
+      ui.notifications?.info(`Renamed to "${newName}"`);
+    }
+  }
+
+  private async addTrackToPlaylistDialog(itemId: string): Promise<void> {
+    const playlists = this.library.playlists.getAllPlaylists();
+    if (playlists.length === 0) {
+      ui.notifications?.warn('No playlists available. Create one first.');
+      return;
+    }
+
+    const selectedPlaylistId = await this.promptPlaylistSelection(playlists);
+    if (!selectedPlaylistId) return;
+
+    const item = this.library.getItem(itemId);
+    if (!item) return;
+
+    const group = this.inferGroupFromTags(item.tags) as TrackGroup;
+    this.library.playlists.addTrackToPlaylist(selectedPlaylistId, itemId, group);
+    this.render();
+    ui.notifications?.info(`Added "${item.name}" to playlist`);
+  }
+
+  private showTagEditor(itemId: string): void {
+    const item = this.library.getItem(itemId);
+    if (!item) return;
+
+    const allTags = this.library.getAllTags();
+    const currentTags = new Set(item.tags);
+
+    const content = `
+      <form>
+        <div style="max-height: 300px; overflow-y: auto;">
+          ${allTags.map(tag => `
+            <div class="form-group" style="margin: 5px 0;">
+              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input type="checkbox" name="tag" value="${tag}" ${currentTags.has(tag) ? 'checked' : ''}>
+                <span>#${tag}</span>
+              </label>
+            </div>
+          `).join('')}
+        </div>
+        <div class="form-group" style="margin-top: 10px;">
+          <input type="text" name="newTag" placeholder="Add new tag..." style="width: 100%;">
+        </div>
+      </form>
+    `;
+
+    new Dialog({
+      title: `Edit Tags: ${item.name}`,
+      content,
+      buttons: {
+        save: {
+          icon: '<i class="fas fa-save"></i>',
+          label: 'Save',
+          callback: (html: JQuery) => {
+            const selectedTags: string[] = [];
+            html.find('input[name="tag"]:checked').each((_, el) => {
+              selectedTags.push($(el).val() as string);
+            });
+
+            const newTag = (html.find('input[name="newTag"]').val() as string)?.trim();
+            if (newTag) {
+              selectedTags.push(newTag);
+              this.library.addCustomTag(newTag);
+            }
+
+            this.library.updateItem(itemId, { tags: selectedTags });
+            this.render();
+          }
+        },
+        cancel: {
+          icon: '<i class="fas fa-times"></i>',
+          label: 'Cancel'
+        }
+      },
+      default: 'save'
+    }).render(true);
+  }
+
+  private async promptInput(title: string, label: string, defaultValue: string = ''): Promise<string | null> {
+    return new Promise((resolve) => {
+      new Dialog({
+        title,
+        content: `
+          <form>
+            <div class="form-group">
+              <label>${label}</label>
+              <input type="text" name="input" value="${defaultValue}" autofocus style="width: 100%;">
+            </div>
+          </form>
+        `,
+        buttons: {
+          ok: {
+            icon: '<i class="fas fa-check"></i>',
+            label: 'OK',
+            callback: (html: JQuery) => {
+              const value = html.find('input[name="input"]').val() as string;
+              resolve(value?.trim() || null);
+            }
+          },
+          cancel: {
+            icon: '<i class="fas fa-times"></i>',
+            label: 'Cancel',
+            callback: () => resolve(null)
+          }
+        },
+        default: 'ok'
+      }).render(true);
+    });
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -1122,6 +1538,21 @@ export class LocalLibraryApp extends Application {
       html.find('.ase-list-item').removeClass('drag-over drag-above drag-below');
     });
 
+    // Favorites reordering - drag start
+    html.find('.ase-favorite-item[draggable="true"]').on('dragstart', (event: JQuery.DragStartEvent) => {
+      const favoriteId = String($(event.currentTarget).data('favorite-id'));
+      const favoriteType = String($(event.currentTarget).data('favorite-type'));
+      event.originalEvent!.dataTransfer!.effectAllowed = 'move';
+      event.originalEvent!.dataTransfer!.setData('application/x-favorite-id', favoriteId);
+      event.originalEvent!.dataTransfer!.setData('application/x-favorite-type', favoriteType);
+      $(event.currentTarget).addClass('dragging');
+    });
+
+    html.find('.ase-favorite-item[draggable="true"]').on('dragend', (event: JQuery.DragEndEvent) => {
+      $(event.currentTarget).removeClass('dragging');
+      html.find('.ase-favorite-item').removeClass('drag-over drag-above drag-below');
+    });
+
     // Visual feedback for playlist insertion position
     html.find('.ase-list-item[data-playlist-id]').on('dragover', (event: JQuery.DragOverEvent) => {
       const draggedPlaylistId = event.originalEvent!.dataTransfer!.types.includes('application/x-playlist-id');
@@ -1136,6 +1567,37 @@ export class LocalLibraryApp extends Application {
 
       $(event.currentTarget).removeClass('drag-above drag-below');
       $(event.currentTarget).addClass(isAbove ? 'drag-above' : 'drag-below');
+    });
+
+    // Visual feedback for favorites insertion position
+    html.find('.ase-favorite-item').on('dragover', (event: JQuery.DragOverEvent) => {
+      const hasFavoriteId = event.originalEvent!.dataTransfer!.types.includes('application/x-favorite-id');
+      if (!hasFavoriteId) return; // Not a favorite drag
+
+      event.preventDefault();
+      event.originalEvent!.dataTransfer!.dropEffect = 'move';
+
+      const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+      const midY = rect.top + rect.height / 2;
+      const isAbove = event.clientY! < midY;
+
+      $(event.currentTarget).removeClass('drag-above drag-below');
+      $(event.currentTarget).addClass(isAbove ? 'drag-above' : 'drag-below');
+    });
+
+    html.find('.ase-favorite-item').on('drop', async (event: JQuery.DropEvent) => {
+      event.preventDefault();
+      const favoriteId = String($(event.currentTarget).data('favorite-id'));
+      const favoriteType = String($(event.currentTarget).data('favorite-type'));
+
+      $(event.currentTarget).removeClass('drag-above drag-below dragging');
+
+      const draggedId = event.originalEvent!.dataTransfer!.getData('application/x-favorite-id');
+      const draggedType = event.originalEvent!.dataTransfer!.getData('application/x-favorite-type');
+
+      if (draggedId && draggedType && (draggedId !== favoriteId || draggedType !== favoriteType)) {
+        await this.handleFavoriteReorder(draggedId, draggedType as 'track' | 'playlist', favoriteId, favoriteType as 'track' | 'playlist');
+      }
     });
 
     // Drop zone from OS (Main Library Area)
@@ -1192,6 +1654,30 @@ export class LocalLibraryApp extends Application {
 
     this.render();
     Logger.debug(`Reordered playlist ${draggedId} to position ${targetIndex}`);
+  }
+
+  private async handleFavoriteReorder(
+    draggedId: string,
+    draggedType: 'track' | 'playlist',
+    targetId: string,
+    targetType: 'track' | 'playlist'
+  ): Promise<void> {
+    const favorites = this.library.getOrderedFavorites();
+    const draggedIndex = favorites.findIndex(f => f.id === draggedId && f.type === draggedType);
+    const targetIndex = favorites.findIndex(f => f.id === targetId && f.type === targetType); // Drop ON this item
+
+    if (draggedIndex === -1 || targetIndex === -1) return;
+
+    // Remove dragged item
+    const [draggedItem] = favorites.splice(draggedIndex, 1);
+
+    // Insert at target index (shift others down)
+    favorites.splice(targetIndex, 0, draggedItem);
+
+    // Update library
+    this.library.reorderFavorites(favorites);
+    this.render();
+    Logger.debug(`Reordered favorite ${draggedId} to position ${targetIndex}`);
   }
 
   private async handleFileUpload(files: FileList): Promise<void> {
