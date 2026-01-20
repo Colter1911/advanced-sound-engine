@@ -119,7 +119,15 @@
       <div class="ase-track-player-item" draggable="true" data-item-id="{{this.id}}">
         <!-- Cover Art (Placeholder for now) -->
         <div class="ase-track-image">
+          {{#if (eq this.group 'music')}}
           <i class="fa-solid fa-music"></i>
+          {{else if (eq this.group 'ambience')}}
+          <i class="fa-solid fa-cloud"></i>
+          {{else if (eq this.group 'sfx')}}
+          <i class="fa-solid fa-bolt"></i>
+          {{else}}
+          <i class="fa-solid fa-music"></i>
+          {{/if}}
         </div>
 
         <!-- Row 1: Title + Controls -->

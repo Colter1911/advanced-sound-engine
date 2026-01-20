@@ -151,6 +151,22 @@ window.ASE.queue  // PlaybackQueueManager instance
 ## Known Issues
 - All reported bugs from Jan 19/20 have been addressed. Ready for further testing in live environment.
 
+## Completed Work (Jan 21)
+1.  **Track Item Layout Refactor**:
+    *   **2-Row Layout**: Re-organized track item content into two rows.
+        *   Row 1: Title, Duration, Compact Controls.
+        *   Row 2: Tags and Channel Dropdown.
+    *   **Cover Art**: Added layout support (Left-aligned) for track cover art (placeholder currently active).
+    *   **Visuals**: Verified styles to ensure tags are clean (no borders) and layout is responsive.
+
+2.  **Channel Selection Logic**:
+    *   **Refactor**: Removed redundant hidden `select` element from the template which conflicted with the custom UI.
+    *   **Implementation**: Channel selection now relies exclusively on the custom JS-driven context menu implementation (`onChannelDropdown`), resolving the "double dropdown" bug.
+
+3.  **Functionality Fixes**:
+    *   **Tag Actions**: Corrected `data-action` attributes in template (`add-tag-item` → `add-tag-to-track`) to match TypeScript listeners.
+    *   **Context Menu**: Added missing `data-tag` attributes to tag spans, restoring the Right-Click context menu (Remove Tag) functionality.
+
 ## Next Session
 - Continue verifying UI interactions.
-- Proceed with remaining refactor tasks if any.
+- Proceed with detailed playback queue integration.
