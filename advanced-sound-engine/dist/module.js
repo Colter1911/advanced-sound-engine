@@ -1,5 +1,5 @@
-var z = Object.defineProperty;
-var j = (c, a, t) => a in c ? z(c, a, { enumerable: !0, configurable: !0, writable: !0, value: t }) : c[a] = t;
+var q = Object.defineProperty;
+var j = (c, a, t) => a in c ? q(c, a, { enumerable: !0, configurable: !0, writable: !0, value: t }) : c[a] = t;
 var u = (c, a, t) => j(c, typeof a != "symbol" ? a + "" : a, t);
 const x = "ASE", l = {
   info: (c, ...a) => {
@@ -122,7 +122,7 @@ class F {
     this.audio.pause(), this.audio.src = "", (a = this.sourceNode) == null || a.disconnect(), this.gainNode.disconnect(), this.outputNode.disconnect(), l.debug(`Track ${this.id} disposed`);
   }
 }
-function b() {
+function v() {
   return Date.now();
 }
 function P(c) {
@@ -136,7 +136,7 @@ function S() {
     return (c === "x" ? a : a & 3 | 8).toString(16);
   });
 }
-const O = [
+const R = [
   ".mp3",
   ".ogg",
   ".wav",
@@ -155,11 +155,11 @@ const O = [
   ".flac": "audio/flac",
   ".opus": "audio/opus"
 };
-function Q(c) {
-  const a = V(c);
-  return O.includes(a);
+function Y(c) {
+  const a = G(c);
+  return R.includes(a);
 }
-function V(c) {
+function G(c) {
   try {
     const e = decodeURIComponent(c).split("?")[0].split("#")[0].match(/\.([a-z0-9]+)$/i);
     return e ? `.${e[1].toLowerCase()}` : "";
@@ -167,40 +167,40 @@ function V(c) {
     return "";
   }
 }
-function Y(c) {
-  const a = V(c);
+function X(c) {
+  const a = G(c);
   return H[a] || null;
 }
-function M(c) {
+function L(c) {
   if (!c || typeof c != "string")
     return {
       valid: !1,
       error: "URL is required and must be a string"
     };
-  const a = V(c);
+  const a = G(c);
   if (!a)
     return {
       valid: !1,
       error: "Could not extract file extension from URL"
     };
-  if (!Q(c))
+  if (!Y(c))
     return {
       valid: !1,
-      error: `Unsupported audio format: ${a}. Supported formats: ${O.join(", ")}`,
+      error: `Unsupported audio format: ${a}. Supported formats: ${R.join(", ")}`,
       extension: a
     };
-  const t = Y(c);
+  const t = X(c);
   return {
     valid: !0,
     extension: a,
     mimeType: t || void 0
   };
 }
-const L = "advanced-sound-engine";
-function q() {
-  return game.settings.get(L, "maxSimultaneousTracks") || 8;
+const V = "advanced-sound-engine";
+function J() {
+  return game.settings.get(V, "maxSimultaneousTracks") || 8;
 }
-class X {
+class K {
   constructor() {
     u(this, "ctx");
     u(this, "masterGain");
@@ -233,7 +233,7 @@ class X {
     if (!game.ready || !((t = game.user) != null && t.isGM)) return;
     const a = this.getState();
     try {
-      await game.settings.set(L, "mixerState", JSON.stringify(a)), l.debug("Mixer state saved");
+      await game.settings.set(V, "mixerState", JSON.stringify(a)), l.debug("Mixer state saved");
     } catch (e) {
       l.error("Failed to save mixer state:", e);
     }
@@ -241,7 +241,7 @@ class X {
   async loadSavedState() {
     if (game.ready)
       try {
-        const a = game.settings.get(L, "mixerState");
+        const a = game.settings.get(V, "mixerState");
         if (!a) return;
         const t = JSON.parse(a);
         await this.restoreState(t), l.info("Mixer state restored");
@@ -256,7 +256,7 @@ class X {
     const t = a.id || S();
     if (this.players.has(t))
       return this.players.get(t);
-    const e = M(a.url);
+    const e = L(a.url);
     if (!e.valid) {
       const r = new Error(e.error || "Invalid audio file");
       throw l.error(`Track validation failed: ${e.error}`), r;
@@ -296,7 +296,7 @@ class X {
       l.warn(`Track not found: ${a}`);
       return;
     }
-    const i = q(), s = this.getAllTracks().filter((o) => o.state === "playing").length;
+    const i = J(), s = this.getAllTracks().filter((o) => o.state === "playing").length;
     if (!(e.state === "playing") && s >= i) {
       l.warn(`Maximum simultaneous tracks (${i}) reached`), (n = ui.notifications) == null || n.warn(`Cannot play more than ${i} tracks simultaneously`);
       return;
@@ -359,7 +359,7 @@ class X {
       masterVolume: this._volumes.master,
       channelVolumes: { ...this._volumes },
       tracks: a,
-      timestamp: b(),
+      timestamp: v(),
       syncEnabled: !1
     };
   }
@@ -403,7 +403,7 @@ class X {
     this.players.clear(), this.ctx.close(), l.info("AudioEngine disposed");
   }
 }
-class J {
+class W {
   constructor() {
     u(this, "ctx");
     u(this, "masterGain");
@@ -473,7 +473,7 @@ class J {
       this.channelGains[a.group],
       a.group
     ), await t.load(a.url), this.players.set(a.trackId, t)), t.setVolume(a.volume), t.setLoop(a.loop);
-    const e = (b() - a.startTimestamp) / 1e3, i = Math.max(0, a.offset + e);
+    const e = (v() - a.startTimestamp) / 1e3, i = Math.max(0, a.offset + e);
     await t.play(i), l.debug(`Player: track ${a.trackId} playing at ${i.toFixed(2)}s`);
   }
   handlePause(a) {
@@ -488,7 +488,7 @@ class J {
     const s = this.players.get(a);
     if (s)
       if (e) {
-        const r = (b() - i) / 1e3;
+        const r = (v() - i) / 1e3;
         s.seek(t + r);
       } else
         s.seek(t);
@@ -517,7 +517,7 @@ class J {
         this.channelGains[i.group],
         i.group
       ), await s.load(i.url), this.players.set(i.id, s)), s.setVolume(i.volume), s.setLoop(i.loop), i.isPlaying) {
-        const r = (b() - i.startTimestamp) / 1e3, n = i.currentTime + r;
+        const r = (v() - i.startTimestamp) / 1e3, n = i.currentTime + r;
         await s.play(n);
       } else
         s.stop();
@@ -546,8 +546,8 @@ class J {
     this.clearAll(), this.ctx.close(), l.info("PlayerAudioEngine disposed");
   }
 }
-const K = "advanced-sound-engine", w = `module.${K}`;
-class W {
+const Z = "advanced-sound-engine", w = `module.${Z}`;
+class tt {
   constructor() {
     u(this, "gmEngine", null);
     u(this, "playerEngine", null);
@@ -651,14 +651,14 @@ class W {
       type: a,
       payload: t,
       senderId: ((s = game.user) == null ? void 0 : s.id) ?? "",
-      timestamp: b()
+      timestamp: v()
     };
     e ? this.socket.emit(w, i, { recipients: [e] }) : this.socket.emit(w, i), l.debug(`Sent: ${a}`, t);
   }
   getCurrentSyncState() {
     if (!this.gmEngine)
       return { tracks: [], channelVolumes: { master: 1, music: 1, ambience: 1, sfx: 1 } };
-    const a = b(), t = [];
+    const a = v(), t = [];
     for (const e of this.gmEngine.getAllTracks()) {
       const i = e.getState();
       t.push({
@@ -702,7 +702,7 @@ class W {
       volume: e.volume,
       loop: e.loop,
       offset: t,
-      startTimestamp: b()
+      startTimestamp: v()
     };
     this.send("track-play", i);
   }
@@ -722,7 +722,7 @@ class W {
       trackId: a,
       time: t,
       isPlaying: e,
-      seekTimestamp: b()
+      seekTimestamp: v()
     };
     this.send("track-seek", i);
   }
@@ -749,7 +749,7 @@ class W {
     (a = this.socket) == null || a.off(w);
   }
 }
-const E = "advanced-sound-engine";
+const I = "advanced-sound-engine";
 class U extends Application {
   constructor(t, e) {
     super(e);
@@ -760,7 +760,7 @@ class U extends Application {
     return foundry.utils.mergeObject(super.defaultOptions, {
       id: "ase-player-volume",
       title: "Sound Volume",
-      template: `modules/${E}/templates/player-volume.hbs`,
+      template: `modules/${I}/templates/player-volume.hbs`,
       classes: ["ase-player-panel"],
       width: 200,
       height: "auto",
@@ -781,14 +781,14 @@ class U extends Application {
     });
   }
   saveVolume(t) {
-    localStorage.setItem(`${E}-player-volume`, String(t));
+    localStorage.setItem(`${I}-player-volume`, String(t));
   }
   static loadSavedVolume() {
-    const t = localStorage.getItem(`${E}-player-volume`);
+    const t = localStorage.getItem(`${I}-player-volume`);
     return t ? parseFloat(t) : 1;
   }
 }
-class Z extends Application {
+class et extends Application {
   constructor(t, e = {}) {
     super(e);
     u(this, "library");
@@ -829,30 +829,33 @@ class Z extends Application {
     const e = this.library.playlists.getAllPlaylists(), i = this.library.getAllTags(), s = this.library.getStats();
     t = this.applyFilters(t), t = this.applySorting(t);
     const r = this.library.getFavorites(), n = this.library.playlists.getFavoritePlaylists(), o = [
-      ...r.map((f) => ({
-        id: f.id,
-        name: f.name,
+      ...r.map((g) => ({
+        id: g.id,
+        name: g.name,
         type: "track"
       })),
-      ...n.map((f) => ({
-        id: f.id,
-        name: f.name,
+      ...n.map((g) => ({
+        id: g.id,
+        name: g.name,
         type: "playlist"
       }))
     ], d = new Set(i);
-    this.filterState.selectedTags.forEach((f) => d.add(f));
-    const h = Array.from(d).sort().map((f) => ({
-      name: f.startsWith("#") ? f.substring(1) : f,
-      // This is what is shown after the # in template
-      value: f,
-      // This is the actual data value
-      selected: this.filterState.selectedTags.has(f)
-    })), m = e.map((f) => ({
-      ...this.getPlaylistViewData(f),
-      selected: f.id === this.filterState.selectedPlaylistId
+    this.filterState.selectedTags.forEach((g) => d.add(g));
+    const h = Array.from(d).sort().map((g) => {
+      const E = g.startsWith("#") ? g.substring(1) : g, Q = this.filterState.selectedTags.has(g) || this.filterState.selectedTags.has(E);
+      return {
+        name: E,
+        // Display name (without #)
+        value: E,
+        // Data value (also normalized for consistency)
+        selected: Q
+      };
+    }), m = e.map((g) => ({
+      ...this.getPlaylistViewData(g),
+      selected: g.id === this.filterState.selectedPlaylistId
     })), A = this.filterState.selectedChannels.size === 3, B = !!(this.filterState.searchQuery || !A || this.filterState.selectedPlaylistId || this.filterState.selectedTags.size > 0);
     return {
-      items: t.map((f) => this.getItemViewData(f)),
+      items: t.map((g) => this.getItemViewData(g)),
       playlists: m,
       favorites: o,
       tags: h,
@@ -875,11 +878,18 @@ class Z extends Application {
     };
   }
   getPlaylistViewData(t) {
+    var i, s;
+    const e = ((s = (i = window.ASE) == null ? void 0 : i.queue) == null ? void 0 : s.getItems().some(
+      (r) => r.playlistId === t.id
+    )) ?? !1;
     return {
       id: t.id,
       name: t.name,
       itemCount: t.items.length,
+      trackCount: t.items.length,
+      // Alias for template
       favorite: t.favorite,
+      inQueue: e,
       selected: !1
     };
   }
@@ -949,7 +959,7 @@ class Z extends Application {
     return e;
   }
   activateListeners(t) {
-    super.activateListeners(t), t.find('[data-action="add-track"]').on("click", this.onAddTrack.bind(this)), t.find(".ase-search-input").on("keydown", this.onSearchKeydown.bind(this)), t.find(".ase-search-clear").on("click", this.onClearSearch.bind(this)), t.find('[data-action="filter-channel"]').on("click", this._onFilterChannel.bind(this)), t.find('[data-action="change-sort"]').on("change", this.onChangeSort.bind(this)), t.find('[data-action="clear-filters"]').on("click", this.onClearFilters.bind(this)), t.find('[data-action="toggle-tag"]').on("click", this.onToggleTag.bind(this)), t.find('[data-action="add-tag"]').on("click", this.onAddTag.bind(this)), t.find('[data-action="play-track"]').on("click", this.onPlayTrack.bind(this)), t.find('[data-action="pause-track"]').on("click", this.onPauseTrack.bind(this)), t.find('[data-action="stop-track"]').on("click", this.onStopTrack.bind(this)), t.find('[data-action="add-to-queue"]').on("click", this.onAddToQueue.bind(this)), t.find('[data-action="toggle-favorite"]').on("click", this.onToggleFavorite.bind(this)), t.find('[data-action="add-to-playlist"]').on("click", this.onAddToPlaylist.bind(this)), t.find('[data-action="track-menu"]').on("click", this.onTrackMenu.bind(this)), t.find('[data-action="add-tag-to-track"]').on("click", this.onAddTagToTrack.bind(this)), t.find('[data-action="select-playlist"]').on("click", this.onSelectPlaylist.bind(this)), t.find('[data-action="create-playlist"]').on("click", this.onCreatePlaylist.bind(this)), t.find('[data-action="toggle-playlist-favorite"]').on("click", this.onTogglePlaylistFavorite.bind(this)), t.find('[data-action="playlist-menu"]').on("click", this.onPlaylistMenu.bind(this)), t.find('[data-action="remove-from-favorites"]').on("click", this.onRemoveFromFavorites.bind(this)), this.setupDragAndDrop(t), t.find(".ase-tag").on("contextmenu", this.onTagContext.bind(this)), l.debug("LocalLibraryApp listeners activated");
+    super.activateListeners(t), t.find('[data-action="add-track"]').on("click", this.onAddTrack.bind(this)), t.find(".ase-search-input").on("keydown", this.onSearchKeydown.bind(this)), t.find(".ase-search-input").on("input", this.onSearchInput.bind(this)), t.find(".ase-search-clear").on("click", this.onClearSearch.bind(this)), t.find('[data-action="filter-channel"]').on("click", this._onFilterChannel.bind(this)), t.find('[data-action="change-sort"]').on("change", this.onChangeSort.bind(this)), t.find('[data-action="clear-filters"]').on("click", this.onClearFilters.bind(this)), t.find('[data-action="toggle-tag"]').on("click", this.onToggleTag.bind(this)), t.find('[data-action="add-tag"]').on("click", this.onAddTag.bind(this)), t.find('[data-action="play-track"]').on("click", this.onPlayTrack.bind(this)), t.find('[data-action="pause-track"]').on("click", this.onPauseTrack.bind(this)), t.find('[data-action="stop-track"]').on("click", this.onStopTrack.bind(this)), t.find('[data-action="add-to-queue"]').on("click", this.onAddToQueue.bind(this)), t.find('[data-action="toggle-favorite"]').on("click", this.onToggleFavorite.bind(this)), t.find('[data-action="add-to-playlist"]').on("click", this.onAddToPlaylist.bind(this)), t.find('[data-action="track-menu"]').on("click", this.onTrackMenu.bind(this)), t.find('[data-action="add-tag-to-track"]').on("click", this.onAddTagToTrack.bind(this)), t.find('[data-action="select-playlist"]').on("click", this.onSelectPlaylist.bind(this)), t.find('[data-action="create-playlist"]').on("click", this.onCreatePlaylist.bind(this)), t.find('[data-action="toggle-playlist-favorite"]').on("click", this.onTogglePlaylistFavorite.bind(this)), t.find('[data-action="toggle-playlist-queue"]').on("click", this.onTogglePlaylistQueue.bind(this)), t.find('[data-action="playlist-menu"]').on("click", this.onPlaylistMenu.bind(this)), t.find(".ase-list-item[data-playlist-id]").on("contextmenu", this.onPlaylistContext.bind(this)), t.find('[data-action="remove-from-favorites"]').on("click", this.onRemoveFromFavorites.bind(this)), this.setupDragAndDrop(t), t.find(".ase-tag").on("contextmenu", this.onTagContext.bind(this)), l.debug("LocalLibraryApp listeners activated");
   }
   // ─────────────────────────────────────────────────────────────
   // Event Handlers
@@ -1026,20 +1036,8 @@ class Z extends Application {
   // Toolbar Event Handlers
   // ─────────────────────────────────────────────────────────────
   onSearchInput(t) {
-    if (t.type === "keydown" && t.key !== "Enter") return;
-    const e = ($(t.currentTarget).val() || "").trim().toLowerCase();
-    this.filterState.searchQuery !== e && (this.filterState.searchQuery = e, this.render());
+    !($(t.currentTarget).val() || "").trim() && this.filterState.searchQuery && (this.filterState.searchQuery = "", this.render());
   }
-  // Also catch 'input' just for specific UI toggles if needed, but here we do fully via render.
-  // Actually, let's decouple: 'input' event just shows/hides X button? 
-  // User wants "When pressing Enter". So 'input' should NOT filter.
-  // But we need to update the X button visibility? 
-  // Let's keep it simple: 'keydown' on Enter -> sets state -> render.
-  // On 'input', we just let the value sit in the box. 
-  // But wait, the X button logic was in onSearchInput. 
-  // Let's make a separate handler for visual updates if needed, OR just rely on render.
-  // Render will re-create the X button state based on `searchQuery`? No, templates don't always track input value unless we pass it.
-  // We passed `value="{{searchQuery}}"` in template.
   onSearchKeydown(t) {
     if (t.key === "Enter") {
       t.preventDefault();
@@ -1048,9 +1046,7 @@ class Z extends Application {
     }
   }
   onClearSearch(t) {
-    this.filterState.searchQuery = "";
-    const e = $(t.currentTarget).closest(".ase-search-input-wrapper");
-    e.find(".ase-search-input").val("").trigger("focus"), e.find(".ase-search-clear").hide(), this.element.find(".ase-track-player-item").show();
+    t.preventDefault(), this.filterState.searchQuery = "", $(t.currentTarget).closest(".ase-search-input-wrapper").find(".ase-search-input").val(""), this.render();
   }
   _onFilterChannel(t) {
     t.preventDefault();
@@ -1070,12 +1066,12 @@ class Z extends Application {
   // ─────────────────────────────────────────────────────────────
   onToggleTag(t) {
     t.preventDefault();
-    const e = $(t.currentTarget).data("tag");
-    this.filterState.selectedTags.has(e) ? this.filterState.selectedTags.delete(e) : this.filterState.selectedTags.add(e), this.render();
+    const e = String($(t.currentTarget).data("tag"));
+    console.log("[ASE] onToggleTag called with tag:", e), console.log("[ASE] Current selectedTags:", Array.from(this.filterState.selectedTags)), this.filterState.selectedTags.has(e) ? (this.filterState.selectedTags.delete(e), console.log("[ASE] Tag deselected")) : (this.filterState.selectedTags.add(e), console.log("[ASE] Tag selected")), this.render();
   }
   onTagContext(t) {
     t.preventDefault(), t.stopPropagation();
-    const e = $(t.currentTarget).data("tag"), i = `
+    const e = String($(t.currentTarget).data("tag")), i = `
       <div id="ase-custom-context-menu" style="position: fixed; z-index: 10000; background: #222; border: 1px solid #444; border-radius: 4px; padding: 5px 0;">
         <div class="ase-ctx-item" data-action="edit" style="padding: 5px 15px; cursor: pointer; color: white;">
             <i class="fas fa-edit" style="margin-right: 5px;"></i> Edit
@@ -1106,10 +1102,12 @@ class Z extends Application {
     }), console.log("Opened context menu for tag:", e);
   }
   async onAddTag(t) {
-    var i;
+    var s;
     t.preventDefault();
     const e = await this.promptTagName();
-    e && (this.filterState.selectedTags.add(e), this.library.addCustomTag(e), this.render(), (i = ui.notifications) == null || i.info(`Tag "${e}" added to filter list. Assign it to a track to save it permanently.`));
+    if (!e) return;
+    const i = e.trim().replace(/^#/, "");
+    i && (console.log("[ASE] onAddTag: normalized tagName =", i), this.filterState.selectedTags.add(i), this.library.addCustomTag(i), console.log("[ASE] onAddTag: selectedTags now =", Array.from(this.filterState.selectedTags)), console.log("[ASE] onAddTag: allTags from library =", this.library.getAllTags()), this.render(), (s = ui.notifications) == null || s.info(`Tag "${i}" added.`));
   }
   // Helper for Context Menu Callbacks to ensure `this` binding and argument passing
   _onRenameTag(t) {
@@ -1138,13 +1136,14 @@ class Z extends Application {
     this.filterState.selectedTags.has(t) && (this.filterState.selectedTags.delete(t), this.filterState.selectedTags.add(e)), i > 0 && (this.render(), (s = ui.notifications) == null || s.info(`Renamed tag "${t}" to "${e}" on ${i} tracks.`));
   }
   async deleteTag(t) {
-    var s;
-    if (!await Dialog.confirm({
+    var r;
+    const e = String(t);
+    if (console.log("[ASE] deleteTag called for:", e), !await Dialog.confirm({
       title: "Delete Tag",
-      content: `Are you sure you want to delete tag "${t}" from all tracks?`
+      content: `Are you sure you want to delete tag "${e}" from all tracks?`
     })) return;
-    const i = this.library.deleteTag(t);
-    this.filterState.selectedTags.has(t) && this.filterState.selectedTags.delete(t), i > 0 && (this.render(), (s = ui.notifications) == null || s.info(`Deleted tag "${t}" from ${i} tracks.`));
+    const s = this.library.deleteTag(e);
+    this.filterState.selectedTags.delete(e), this.render(), (r = ui.notifications) == null || r.info(s > 0 ? `Deleted tag "${e}" from ${s} tracks.` : `Deleted custom tag "${e}".`);
   }
   async promptTagName(t = "") {
     return new Promise((e) => {
@@ -1184,10 +1183,24 @@ class Z extends Application {
     l.debug("Pause track:", e), (i = window.ASE.engine) == null || i.pauseTrack(e);
   }
   onAddToQueue(t) {
-    var i;
+    var s, r;
     t.preventDefault(), t.stopPropagation();
-    const e = $(t.currentTarget).data("item-id");
-    l.debug("Add to queue:", e), (i = ui.notifications) == null || i.info("Added to queue (Simulated)");
+    const e = String($(t.currentTarget).data("item-id"));
+    if (!((s = window.ASE) != null && s.queue)) {
+      l.warn("Queue manager not available");
+      return;
+    }
+    const i = this.library.getItem(e);
+    if (!i) {
+      l.warn("Item not found:", e);
+      return;
+    }
+    window.ASE.queue.addItem(e, {
+      group: "music",
+      // Default, could be inferred from item metadata
+      volume: 1,
+      loop: !1
+    }), l.debug("Added to queue:", e), (r = ui.notifications) == null || r.info(`"${i.name}" added to queue`);
   }
   async onAddTagToTrack(t) {
     var i;
@@ -1251,6 +1264,104 @@ class Z extends Application {
     });
     (s = e[0]) == null || s.dispatchEvent(i);
   }
+  onTogglePlaylistQueue(t) {
+    var r, n, o;
+    t.preventDefault(), t.stopPropagation();
+    const e = String($(t.currentTarget).data("playlist-id")), i = this.library.playlists.getPlaylist(e);
+    if (!i || !((r = window.ASE) != null && r.queue)) {
+      l.warn("Cannot toggle playlist queue: playlist or queue not available");
+      return;
+    }
+    if (window.ASE.queue.getItems().some((d) => d.playlistId === e))
+      window.ASE.queue.getItems().filter((h) => h.playlistId === e).forEach((h) => window.ASE.queue.removeItem(h.id)), (n = ui.notifications) == null || n.info(`Removed "${i.name}" from queue`);
+    else {
+      const d = i.items.map((h) => (this.library.getItem(h.libraryItemId), {
+        libraryItemId: h.libraryItemId,
+        group: h.group || "music",
+        volume: h.volume,
+        loop: h.loop
+      })).filter((h) => h.libraryItemId);
+      window.ASE.queue.addPlaylist(e, d), (o = ui.notifications) == null || o.info(`Added "${i.name}" (${i.items.length} tracks) to queue`);
+    }
+    this.render();
+  }
+  onPlaylistContext(t) {
+    t.preventDefault(), t.stopPropagation();
+    const e = String($(t.currentTarget).data("playlist-id"));
+    if (!this.library.playlists.getPlaylist(e)) return;
+    const s = `
+      <div id="ase-custom-context-menu" style="position: fixed; z-index: 10000; background: #222; border: 1px solid #444; border-radius: 4px; padding: 5px 0;">
+        <div class="ase-ctx-item" data-action="edit" style="padding: 5px 15px; cursor: pointer; color: white;">
+            <i class="fas fa-edit" style="margin-right: 5px;"></i> Rename
+        </div>
+        <div class="ase-ctx-item" data-action="delete" style="padding: 5px 15px; cursor: pointer; color: #ff6666;">
+            <i class="fas fa-trash" style="margin-right: 5px;"></i> Delete
+        </div>
+      </div>
+    `;
+    $("#ase-custom-context-menu").remove();
+    const r = $(s);
+    $("body").append(r), r.css({
+      top: t.clientY,
+      left: t.clientX
+    }), r.find(".ase-ctx-item").on("mouseenter", function() {
+      $(this).css("background-color", "#333");
+    }).on("mouseleave", function() {
+      $(this).css("background-color", "transparent");
+    }), r.find('[data-action="edit"]').on("click", () => {
+      r.remove(), this.renamePlaylist(e);
+    }), r.find('[data-action="delete"]').on("click", () => {
+      r.remove(), this.deletePlaylist(e);
+    }), setTimeout(() => {
+      $(document).one("click", () => r.remove());
+    }, 50);
+  }
+  async renamePlaylist(t) {
+    var s;
+    const e = this.library.playlists.getPlaylist(t);
+    if (!e) return;
+    const i = await this.promptPlaylistName(e.name);
+    !i || i === e.name || (this.library.playlists.updatePlaylist(t, { name: i }), this.render(), (s = ui.notifications) == null || s.info(`Renamed playlist to "${i}"`));
+  }
+  async deletePlaylist(t) {
+    var s;
+    const e = this.library.playlists.getPlaylist(t);
+    !e || !await Dialog.confirm({
+      title: "Delete Playlist",
+      content: `Are you sure you want to delete playlist "${e.name}"?`
+    }) || (this.library.playlists.deletePlaylist(t), this.filterState.selectedPlaylistId === t && (this.filterState.selectedPlaylistId = null), this.render(), (s = ui.notifications) == null || s.info(`Deleted playlist "${e.name}"`));
+  }
+  async promptPlaylistName(t = "") {
+    return new Promise((e) => {
+      new Dialog({
+        title: t ? "Rename Playlist" : "New Playlist",
+        content: `
+          <form>
+            <div class="form-group">
+              <label>Playlist Name:</label>
+              <input type="text" name="playlistName" value="${t}" autofocus style="width: 100%;">
+            </div>
+          </form>
+        `,
+        buttons: {
+          ok: {
+            icon: '<i class="fas fa-check"></i>',
+            label: "OK",
+            callback: (i) => {
+              const s = i.find('[name="playlistName"]').val();
+              e((s == null ? void 0 : s.trim()) || null);
+            }
+          },
+          cancel: {
+            icon: '<i class="fas fa-times"></i>',
+            label: "Cancel",
+            callback: () => e(null)
+          }
+        },
+        default: "ok"
+      }).render(!0);
+    });
+  }
   // ─────────────────────────────────────────────────────────────
   // Drag and Drop
   // ─────────────────────────────────────────────────────────────
@@ -1268,7 +1379,23 @@ class Z extends Application {
     }), t.find(".ase-list-item[data-playlist-id]").on("drop", async (e) => {
       e.preventDefault();
       const i = e.originalEvent.dataTransfer.getData("text/plain"), s = $(e.currentTarget).data("playlist-id");
-      $(e.currentTarget).removeClass("drag-over"), await this.handleDropTrackToPlaylist(i, s);
+      $(e.currentTarget).removeClass("drag-over");
+      const r = e.originalEvent.dataTransfer.getData("application/x-playlist-id");
+      if (r && r !== s) {
+        await this.handlePlaylistReorder(r, s);
+        return;
+      }
+      await this.handleDropTrackToPlaylist(i, s);
+    }), t.find('.ase-list-item[data-playlist-id][draggable="true"]').on("dragstart", (e) => {
+      const i = String($(e.currentTarget).data("playlist-id"));
+      e.originalEvent.dataTransfer.effectAllowed = "move", e.originalEvent.dataTransfer.setData("application/x-playlist-id", i), $(e.currentTarget).addClass("dragging");
+    }), t.find('.ase-list-item[data-playlist-id][draggable="true"]').on("dragend", (e) => {
+      $(e.currentTarget).removeClass("dragging"), t.find(".ase-list-item").removeClass("drag-over drag-above drag-below");
+    }), t.find(".ase-list-item[data-playlist-id]").on("dragover", (e) => {
+      if (!e.originalEvent.dataTransfer.types.includes("application/x-playlist-id")) return;
+      e.preventDefault(), e.originalEvent.dataTransfer.dropEffect = "move";
+      const s = e.currentTarget.getBoundingClientRect(), r = s.top + s.height / 2, n = e.clientY < r;
+      $(e.currentTarget).removeClass("drag-above drag-below"), $(e.currentTarget).addClass(n ? "drag-above" : "drag-below");
     }), t.find(".ase-content-area").on("dragover", (e) => {
       e.preventDefault(), $(e.currentTarget).addClass("drag-over-import");
     }), t.find(".ase-content-area").on("dragleave", (e) => {
@@ -1283,6 +1410,12 @@ class Z extends Application {
         await this.handleFileUpload(i);
       }
     });
+  }
+  async handlePlaylistReorder(t, e) {
+    const i = this.library.playlists.getAllPlaylists(), s = i.findIndex((o) => o.id === t), r = i.findIndex((o) => o.id === e);
+    if (s === -1 || r === -1) return;
+    const [n] = i.splice(s, 1);
+    i.splice(r, 0, n), this.library.playlists.reorderPlaylists(i.map((o) => o.id)), this.render(), l.debug(`Reordered playlist ${t} to position ${r}`);
   }
   async handleFileUpload(t) {
     var r, n, o;
@@ -1691,37 +1824,6 @@ class Z extends Application {
       }).render(!0);
     });
   }
-  async promptPlaylistName() {
-    return new Promise((t) => {
-      new Dialog({
-        title: "Create Playlist",
-        content: `
-          <form>
-            <div class="form-group">
-              <label>Playlist Name:</label>
-              <input type="text" name="playlist-name" autofocus />
-            </div>
-          </form>
-        `,
-        buttons: {
-          create: {
-            icon: '<i class="fas fa-check"></i>',
-            label: "Create",
-            callback: (e) => {
-              const i = (e.find('[name="playlist-name"]').val() || "").trim();
-              t(i || null);
-            }
-          },
-          cancel: {
-            icon: '<i class="fas fa-times"></i>',
-            label: "Cancel",
-            callback: () => t(null)
-          }
-        },
-        default: "create"
-      }).render(!0);
-    });
-  }
   async promptTextInput(t, e, i = "") {
     return new Promise((s) => {
       new Dialog({
@@ -1786,7 +1888,7 @@ function C(c, a) {
     }, r));
   };
 }
-function tt(c, a) {
+function at(c, a) {
   let t = null;
   return function(...e) {
     t && clearTimeout(t), t = setTimeout(() => {
@@ -1794,11 +1896,11 @@ function tt(c, a) {
     }, a);
   };
 }
-const R = "advanced-sound-engine";
-function et() {
-  return game.settings.get(R, "maxSimultaneousTracks") || 8;
+const z = "advanced-sound-engine";
+function it() {
+  return game.settings.get(z, "maxSimultaneousTracks") || 8;
 }
-class at extends Application {
+class st extends Application {
   constructor(t, e, i) {
     super(i);
     u(this, "engine");
@@ -1810,7 +1912,7 @@ class at extends Application {
     return foundry.utils.mergeObject(super.defaultOptions, {
       id: "ase-sound-mixer",
       title: "Sound Mixer (GM)",
-      template: `modules/${R}/templates/mixer.hbs`,
+      template: `modules/${z}/templates/mixer.hbs`,
       classes: ["ase-mixer"],
       width: 550,
       height: "auto",
@@ -1830,7 +1932,7 @@ class at extends Application {
         sfx: Math.round(e.sfx * 100)
       },
       playingCount: i,
-      maxSimultaneous: et(),
+      maxSimultaneous: it(),
       syncEnabled: this.socket.syncEnabled
     };
   }
@@ -1992,8 +2094,8 @@ class at extends Application {
     return this.stopUpdates(), super.close(t);
   }
 }
-const G = "advanced-sound-engine";
-class it extends Application {
+const _ = "advanced-sound-engine";
+class rt extends Application {
   constructor(t, e, i, s) {
     super(s);
     u(this, "engine");
@@ -2008,13 +2110,13 @@ class it extends Application {
       // Default to library as per user focus
       syncEnabled: !1
     });
-    this.engine = t, this.socket = e, this.libraryManager = i, this.libraryApp = new Z(this.libraryManager), this.mixerApp = new at(this.engine, this.socket);
+    this.engine = t, this.socket = e, this.libraryManager = i, this.libraryApp = new et(this.libraryManager), this.mixerApp = new st(this.engine, this.socket);
   }
   static get defaultOptions() {
     return foundry.utils.mergeObject(super.defaultOptions, {
       id: "advanced-sound-engine-app",
       title: "Advanced Sound Engine",
-      template: `modules/${G}/templates/main-app.hbs`,
+      template: `modules/${_}/templates/main-app.hbs`,
       width: 1200,
       // Wider for the concepts
       height: 800,
@@ -2042,7 +2144,7 @@ class it extends Application {
       s = await renderTemplate("modules/advanced-sound-engine/templates/library.hbs", r);
     } else if (this.state.activeTab === "mixer") {
       const r = await this.mixerApp.getData();
-      s = await renderTemplate(`modules/${G}/templates/mixer.hbs`, r);
+      s = await renderTemplate(`modules/${_}/templates/mixer.hbs`, r);
     }
     return {
       activeTab: this.state.activeTab,
@@ -2091,7 +2193,7 @@ class it extends Application {
     s ? (this.engine.setChannelVolume(s, i), this.socket.broadcastChannelVolume(s, i)) : (this.engine.setMasterVolume(i), this.socket.broadcastChannelVolume("master", i)), $(e).siblings(".ase-percentage").text(`${Math.round(i * 100)}%`), $(e).siblings(".ase-master-perc").text(`${Math.round(i * 100)}%`);
   }
 }
-class st {
+class nt {
   constructor(a) {
     u(this, "playlists", /* @__PURE__ */ new Map());
     u(this, "onChangeCallback");
@@ -2174,6 +2276,18 @@ class st {
    */
   getFavoritePlaylists() {
     return this.getAllPlaylists().filter((a) => a.favorite);
+  }
+  /**
+   * Reorder playlists based on new order array of IDs
+   */
+  reorderPlaylists(a) {
+    const t = /* @__PURE__ */ new Map();
+    a.forEach((e) => {
+      const i = this.playlists.get(e);
+      i && t.set(e, i);
+    }), this.playlists.forEach((e, i) => {
+      t.has(i) || t.set(i, e);
+    }), this.playlists = t, this.notifyChange(), l.info("Playlists reordered");
   }
   /**
    * Toggle playlist favorite status
@@ -2335,17 +2449,17 @@ class st {
     this.playlists.clear(), l.warn("All playlists cleared");
   }
 }
-const _ = "advanced-sound-engine", I = 1;
-class rt {
+const N = "advanced-sound-engine", D = 1;
+class ot {
   constructor() {
     u(this, "items", /* @__PURE__ */ new Map());
     u(this, "customTags", /* @__PURE__ */ new Set());
     u(this, "saveScheduled", !1);
     u(this, "playlists");
-    u(this, "debouncedSave", tt(() => {
+    u(this, "debouncedSave", at(() => {
       this.saveToSettings();
     }, 500));
-    this.playlists = new st(() => this.scheduleSave()), this.loadFromSettings();
+    this.playlists = new nt(() => this.scheduleSave()), this.loadFromSettings();
   }
   // ─────────────────────────────────────────────────────────────
   // CRUD Operations
@@ -2354,7 +2468,7 @@ class rt {
    * Add new item to library
    */
   async addItem(a, t, e = "music") {
-    const i = M(a);
+    const i = L(a);
     if (!i.valid)
       throw new Error(i.error || "Invalid audio file");
     const s = t || this.extractNameFromUrl(a), r = this.findByUrl(a);
@@ -2387,7 +2501,7 @@ class rt {
         throw new Error(`Track with name "${t.name}" already exists`);
     }
     if (t.url && t.url !== e.url) {
-      const s = M(t.url);
+      const s = L(t.url);
       if (!s.valid)
         throw new Error(s.error || "Invalid audio file");
       const r = this.findByUrl(t.url);
@@ -2477,7 +2591,8 @@ class rt {
    * Add a custom tag explicitly (even if not used on any track)
    */
   addCustomTag(a) {
-    this.customTags.has(a) || (this.customTags.add(a), this.scheduleSave());
+    const t = a.trim().replace(/^#/, "");
+    t && !this.customTags.has(t) && (this.customTags.add(t), this.scheduleSave());
   }
   /**
    * Add tag to item
@@ -2535,13 +2650,13 @@ class rt {
   // ─────────────────────────────────────────────────────────────
   loadFromSettings() {
     try {
-      const a = game.settings.get(_, "libraryState");
+      const a = game.settings.get(N, "libraryState");
       if (!a) {
         l.info("No saved library state, starting fresh");
         return;
       }
       const t = JSON.parse(a);
-      t.version !== I && l.warn(`Library version mismatch: ${t.version} → ${I}`), this.items.clear(), Object.values(t.items).forEach((e) => {
+      t.version !== D && l.warn(`Library version mismatch: ${t.version} → ${D}`), this.items.clear(), Object.values(t.items).forEach((e) => {
         this.items.set(e.id, e);
       }), this.customTags = new Set(t.customTags || []), this.playlists.load(t.playlists || {}), l.info(`Library loaded: ${this.items.size} items, ${this.playlists.getAllPlaylists().length} playlists, ${this.customTags.size} custom tags`);
     } catch (a) {
@@ -2554,10 +2669,10 @@ class rt {
         items: Object.fromEntries(this.items),
         playlists: this.playlists.export(),
         customTags: Array.from(this.customTags),
-        version: I,
+        version: D,
         lastModified: Date.now()
       };
-      game.settings.set(_, "libraryState", JSON.stringify(a)), this.saveScheduled = !1, l.debug(`Library saved: ${this.items.size} items, ${this.playlists.getAllPlaylists().length} playlists`);
+      game.settings.set(N, "libraryState", JSON.stringify(a)), this.saveScheduled = !1, l.debug(`Library saved: ${this.items.size} items, ${this.playlists.getAllPlaylists().length} playlists`);
     } catch (a) {
       l.error("Failed to save library state:", a);
     }
@@ -2602,8 +2717,148 @@ class rt {
     this.saveScheduled && this.saveToSettings();
   }
 }
-const D = "advanced-sound-engine";
-let g = null, p = null, v = null, y = null, T = null, k = null;
+class lt {
+  constructor() {
+    u(this, "items", []);
+    u(this, "activeItemId", null);
+    u(this, "eventListeners", /* @__PURE__ */ new Map());
+    l.info("PlaybackQueueManager initialized");
+  }
+  // ─────────────────────────────────────────────────────────────
+  // Core Operations
+  // ─────────────────────────────────────────────────────────────
+  /**
+   * Add a library item to the queue
+   */
+  addItem(a, t) {
+    const e = {
+      id: foundry.utils.randomID(),
+      libraryItemId: a,
+      group: (t == null ? void 0 : t.group) ?? "music",
+      addedAt: Date.now(),
+      state: "stopped",
+      volume: (t == null ? void 0 : t.volume) ?? 1,
+      loop: (t == null ? void 0 : t.loop) ?? !1,
+      playlistId: t == null ? void 0 : t.playlistId
+    };
+    return this.items.push(e), this.emit("add", { item: e }), this.emit("change", { items: this.items }), l.debug("Added to queue:", e.id, a), e;
+  }
+  /**
+   * Add all items from a playlist to the queue
+   */
+  addPlaylist(a, t) {
+    const e = [];
+    for (const i of t) {
+      const s = this.addItem(i.libraryItemId, {
+        playlistId: a,
+        group: i.group,
+        volume: i.volume,
+        loop: i.loop
+      });
+      e.push(s);
+    }
+    return e;
+  }
+  /**
+   * Remove an item from the queue
+   */
+  removeItem(a) {
+    const t = this.items.findIndex((i) => i.id === a);
+    if (t === -1) return !1;
+    const [e] = this.items.splice(t, 1);
+    return this.activeItemId === a && (this.activeItemId = null, this.emit("active", { item: void 0 })), this.emit("remove", { item: e }), this.emit("change", { items: this.items }), l.debug("Removed from queue:", a), !0;
+  }
+  /**
+   * Clear all items from the queue
+   */
+  clearQueue() {
+    this.items = [], this.activeItemId = null, this.emit("change", { items: [] }), this.emit("active", { item: void 0 }), l.debug("Queue cleared");
+  }
+  // ─────────────────────────────────────────────────────────────
+  // Playback Control
+  // ─────────────────────────────────────────────────────────────
+  /**
+   * Set the currently active (playing) item
+   */
+  setActive(a) {
+    if (a && !this.items.find((e) => e.id === a)) {
+      l.warn("Cannot set active: item not in queue", a);
+      return;
+    }
+    this.activeItemId = a;
+    const t = this.getActive();
+    this.emit("active", { item: t ?? void 0 }), l.debug("Active item set:", a);
+  }
+  /**
+   * Get the currently active item
+   */
+  getActive() {
+    return this.activeItemId ? this.items.find((a) => a.id === this.activeItemId) ?? null : null;
+  }
+  /**
+   * Get the next item in the queue (after active)
+   */
+  getNext() {
+    if (!this.activeItemId) return this.items[0] ?? null;
+    const a = this.items.findIndex((t) => t.id === this.activeItemId);
+    return a === -1 || a >= this.items.length - 1 ? null : this.items[a + 1];
+  }
+  /**
+   * Get the previous item in the queue (before active)
+   */
+  getPrevious() {
+    if (!this.activeItemId) return null;
+    const a = this.items.findIndex((t) => t.id === this.activeItemId);
+    return a <= 0 ? null : this.items[a - 1];
+  }
+  /**
+   * Update the state of a queue item
+   */
+  updateItemState(a, t) {
+    const e = this.items.find((i) => i.id === a);
+    e && (e.state = t, this.emit("change", { items: this.items }));
+  }
+  // ─────────────────────────────────────────────────────────────
+  // State Access
+  // ─────────────────────────────────────────────────────────────
+  /**
+   * Get all items in the queue
+   */
+  getItems() {
+    return [...this.items];
+  }
+  /**
+   * Get full queue state
+   */
+  getState() {
+    return {
+      items: [...this.items],
+      activeItemId: this.activeItemId
+    };
+  }
+  /**
+   * Check if an item is in the queue
+   */
+  hasItem(a) {
+    return this.items.some((t) => t.libraryItemId === a);
+  }
+  // ─────────────────────────────────────────────────────────────
+  // Event System
+  // ─────────────────────────────────────────────────────────────
+  on(a, t) {
+    this.eventListeners.has(a) || this.eventListeners.set(a, /* @__PURE__ */ new Set()), this.eventListeners.get(a).add(t);
+  }
+  off(a, t) {
+    var e;
+    (e = this.eventListeners.get(a)) == null || e.delete(t);
+  }
+  emit(a, t) {
+    var e;
+    (e = this.eventListeners.get(a)) == null || e.forEach((i) => i(t));
+  }
+}
+const M = "advanced-sound-engine";
+let p = null, f = null, k = null, y = null, T = null, b = null;
 Hooks.on("getSceneControlButtons", (c) => {
   var a;
   try {
@@ -2680,7 +2935,7 @@ Hooks.on("renderSceneControls", (c, a) => {
     console.warn("ASE | Failed to bind manual click listeners:", t);
   }
 });
-function nt() {
+function ct() {
   Handlebars.registerHelper("formatDuration", (c) => {
     if (!c || c <= 0) return "--:--";
     const a = Math.floor(c / 60), t = Math.floor(c % 60);
@@ -2688,49 +2943,52 @@ function nt() {
   }), Handlebars.registerHelper("eq", (c, a) => c === a);
 }
 Hooks.once("init", () => {
-  l.info("Initializing Advanced Sound Engine..."), ut(), nt();
+  l.info("Initializing Advanced Sound Engine..."), gt(), ct();
 });
 Hooks.once("ready", async () => {
-  var a;
-  const c = ((a = game.user) == null ? void 0 : a.isGM) ?? !1;
-  l.info(`Starting Advanced Sound Engine (${c ? "GM" : "Player"})...`), k = new W(), c ? await ot() : await lt(), window.ASE = {
+  var t;
+  const c = ((t = game.user) == null ? void 0 : t.isGM) ?? !1;
+  l.info(`Starting Advanced Sound Engine (${c ? "GM" : "Player"})...`), b = new tt(), c ? await dt() : await ut();
+  const a = new lt();
+  window.ASE = {
     isGM: c,
-    openPanel: c ? N : ct,
-    openLibrary: () => c && N("library"),
-    engine: c ? g ?? void 0 : y ?? void 0,
-    socket: k ?? void 0,
-    library: c ? v ?? void 0 : void 0
-  }, dt(), l.info("Advanced Sound Engine ready");
+    openPanel: c ? O : ht,
+    openLibrary: () => c && O("library"),
+    engine: c ? p ?? void 0 : y ?? void 0,
+    socket: b ?? void 0,
+    library: c ? k ?? void 0 : void 0,
+    queue: a
+  }, mt(), l.info("Advanced Sound Engine ready");
 });
-async function ot() {
-  v = new rt(), g = new X(), k.initializeAsGM(g), await g.loadSavedState();
+async function dt() {
+  k = new ot(), p = new K(), b.initializeAsGM(p), await p.loadSavedState();
 }
-async function lt() {
-  y = new J(), k.initializeAsPlayer(y);
+async function ut() {
+  y = new W(), b.initializeAsPlayer(y);
   const c = U.loadSavedVolume();
   y.setLocalVolume(c);
 }
-function N(c, a = !1) {
-  !g || !k || !v || (p && p.rendered ? (c && p.state.activeTab !== c && (p.state.activeTab = c, a = !0), a ? p.render(!1) : p.bringToTop()) : (p = new it(g, k, v), c && (p.state.activeTab = c), p.render(!0)));
+function O(c, a = !1) {
+  !p || !b || !k || (f && f.rendered ? (c && f.state.activeTab !== c && (f.state.activeTab = c, a = !0), a ? f.render(!1) : f.bringToTop()) : (f = new rt(p, b, k), c && (f.state.activeTab = c), f.render(!0)));
 }
-function ct() {
+function ht() {
   y && (T && T.rendered ? T.bringToTop() : (T = new U(y), T.render(!0)));
 }
-function dt() {
+function mt() {
   const c = () => {
-    g == null || g.resume(), y == null || y.resume();
+    p == null || p.resume(), y == null || y.resume();
   };
   document.addEventListener("click", c, { once: !0 }), document.addEventListener("keydown", c, { once: !0 }), Hooks.once("canvasReady", c);
 }
-function ut() {
-  game.settings.register(D, "mixerState", {
+function gt() {
+  game.settings.register(M, "mixerState", {
     name: "Mixer State",
     hint: "Internal storage for mixer state",
     scope: "world",
     config: !1,
     type: String,
     default: ""
-  }), game.settings.register(D, "maxSimultaneousTracks", {
+  }), game.settings.register(M, "maxSimultaneousTracks", {
     name: "Maximum Simultaneous Tracks",
     hint: "Maximum number of tracks that can play simultaneously (1-32)",
     scope: "world",
@@ -2742,7 +3000,7 @@ function ut() {
       max: 32,
       step: 1
     }
-  }), game.settings.register(D, "libraryState", {
+  }), game.settings.register(M, "libraryState", {
     name: "Library State",
     hint: "Internal storage for library items and playlists",
     scope: "world",
@@ -2752,6 +3010,6 @@ function ut() {
   });
 }
 Hooks.once("closeGame", () => {
-  p == null || p.close(), T == null || T.close(), k == null || k.dispose(), g == null || g.dispose(), y == null || y.dispose(), v == null || v.dispose();
+  f == null || f.close(), T == null || T.close(), b == null || b.dispose(), p == null || p.dispose(), y == null || y.dispose(), k == null || k.dispose();
 });
 //# sourceMappingURL=module.js.map

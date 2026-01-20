@@ -57,7 +57,9 @@ interface PlaylistViewData {
   id: string;
   name: string;
   itemCount: number;
+  trackCount: number; // Alias for template
   favorite: boolean;
+  inQueue: boolean;
   selected?: boolean;
 }
 
@@ -145,12 +147,13 @@ export class LocalLibraryApp extends Application {
     this.filterState.selectedTags.forEach(t => tagSet.add(t));
 
     const tags: TagViewData[] = Array.from(tagSet).sort().map(tag => {
-      // Handle legacy tags that might have '#' stored in DB
-      const display = tag.startsWith('#') ? tag.substring(1) : tag;
+      // Normalize: ensure no leading #
+      const normalizedTag = tag.startsWith('#') ? tag.substring(1) : tag;
+      const isSelected = this.filterState.selectedTags.has(tag) || this.filterState.selectedTags.has(normalizedTag);
       return {
-        name: display, // This is what is shown after the # in template
-        value: tag,    // This is the actual data value
-        selected: this.filterState.selectedTags.has(tag)
+        name: normalizedTag, // Display name (without #)
+        value: normalizedTag, // Data value (also normalized for consistency)
+        selected: isSelected
       };
     });
 
@@ -194,11 +197,18 @@ export class LocalLibraryApp extends Application {
   }
 
   private getPlaylistViewData(playlist: Playlist): PlaylistViewData {
+    // Check if playlist is in queue
+    const inQueue = window.ASE?.queue?.getItems().some(
+      item => item.playlistId === playlist.id
+    ) ?? false;
+
     return {
       id: playlist.id,
       name: playlist.name,
       itemCount: playlist.items.length,
+      trackCount: playlist.items.length, // Alias for template
       favorite: playlist.favorite,
+      inQueue,
       selected: false
     };
   }
@@ -304,8 +314,10 @@ export class LocalLibraryApp extends Application {
 
     // Toolbar actions
     html.find('[data-action="add-track"]').on('click', this.onAddTrack.bind(this));
-    // Listen for KeyDown (Enter) instead of Input
+    // Listen for KeyDown (Enter) for search execution
     html.find('.ase-search-input').on('keydown', this.onSearchKeydown.bind(this));
+    // Listen for 'input' to manage X button visibility and auto-reset on empty
+    html.find('.ase-search-input').on('input', this.onSearchInput.bind(this));
     html.find('.ase-search-clear').on('click', this.onClearSearch.bind(this));
     html.find('[data-action="filter-channel"]').on('click', this._onFilterChannel.bind(this));
     html.find('[data-action="change-sort"]').on('change', this.onChangeSort.bind(this));
@@ -331,7 +343,9 @@ export class LocalLibraryApp extends Application {
     html.find('[data-action="select-playlist"]').on('click', this.onSelectPlaylist.bind(this));
     html.find('[data-action="create-playlist"]').on('click', this.onCreatePlaylist.bind(this));
     html.find('[data-action="toggle-playlist-favorite"]').on('click', this.onTogglePlaylistFavorite.bind(this));
+    html.find('[data-action="toggle-playlist-queue"]').on('click', this.onTogglePlaylistQueue.bind(this));
     html.find('[data-action="playlist-menu"]').on('click', this.onPlaylistMenu.bind(this));
+    html.find('.ase-list-item[data-playlist-id]').on('contextmenu', this.onPlaylistContext.bind(this));
 
     // Favorite actions
     html.find('[data-action="remove-from-favorites"]').on('click', this.onRemoveFromFavorites.bind(this));
@@ -451,28 +465,15 @@ export class LocalLibraryApp extends Application {
   // ─────────────────────────────────────────────────────────────
 
   private onSearchInput(event: JQuery.TriggeredEvent): void {
-    // Only handle ENTER key for search execution
-    if (event.type === 'keydown' && (event as any).key !== 'Enter') return;
+    const val = ($(event.currentTarget).val() as string || '');
+    const trimmedVal = val.trim();
 
-    const query = ($(event.currentTarget).val() as string || '').trim().toLowerCase();
-
-    // Only re-render if query changed
-    if (this.filterState.searchQuery !== query) {
-      this.filterState.searchQuery = query;
-      this.render(); // Full re-render filters properly
+    // If field becomes empty and search was active, reset search
+    if (!trimmedVal && this.filterState.searchQuery) {
+      this.filterState.searchQuery = '';
+      this.render();
     }
   }
-
-  // Also catch 'input' just for specific UI toggles if needed, but here we do fully via render.
-  // Actually, let's decouple: 'input' event just shows/hides X button? 
-  // User wants "When pressing Enter". So 'input' should NOT filter.
-  // But we need to update the X button visibility? 
-  // Let's keep it simple: 'keydown' on Enter -> sets state -> render.
-  // On 'input', we just let the value sit in the box. 
-  // But wait, the X button logic was in onSearchInput. 
-  // Let's make a separate handler for visual updates if needed, OR just rely on render.
-  // Render will re-create the X button state based on `searchQuery`? No, templates don't always track input value unless we pass it.
-  // We passed `value="{{searchQuery}}"` in template.
 
   private onSearchKeydown(event: JQuery.KeyDownEvent): void {
     if (event.key === 'Enter') {
@@ -486,11 +487,11 @@ export class LocalLibraryApp extends Application {
   }
 
   private onClearSearch(event: JQuery.ClickEvent): void {
+    event.preventDefault();
     this.filterState.searchQuery = '';
     const wrapper = $(event.currentTarget).closest('.ase-search-input-wrapper');
-    wrapper.find('.ase-search-input').val('').trigger('focus');
-    wrapper.find('.ase-search-clear').hide();
-    this.element.find('.ase-track-player-item').show();
+    wrapper.find('.ase-search-input').val('');
+    this.render(); // Re-render to show all items
   }
 
   private _onFilterChannel(event: JQuery.ClickEvent): void {
@@ -550,12 +551,17 @@ export class LocalLibraryApp extends Application {
     event.preventDefault();
     // Use the right click context menu for edit/delete
     // Left click just toggles filter
-    const tag = $(event.currentTarget).data('tag') as string;
+    const tag = String($(event.currentTarget).data('tag')); // String() fixes numeric coercion
+
+    console.log('[ASE] onToggleTag called with tag:', tag);
+    console.log('[ASE] Current selectedTags:', Array.from(this.filterState.selectedTags));
 
     if (this.filterState.selectedTags.has(tag)) {
       this.filterState.selectedTags.delete(tag);
+      console.log('[ASE] Tag deselected');
     } else {
       this.filterState.selectedTags.add(tag);
+      console.log('[ASE] Tag selected');
     }
 
     this.render();
@@ -564,7 +570,7 @@ export class LocalLibraryApp extends Application {
   private onTagContext(event: JQuery.ContextMenuEvent): void {
     event.preventDefault();
     event.stopPropagation();
-    const tag = $(event.currentTarget).data('tag') as string;
+    const tag = String($(event.currentTarget).data('tag')); // String() fixes numeric coercion
 
     // Create a custom context menu appended to body to avoid clipping
     const menuHtml = `
@@ -618,18 +624,26 @@ export class LocalLibraryApp extends Application {
   private async onAddTag(event: JQuery.ClickEvent): Promise<void> {
     event.preventDefault();
 
-    const tagName = await this.promptTagName();
+    const rawTagName = await this.promptTagName();
+    if (!rawTagName) return;
+
+    // Normalize: trim and remove leading # if user added it
+    const tagName = rawTagName.trim().replace(/^#/, '');
     if (!tagName) return;
 
-    // Use a temporary Set to show the tag immediately even if not attached to tracks yet
-    // This gives "visual feedback" that it worked.
+    console.log('[ASE] onAddTag: normalized tagName =', tagName);
+
+    // Add to selectedTags for immediate visual feedback
     this.filterState.selectedTags.add(tagName);
 
     // Add to library persistent tags
     this.library.addCustomTag(tagName);
 
+    console.log('[ASE] onAddTag: selectedTags now =', Array.from(this.filterState.selectedTags));
+    console.log('[ASE] onAddTag: allTags from library =', this.library.getAllTags());
+
     this.render();
-    ui.notifications?.info(`Tag "${tagName}" added to filter list. Assign it to a track to save it permanently.`);
+    ui.notifications?.info(`Tag "${tagName}" added.`);
   }
 
   // Helper for Context Menu Callbacks to ensure `this` binding and argument passing
@@ -675,24 +689,24 @@ export class LocalLibraryApp extends Application {
   }
 
   private async deleteTag(tag: string): Promise<void> {
+    const tagStr = String(tag); // Ensure string for numeric tags
+    console.log('[ASE] deleteTag called for:', tagStr);
+
     const confirm = await Dialog.confirm({
       title: "Delete Tag",
-      content: `Are you sure you want to delete tag "${tag}" from all tracks?`
+      content: `Are you sure you want to delete tag "${tagStr}" from all tracks?`
     });
     if (!confirm) return;
 
     // Use LibraryManager's method
-    const count = this.library.deleteTag(tag);
+    const count = this.library.deleteTag(tagStr);
 
     // Remove from filter
-    if (this.filterState.selectedTags.has(tag)) {
-      this.filterState.selectedTags.delete(tag);
-    }
+    this.filterState.selectedTags.delete(tagStr);
 
-    if (count > 0) {
-      this.render();
-      ui.notifications?.info(`Deleted tag "${tag}" from ${count} tracks.`);
-    }
+    // Always re-render (even if count is 0, tag might be custom-only)
+    this.render();
+    ui.notifications?.info(count > 0 ? `Deleted tag "${tagStr}" from ${count} tracks.` : `Deleted custom tag "${tagStr}".`);
   }
 
   private async promptTagName(current: string = ""): Promise<string | null> {
@@ -749,10 +763,29 @@ export class LocalLibraryApp extends Application {
   private onAddToQueue(event: JQuery.ClickEvent): void {
     event.preventDefault();
     event.stopPropagation();
-    const itemId = $(event.currentTarget).data('item-id') as string;
-    Logger.debug('Add to queue:', itemId);
-    // Implementation depends on Queue manager
-    ui.notifications?.info('Added to queue (Simulated)');
+    const itemId = String($(event.currentTarget).data('item-id'));
+
+    if (!window.ASE?.queue) {
+      Logger.warn('Queue manager not available');
+      return;
+    }
+
+    // Get item details to determine group
+    const item = this.library.getItem(itemId);
+    if (!item) {
+      Logger.warn('Item not found:', itemId);
+      return;
+    }
+
+    // Add to queue
+    window.ASE.queue.addItem(itemId, {
+      group: 'music', // Default, could be inferred from item metadata
+      volume: 1,
+      loop: false
+    });
+
+    Logger.debug('Added to queue:', itemId);
+    ui.notifications?.info(`"${item.name}" added to queue`);
   }
 
   private async onAddTagToTrack(event: JQuery.ClickEvent): Promise<void> {
@@ -857,6 +890,168 @@ export class LocalLibraryApp extends Application {
     playlistElement[0]?.dispatchEvent(contextMenuEvent);
   }
 
+  private onTogglePlaylistQueue(event: JQuery.ClickEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const playlistId = String($(event.currentTarget).data('playlist-id'));
+    const playlist = this.library.playlists.getPlaylist(playlistId);
+
+    if (!playlist || !window.ASE?.queue) {
+      Logger.warn('Cannot toggle playlist queue: playlist or queue not available');
+      return;
+    }
+
+    // Check if already in queue (by playlistId)
+    const inQueue = window.ASE.queue.getItems().some(item => item.playlistId === playlistId);
+
+    if (inQueue) {
+      // Remove all items from this playlist
+      const itemsToRemove = window.ASE.queue.getItems().filter(item => item.playlistId === playlistId);
+      itemsToRemove.forEach(item => window.ASE!.queue!.removeItem(item.id));
+      ui.notifications?.info(`Removed "${playlist.name}" from queue`);
+    } else {
+      // Add all playlist items to queue
+      const playlistItems = playlist.items.map(pItem => {
+        const libraryItem = this.library.getItem(pItem.libraryItemId);
+        return {
+          libraryItemId: pItem.libraryItemId,
+          group: pItem.group || 'music' as const,
+          volume: pItem.volume,
+          loop: pItem.loop
+        };
+      }).filter(item => item.libraryItemId);
+
+      window.ASE.queue.addPlaylist(playlistId, playlistItems);
+      ui.notifications?.info(`Added "${playlist.name}" (${playlist.items.length} tracks) to queue`);
+    }
+
+    this.render();
+  }
+
+  private onPlaylistContext(event: JQuery.ContextMenuEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const playlistId = String($(event.currentTarget).data('playlist-id'));
+    const playlist = this.library.playlists.getPlaylist(playlistId);
+
+    if (!playlist) return;
+
+    // Create a custom context menu appended to body to avoid clipping
+    const menuHtml = `
+      <div id="ase-custom-context-menu" style="position: fixed; z-index: 10000; background: #222; border: 1px solid #444; border-radius: 4px; padding: 5px 0;">
+        <div class="ase-ctx-item" data-action="edit" style="padding: 5px 15px; cursor: pointer; color: white;">
+            <i class="fas fa-edit" style="margin-right: 5px;"></i> Rename
+        </div>
+        <div class="ase-ctx-item" data-action="delete" style="padding: 5px 15px; cursor: pointer; color: #ff6666;">
+            <i class="fas fa-trash" style="margin-right: 5px;"></i> Delete
+        </div>
+      </div>
+    `;
+
+    // Remove existing
+    $('#ase-custom-context-menu').remove();
+
+    const menu = $(menuHtml);
+    $('body').append(menu);
+
+    // Position
+    menu.css({
+      top: event.clientY,
+      left: event.clientX
+    });
+
+    // Hover effect
+    menu.find('.ase-ctx-item').on('mouseenter', function () {
+      $(this).css('background-color', '#333');
+    }).on('mouseleave', function () {
+      $(this).css('background-color', 'transparent');
+    });
+
+    // Handle clicks
+    menu.find('[data-action="edit"]').on('click', () => {
+      menu.remove();
+      this.renamePlaylist(playlistId);
+    });
+
+    menu.find('[data-action="delete"]').on('click', () => {
+      menu.remove();
+      this.deletePlaylist(playlistId);
+    });
+
+    // Close on click outside
+    setTimeout(() => {
+      $(document).one('click', () => menu.remove());
+    }, 50);
+  }
+
+  private async renamePlaylist(playlistId: string): Promise<void> {
+    const playlist = this.library.playlists.getPlaylist(playlistId);
+    if (!playlist) return;
+
+    const newName = await this.promptPlaylistName(playlist.name);
+    if (!newName || newName === playlist.name) return;
+
+    this.library.playlists.updatePlaylist(playlistId, { name: newName });
+    this.render();
+    ui.notifications?.info(`Renamed playlist to "${newName}"`);
+  }
+
+  private async deletePlaylist(playlistId: string): Promise<void> {
+    const playlist = this.library.playlists.getPlaylist(playlistId);
+    if (!playlist) return;
+
+    const confirm = await Dialog.confirm({
+      title: "Delete Playlist",
+      content: `Are you sure you want to delete playlist "${playlist.name}"?`
+    });
+
+    if (!confirm) return;
+
+    this.library.playlists.deletePlaylist(playlistId);
+
+    // Clear selection if this was selected
+    if (this.filterState.selectedPlaylistId === playlistId) {
+      this.filterState.selectedPlaylistId = null;
+    }
+
+    this.render();
+    ui.notifications?.info(`Deleted playlist "${playlist.name}"`);
+  }
+
+  private async promptPlaylistName(current: string = ""): Promise<string | null> {
+    return new Promise((resolve) => {
+      new Dialog({
+        title: current ? "Rename Playlist" : "New Playlist",
+        content: `
+          <form>
+            <div class="form-group">
+              <label>Playlist Name:</label>
+              <input type="text" name="playlistName" value="${current}" autofocus style="width: 100%;">
+            </div>
+          </form>
+        `,
+        buttons: {
+          ok: {
+            icon: '<i class="fas fa-check"></i>',
+            label: "OK",
+            callback: (html: JQuery) => {
+              const name = html.find('[name="playlistName"]').val() as string;
+              resolve(name?.trim() || null);
+            }
+          },
+          cancel: {
+            icon: '<i class="fas fa-times"></i>',
+            label: "Cancel",
+            callback: () => resolve(null)
+          }
+        },
+        default: "ok"
+      }).render(true);
+    });
+  }
+
   // ─────────────────────────────────────────────────────────────
   // Drag and Drop
   // ─────────────────────────────────────────────────────────────
@@ -904,7 +1099,43 @@ export class LocalLibraryApp extends Application {
       const playlistId = $(event.currentTarget).data('playlist-id') as string;
       $(event.currentTarget).removeClass('drag-over');
 
+      // Check if this is a playlist reorder drop (dragging a playlist onto another)
+      const draggedPlaylistId = event.originalEvent!.dataTransfer!.getData('application/x-playlist-id');
+      if (draggedPlaylistId && draggedPlaylistId !== playlistId) {
+        await this.handlePlaylistReorder(draggedPlaylistId, playlistId);
+        return;
+      }
+
       await this.handleDropTrackToPlaylist(itemId, playlistId);
+    });
+
+    // Playlist reordering - drag start
+    html.find('.ase-list-item[data-playlist-id][draggable="true"]').on('dragstart', (event: JQuery.DragStartEvent) => {
+      const playlistId = String($(event.currentTarget).data('playlist-id'));
+      event.originalEvent!.dataTransfer!.effectAllowed = 'move';
+      event.originalEvent!.dataTransfer!.setData('application/x-playlist-id', playlistId);
+      $(event.currentTarget).addClass('dragging');
+    });
+
+    html.find('.ase-list-item[data-playlist-id][draggable="true"]').on('dragend', (event: JQuery.DragEndEvent) => {
+      $(event.currentTarget).removeClass('dragging');
+      html.find('.ase-list-item').removeClass('drag-over drag-above drag-below');
+    });
+
+    // Visual feedback for playlist insertion position
+    html.find('.ase-list-item[data-playlist-id]').on('dragover', (event: JQuery.DragOverEvent) => {
+      const draggedPlaylistId = event.originalEvent!.dataTransfer!.types.includes('application/x-playlist-id');
+      if (!draggedPlaylistId) return; // Not a playlist drag
+
+      event.preventDefault();
+      event.originalEvent!.dataTransfer!.dropEffect = 'move';
+
+      const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+      const midY = rect.top + rect.height / 2;
+      const isAbove = event.clientY! < midY;
+
+      $(event.currentTarget).removeClass('drag-above drag-below');
+      $(event.currentTarget).addClass(isAbove ? 'drag-above' : 'drag-below');
     });
 
     // Drop zone from OS (Main Library Area)
@@ -942,6 +1173,25 @@ export class LocalLibraryApp extends Application {
         await this.handleFileUpload(files);
       }
     });
+  }
+
+  private async handlePlaylistReorder(draggedId: string, targetId: string): Promise<void> {
+    // Get current playlists order
+    const playlists = this.library.playlists.getAllPlaylists();
+    const draggedIndex = playlists.findIndex(p => p.id === draggedId);
+    const targetIndex = playlists.findIndex(p => p.id === targetId);
+
+    if (draggedIndex === -1 || targetIndex === -1) return;
+
+    // Reorder
+    const [dragged] = playlists.splice(draggedIndex, 1);
+    playlists.splice(targetIndex, 0, dragged);
+
+    // Update order in library (need to save the new order)
+    this.library.playlists.reorderPlaylists(playlists.map(p => p.id));
+
+    this.render();
+    Logger.debug(`Reordered playlist ${draggedId} to position ${targetIndex}`);
   }
 
   private async handleFileUpload(files: FileList): Promise<void> {
@@ -1483,38 +1733,6 @@ export class LocalLibraryApp extends Application {
           }
         },
         default: 'add'
-      }).render(true);
-    });
-  }
-
-  private async promptPlaylistName(): Promise<string | null> {
-    return new Promise((resolve) => {
-      new Dialog({
-        title: 'Create Playlist',
-        content: `
-          <form>
-            <div class="form-group">
-              <label>Playlist Name:</label>
-              <input type="text" name="playlist-name" autofocus />
-            </div>
-          </form>
-        `,
-        buttons: {
-          create: {
-            icon: '<i class="fas fa-check"></i>',
-            label: 'Create',
-            callback: (html: JQuery) => {
-              const name = (html.find('[name="playlist-name"]').val() as string || '').trim();
-              resolve(name || null);
-            }
-          },
-          cancel: {
-            icon: '<i class="fas fa-times"></i>',
-            label: 'Cancel',
-            callback: () => resolve(null)
-          }
-        },
-        default: 'create'
       }).render(true);
     });
   }

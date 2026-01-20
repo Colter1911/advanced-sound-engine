@@ -126,6 +126,33 @@ export class PlaylistManager {
   }
 
   /**
+   * Reorder playlists based on new order array of IDs
+   */
+  reorderPlaylists(orderedIds: string[]): void {
+    const newMap = new Map<string, Playlist>();
+
+    // First, add playlists in the new order
+    orderedIds.forEach(id => {
+      const playlist = this.playlists.get(id);
+      if (playlist) {
+        newMap.set(id, playlist);
+      }
+    });
+
+    // Add any remaining playlists that weren't in the order array
+    this.playlists.forEach((playlist, id) => {
+      if (!newMap.has(id)) {
+        newMap.set(id, playlist);
+      }
+    });
+
+    this.playlists = newMap;
+    this.notifyChange();
+    Logger.info('Playlists reordered');
+  }
+
+
+  /**
    * Toggle playlist favorite status
    */
   togglePlaylistFavorite(id: string): boolean {

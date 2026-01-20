@@ -3,7 +3,7 @@
   <div class="ase-search-input-wrapper">
     <i class="fa-solid fa-magnifying-glass"></i>
     <input type="text" class="ase-search-input" placeholder="Search..." value="{{searchQuery}}">
-    <i class="fa-solid fa-xmark ase-search-clear" style="display: none;"></i>
+    <i class="fa-solid fa-xmark ase-search-clear"></i>
   </div>
 
   <div class="ase-filter-buttons">
@@ -15,18 +15,18 @@
       data-channel="sfx">SFX</button>
   </div>
 
+  <!-- Tags inline -->
+  <div class="ase-tags-inline">
+    {{#each tags}}
+    <span class="ase-tag {{#if this.selected}}selected{{/if}}" data-action="toggle-tag"
+      data-tag="{{this.value}}">#{{this.name}}</span>
+    {{/each}}
+    <button class="ase-add-tag-mini" data-action="add-tag"><i class="fa-solid fa-plus"></i></button>
+  </div>
+
   <div class="ase-add-track-btn" data-action="add-track">
     Add Track
   </div>
-</div>
-
-<!-- Tags Row -->
-<div class="ase-tags-row-top">
-  {{#each tags}}
-  <span class="ase-tag {{#if this.selected}}selected{{/if}}" data-action="toggle-tag"
-    data-tag="{{this.value}}">#{{this.name}}</span>
-  {{/each}}
-  <button class="ase-add-tag-mini" data-action="add-tag"><i class="fa-solid fa-plus"></i></button>
 </div>
 
 <!-- Workspace (Sidebar + Main) -->
@@ -36,18 +36,20 @@
     <!-- Playlists -->
     <div class="ase-sidebar-section">
       <div class="ase-sidebar-header">
-        <span><i class="fa-solid fa-list"></i> Playlists</span>
-        <button class="ase-btn-small-blue" data-action="create-playlist">Create Playlist</button>
+        <span class="ase-sidebar-title"><i class="fa-solid fa-list"></i> Playlists</span>
+        <button class="ase-add-track-btn ase-btn-compact" data-action="create-playlist">+ Create</button>
       </div>
-      <ul class="ase-list-group">
+      <ul class="ase-list-group" data-sortable="playlists">
         {{#each playlists}}
         <li class="ase-list-item {{#if this.selected}}active{{/if}}" data-playlist-id="{{this.id}}"
-          data-action="select-playlist">
-          <span>{{this.name}}</span>
+          data-action="select-playlist" draggable="true">
+          <span>{{this.name}} ({{this.trackCount}})</span>
           <div class="ase-icons">
-            <i class="fa-solid fa-music"></i>
+            <i class="ase-icon-add-queue {{#if this.inQueue}}active{{/if}}" data-action="toggle-playlist-queue"
+              data-playlist-id="{{this.id}}" title="Add to Queue"></i>
             <i class="fa-solid fa-star {{#if this.favorite}}active{{/if}}"
-              style="{{#if this.favorite}}color: var(--accent-cyan);{{/if}}" data-action="toggle-playlist-favorite"></i>
+              style="{{#if this.favorite}}color: var(--accent-cyan);{{/if}}" data-action="toggle-playlist-favorite"
+              data-playlist-id="{{this.id}}" title="Favorite"></i>
           </div>
         </li>
         {{/each}}

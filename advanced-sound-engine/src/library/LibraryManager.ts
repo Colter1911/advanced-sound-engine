@@ -216,8 +216,10 @@ export class LibraryManager {
    * Add a custom tag explicitly (even if not used on any track)
    */
   addCustomTag(tag: string): void {
-    if (!this.customTags.has(tag)) {
-      this.customTags.add(tag);
+    // Normalize: trim and remove leading #
+    const normalizedTag = tag.trim().replace(/^#/, '');
+    if (normalizedTag && !this.customTags.has(normalizedTag)) {
+      this.customTags.add(normalizedTag);
       this.scheduleSave();
     }
   }

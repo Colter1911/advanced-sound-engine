@@ -7,6 +7,7 @@ import { PlayerVolumePanel } from '@ui/PlayerVolumePanel';
 import { LocalLibraryApp } from '@ui/LocalLibraryApp';
 import { AdvancedSoundEngineApp } from '@ui/AdvancedSoundEngineApp';
 import { LibraryManager } from '@lib/LibraryManager';
+import { PlaybackQueueManager } from './queue/PlaybackQueueManager';
 import { Logger } from '@utils/logger';
 
 const MODULE_ID = 'advanced-sound-engine';
@@ -33,6 +34,7 @@ declare global {
       engine?: AudioEngine | PlayerAudioEngine;
       socket?: SocketManager;
       library?: LibraryManager;
+      queue?: PlaybackQueueManager;
     };
   }
 }
@@ -230,13 +232,17 @@ Hooks.once('ready', async () => {
     await initializePlayer();
   }
 
+  // Initialize queue manager (runtime, no persistence)
+  const queueManager = new PlaybackQueueManager();
+
   window.ASE = {
     isGM,
     openPanel: isGM ? openMainApp : openVolumePanel,
     openLibrary: () => isGM && openMainApp('library'),
     engine: isGM ? gmEngine ?? undefined : playerEngine ?? undefined,
     socket: socketManager ?? undefined,
-    library: isGM ? libraryManager ?? undefined : undefined
+    library: isGM ? libraryManager ?? undefined : undefined,
+    queue: queueManager
   };
 
   setupAutoplayHandler();
