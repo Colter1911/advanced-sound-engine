@@ -1,6 +1,6 @@
 var H = Object.defineProperty;
-var X = (d, i, t) => i in d ? H(d, i, { enumerable: !0, configurable: !0, writable: !0, value: t }) : d[i] = t;
-var m = (d, i, t) => X(d, typeof i != "symbol" ? i + "" : i, t);
+var K = (d, i, t) => i in d ? H(d, i, { enumerable: !0, configurable: !0, writable: !0, value: t }) : d[i] = t;
+var m = (d, i, t) => K(d, typeof i != "symbol" ? i + "" : i, t);
 const F = "ASE", l = {
   info: (d, ...i) => {
     console.log(`${F} | ${d}`, ...i);
@@ -145,7 +145,7 @@ const Q = [
   ".aac",
   ".flac",
   ".opus"
-], K = {
+], X = {
   ".mp3": "audio/mpeg",
   ".ogg": "audio/ogg",
   ".wav": "audio/wav",
@@ -169,7 +169,7 @@ function U(d) {
 }
 function W(d) {
   const i = U(d);
-  return K[i] || null;
+  return X[i] || null;
 }
 function N(d) {
   if (!d || typeof d != "string")
@@ -830,41 +830,41 @@ class st extends Application {
     this.library.scanMissingDurations().then(() => {
     }), t = this.applyFilters(t), t = this.applySorting(t);
     const n = this.library.getOrderedFavorites().map((h) => {
-      var w, v, x, I;
-      const g = h.type === "track" ? ((v = (w = window.ASE) == null ? void 0 : w.queue) == null ? void 0 : v.hasItem(h.id)) ?? !1 : ((I = (x = window.ASE) == null ? void 0 : x.queue) == null ? void 0 : I.getItems().some((y) => y.playlistId === h.id)) ?? !1;
+      var y, v, S, I;
+      const p = h.type === "track" ? ((v = (y = window.ASE) == null ? void 0 : y.queue) == null ? void 0 : v.hasItem(h.id)) ?? !1 : ((I = (S = window.ASE) == null ? void 0 : S.queue) == null ? void 0 : I.getItems().some((b) => b.playlistId === h.id)) ?? !1;
       if (h.type === "track") {
-        const y = this.library.getItem(h.id);
-        return y ? {
-          id: y.id,
-          name: y.name,
+        const b = this.library.getItem(h.id);
+        return b ? {
+          id: b.id,
+          name: b.name,
           type: "track",
-          group: this.inferGroupFromTags(y.tags),
-          inQueue: g
+          group: this.inferGroupFromTags(b.tags),
+          inQueue: p
         } : null;
       } else {
-        const y = this.library.playlists.getPlaylist(h.id);
-        return y ? {
-          id: y.id,
-          name: y.name,
+        const b = this.library.playlists.getPlaylist(h.id);
+        return b ? {
+          id: b.id,
+          name: b.name,
           type: "playlist",
-          inQueue: g
+          inQueue: p
         } : null;
       }
     }).filter((h) => h !== null), o = new Set(a);
     this.filterState.selectedTags.forEach((h) => o.add(h));
     const c = Array.from(o).sort().map((h) => {
-      const g = h.startsWith("#") ? h.substring(1) : h, w = this.filterState.selectedTags.has(h) || this.filterState.selectedTags.has(g);
+      const p = h.startsWith("#") ? h.substring(1) : h, y = this.filterState.selectedTags.has(h) || this.filterState.selectedTags.has(p);
       return {
-        name: g,
+        name: p,
         // Display name (without #)
-        value: g,
+        value: p,
         // Data value (also normalized for consistency)
-        selected: w
+        selected: y
       };
     }), u = e.map((h) => ({
       ...this.getPlaylistViewData(h),
       selected: h.id === this.filterState.selectedPlaylistId
-    })), f = this.filterState.selectedChannels.size === 3, p = !!(this.filterState.searchQuery || !f || this.filterState.selectedPlaylistId || this.filterState.selectedTags.size > 0);
+    })), f = this.filterState.selectedChannels.size === 3, g = !!(this.filterState.searchQuery || !f || this.filterState.selectedPlaylistId || this.filterState.selectedTags.size > 0);
     return {
       items: t.map((h) => this.getItemViewData(h)),
       playlists: u,
@@ -885,7 +885,7 @@ class st extends Application {
       },
       selectedPlaylistId: this.filterState.selectedPlaylistId,
       sortBy: this.filterState.sortBy,
-      hasActiveFilters: p
+      hasActiveFilters: g
     };
   }
   getPlaylistViewData(t) {
@@ -1235,8 +1235,8 @@ class st extends Application {
         this.library.playlists.addTrackToPlaylist(r, e, f), this.render(), (c = ui.notifications) == null || c.info(`Added "${a.name}" to playlist`);
       } catch (f) {
         l.error("Failed to add track to playlist:", f);
-        const p = f instanceof Error ? f.message : "Unknown error";
-        (u = ui.notifications) == null || u.error(`Failed to add to playlist: ${p}`);
+        const g = f instanceof Error ? f.message : "Unknown error";
+        (u = ui.notifications) == null || u.error(`Failed to add to playlist: ${g}`);
       }
   }
   onTrackMenu(t) {
@@ -1278,16 +1278,16 @@ class st extends Application {
     if (a === "playlist") {
       const u = this.library.playlists.getPlaylist(e);
       if (!u) return;
-      if (window.ASE.queue.getItems().some((p) => p.playlistId === e))
+      if (window.ASE.queue.getItems().some((g) => g.playlistId === e))
         window.ASE.queue.getItems().filter((h) => h.playlistId === e).forEach((h) => window.ASE.queue.removeItem(h.id)), (r = ui.notifications) == null || r.info(`Removed "${u.name}" from queue`);
       else {
-        const p = u.items.map((h) => ({
+        const g = u.items.map((h) => ({
           libraryItemId: h.libraryItemId,
           group: h.group || "music",
           volume: h.volume,
           loop: h.loop
         }));
-        window.ASE.queue.addPlaylist(e, p), (n = ui.notifications) == null || n.info(`Added "${u.name}" to queue`);
+        window.ASE.queue.addPlaylist(e, g), (n = ui.notifications) == null || n.info(`Added "${u.name}" to queue`);
       }
     } else {
       const u = this.library.getItem(e);
@@ -1455,8 +1455,8 @@ class st extends Application {
           callback: (n) => {
             var u;
             const o = [];
-            n.find('input[name="tag"]:checked').each((f, p) => {
-              o.push($(p).val());
+            n.find('input[name="tag"]:checked').each((f, g) => {
+              o.push($(g).val());
             });
             const c = (u = n.find('input[name="newTag"]').val()) == null ? void 0 : u.trim();
             c && (o.push(c), this.library.addCustomTag(c)), this.library.updateItem(t, { tags: o }), this.render();
@@ -1697,28 +1697,63 @@ class st extends Application {
     r.splice(o, 0, c), this.library.reorderFavorites(r), this.render(), l.debug(`Reordered favorite ${t} to position ${o}`);
   }
   async handleFileUpload(t) {
-    var r, n, o;
-    if (!((r = game.user) != null && r.isGM)) {
-      (n = ui.notifications) == null || n.warn("Only GM can upload files.");
+    var o, c, u, f, g;
+    if (!((o = game.user) != null && o.isGM)) {
+      (c = ui.notifications) == null || c.warn("Only GM can upload files.");
       return;
     }
-    const e = "data", a = "modules/advanced-sound-engine/uploaded";
-    let s = 0;
-    for (let c = 0; c < t.length; c++) {
-      const u = t[c];
-      try {
-        const f = await FilePicker.upload(e, a, u, {});
-        f.path && (await this.library.addItem(
-          f.path,
-          u.name.split(".")[0],
-          "sfx"
-          // Default group for dropped files
-        ), s++);
-      } catch (f) {
-        l.error(`Failed to upload ${u.name}:`, f);
-      }
+    const e = Array.from(t).filter((h) => {
+      var y;
+      const p = (y = h.name.split(".").pop()) == null ? void 0 : y.toLowerCase();
+      return ["mp3", "ogg", "wav", "flac", "webm", "m4a", "aac"].includes(p || "");
+    });
+    if (e.length === 0) {
+      (u = ui.notifications) == null || u.warn("No valid audio files found. Supported formats: mp3, ogg, wav, flac, webm, m4a, aac");
+      return;
     }
-    s > 0 && ((o = ui.notifications) == null || o.info(`Imported ${s} files.`), this.render());
+    const a = "data", s = "ase_audio";
+    try {
+      await FilePicker.createDirectory(a, s, {});
+    } catch (h) {
+      l.debug("Directory creation skipped (might already exist):", h);
+    }
+    let r = 0, n = 0;
+    for (const h of e)
+      try {
+        const p = await FilePicker.upload(a, s, h, {});
+        if (p.path) {
+          const y = this.detectChannelFromFilename(h.name), v = await this.library.addItem(
+            p.path,
+            h.name.split(".")[0],
+            // Remove extension
+            y
+          );
+          if (this.filterState.selectedPlaylistId)
+            try {
+              this.library.playlists.addTrackToPlaylist(
+                this.filterState.selectedPlaylistId,
+                v.id,
+                y
+              );
+            } catch {
+            }
+          r++;
+        }
+      } catch (p) {
+        l.error(`Failed to upload ${h.name}:`, p), n++;
+      }
+    if (r > 0) {
+      const h = this.filterState.selectedPlaylistId ? " and added to active playlist" : "";
+      (f = ui.notifications) == null || f.info(`Imported ${r} file(s)${h}`), this.render();
+    }
+    n > 0 && ((g = ui.notifications) == null || g.warn(`Failed to import ${n} file(s)`));
+  }
+  /**
+   * Smart channel detection based on filename keywords
+   */
+  detectChannelFromFilename(t) {
+    const e = t.toLowerCase();
+    return ["music", "song", "theme", "bgm", "soundtrack", "score", "melody", "музык"].some((n) => e.includes(n)) ? "music" : ["ambient", "ambience", "atmosphere", "environment", "background", "nature", "wind", "rain", "forest", "cave", "амбиент", "окружен"].some((n) => e.includes(n)) ? "ambience" : ["sfx", "sound", "effect", "fx", "hit", "impact", "explosion", "spell", "attack", "footstep", "door", "sword", "интерфейс", "эффект"].some((n) => e.includes(n)) ? "sfx" : "music";
   }
   async handleDropTrackToPlaylist(t, e) {
     var r, n, o;
@@ -1771,7 +1806,7 @@ class st extends Application {
    * Import single PlaylistSound track
    */
   async handlePlaylistSoundImport(t) {
-    var c, u, f, p, h, g, w;
+    var c, u, f, g, h, p, y;
     const e = await fromUuid(t.uuid);
     if (!e) {
       (c = ui.notifications) == null || c.error("Failed to resolve playlist sound");
@@ -1783,7 +1818,7 @@ class st extends Application {
       return;
     }
     if (this.library.findByUrl(a)) {
-      (p = ui.notifications) == null || p.warn(`Track "${s}" already exists in library`);
+      (g = ui.notifications) == null || g.warn(`Track "${s}" already exists in library`);
       return;
     }
     const n = this.mapFoundryChannelToASE(e.channel), o = await this.library.addItem(a, s, n);
@@ -1797,10 +1832,10 @@ class st extends Application {
         const v = this.library.playlists.getPlaylist(this.filterState.selectedPlaylistId);
         (h = ui.notifications) == null || h.info(`Added "${s}" to library and playlist "${v == null ? void 0 : v.name}"`);
       } catch {
-        (g = ui.notifications) == null || g.info(`Added "${s}" to library`);
+        (p = ui.notifications) == null || p.info(`Added "${s}" to library`);
       }
     else
-      (w = ui.notifications) == null || w.info(`Added "${s}" to library`);
+      (y = ui.notifications) == null || y.info(`Added "${s}" to library`);
     this.render();
   }
   /**
@@ -1816,29 +1851,29 @@ class st extends Application {
       }
       l.info(`Importing Foundry playlist: ${o.name} (${o.sounds.size} tracks)`);
       const c = this.generateUniquePlaylistName(o.name), u = this.library.playlists.createPlaylist(c);
-      let f = 0, p = 0;
-      for (const g of o.sounds) {
-        const w = g.path || ((a = g.sound) == null ? void 0 : a.path);
-        if (!w) {
-          l.warn(`Skipping sound "${g.name}" - no path`);
+      let f = 0, g = 0;
+      for (const p of o.sounds) {
+        const y = p.path || ((a = p.sound) == null ? void 0 : a.path);
+        if (!y) {
+          l.warn(`Skipping sound "${p.name}" - no path`);
           continue;
         }
-        const v = g.channel || o.channel;
-        let x = "music";
-        v === "environment" ? x = "ambience" : v === "interface" ? x = "sfx" : (v === "music" || !v) && (x = "music");
-        let I = (s = this.library.findByUrl(w)) == null ? void 0 : s.id;
+        const v = p.channel || o.channel;
+        let S = "music";
+        v === "environment" ? S = "ambience" : v === "interface" ? S = "sfx" : (v === "music" || !v) && (S = "music");
+        let I = (s = this.library.findByUrl(y)) == null ? void 0 : s.id;
         if (I)
-          p++;
+          g++;
         else
           try {
-            I = (await this.library.addItem(w, g.name, x)).id, f++;
-          } catch (y) {
-            l.error(`Failed to add track "${g.name}":`, y);
+            I = (await this.library.addItem(y, p.name, S)).id, f++;
+          } catch (b) {
+            l.error(`Failed to add track "${p.name}":`, b);
             continue;
           }
-        this.library.playlists.addTrackToPlaylist(u.id, I, x);
+        this.library.playlists.addTrackToPlaylist(u.id, I, S);
       }
-      const h = `Imported playlist "${c}": ${f} new tracks${p > 0 ? `, ${p} already in library` : ""}`;
+      const h = `Imported playlist "${c}": ${f} new tracks${g > 0 ? `, ${g} already in library` : ""}`;
       (r = ui.notifications) == null || r.info(h), this.render();
     } catch (o) {
       l.error("Failed to import Foundry playlist:", o), (n = ui.notifications) == null || n.error("Failed to import playlist");
@@ -3364,7 +3399,7 @@ class ut {
   }
 }
 const _ = "advanced-sound-engine";
-let T = null, b = null, E = null, k = null, P = null, S = null;
+let k = null, T = null, E = null, w = null, P = null, x = null;
 Hooks.on("getSceneControlButtons", (d) => {
   var i;
   try {
@@ -3454,35 +3489,35 @@ Hooks.once("init", () => {
 Hooks.once("ready", async () => {
   var t;
   const d = ((t = game.user) == null ? void 0 : t.isGM) ?? !1;
-  l.info(`Starting Advanced Sound Engine (${d ? "GM" : "Player"})...`), S = new it(), d ? await ht() : await ft();
+  l.info(`Starting Advanced Sound Engine (${d ? "GM" : "Player"})...`), x = new it(), d ? await ht() : await ft();
   const i = new ut();
   window.ASE = {
     isGM: d,
     openPanel: d ? B : pt,
     openLibrary: () => d && B("library"),
-    engine: d ? T ?? void 0 : k ?? void 0,
-    socket: S ?? void 0,
+    engine: d ? k ?? void 0 : w ?? void 0,
+    socket: x ?? void 0,
     library: d ? E ?? void 0 : void 0,
     queue: i
   }, gt(), l.info("Advanced Sound Engine ready");
 });
 async function ht() {
-  E = new dt(), T = new tt(), S.initializeAsGM(T), await T.loadSavedState();
+  E = new dt(), k = new tt(), x.initializeAsGM(k), await k.loadSavedState();
 }
 async function ft() {
-  k = new et(), S.initializeAsPlayer(k);
+  w = new et(), x.initializeAsPlayer(w);
   const d = j.loadSavedVolume();
-  k.setLocalVolume(d);
+  w.setLocalVolume(d);
 }
 function B(d, i = !1) {
-  !T || !S || !E || (b && b.rendered ? (d && b.state.activeTab !== d && (b.state.activeTab = d, i = !0), i ? b.render(!1) : b.bringToTop()) : (b = new lt(T, S, E), d && (b.state.activeTab = d), b.render(!0)));
+  !k || !x || !E || (T && T.rendered ? (d && T.state.activeTab !== d && (T.state.activeTab = d, i = !0), i ? T.render(!1) : T.bringToTop()) : (T = new lt(k, x, E), d && (T.state.activeTab = d), T.render(!0)));
 }
 function pt() {
-  k && (P && P.rendered ? P.bringToTop() : (P = new j(k), P.render(!0)));
+  w && (P && P.rendered ? P.bringToTop() : (P = new j(w), P.render(!0)));
 }
 function gt() {
   const d = () => {
-    T == null || T.resume(), k == null || k.resume();
+    k == null || k.resume(), w == null || w.resume();
   };
   document.addEventListener("click", d, { once: !0 }), document.addEventListener("keydown", d, { once: !0 }), Hooks.once("canvasReady", d);
 }
@@ -3516,6 +3551,6 @@ function yt() {
   });
 }
 Hooks.once("closeGame", () => {
-  b == null || b.close(), P == null || P.close(), S == null || S.dispose(), T == null || T.dispose(), k == null || k.dispose(), E == null || E.dispose();
+  T == null || T.close(), P == null || P.close(), x == null || x.dispose(), k == null || k.dispose(), w == null || w.dispose(), E == null || E.dispose();
 });
 //# sourceMappingURL=module.js.map

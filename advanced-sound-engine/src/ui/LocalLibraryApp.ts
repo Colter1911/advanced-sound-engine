@@ -1687,37 +1687,108 @@ export class LocalLibraryApp extends Application {
       return;
     }
 
-    const targetSource = 'data';
-    const targetDir = 'modules/advanced-sound-engine/uploaded';
+    // Validate audio files
+    const audioFiles = Array.from(files).filter(file => {
+      const ext = file.name.split('.').pop()?.toLowerCase();
+      return ['mp3', 'ogg', 'wav', 'flac', 'webm', 'm4a', 'aac'].includes(ext || '');
+    });
 
-    // Ensure directory exists (optional, FilePicker usually handles specifics or returns error)
-    // We'll just try to upload.
+    if (audioFiles.length === 0) {
+      ui.notifications?.warn('No valid audio files found. Supported formats: mp3, ogg, wav, flac, webm, m4a, aac');
+      return;
+    }
+
+    // Upload to dedicated ase_audio folder (separate from worlds and modules)
+    const targetSource = 'data';
+    const targetDir = 'ase_audio';
+
+    // Ensure directory exists (create if needed)
+    try {
+      await FilePicker.createDirectory(targetSource, targetDir, {});
+    } catch (err) {
+      // Directory might already exist, ignore error
+      Logger.debug('Directory creation skipped (might already exist):', err);
+    }
 
     let importedCount = 0;
+    let failedCount = 0;
 
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
+    for (const file of audioFiles) {
       try {
-        // Upload
+        // Upload file to server
         const response = await FilePicker.upload(targetSource, targetDir, file, {}) as any;
         if (response.path) {
+          // Smart channel detection based on filename
+          const channel = this.detectChannelFromFilename(file.name);
+
           // Add to library
-          await this.library.addItem(
+          const track = await this.library.addItem(
             response.path,
-            file.name.split('.')[0],
-            'sfx' // Default group for dropped files
+            file.name.split('.')[0], // Remove extension
+            channel
           );
+
+          // Add to active playlist if one is selected
+          if (this.filterState.selectedPlaylistId) {
+            try {
+              this.library.playlists.addTrackToPlaylist(
+                this.filterState.selectedPlaylistId,
+                track.id,
+                channel
+              );
+            } catch (err) {
+              // Track might already be in playlist, ignore
+            }
+          }
+
           importedCount++;
         }
       } catch (err) {
         Logger.error(`Failed to upload ${file.name}:`, err);
+        failedCount++;
       }
     }
 
+    // Show summary notification
     if (importedCount > 0) {
-      ui.notifications?.info(`Imported ${importedCount} files.`);
+      const playlistMsg = this.filterState.selectedPlaylistId
+        ? ` and added to active playlist`
+        : '';
+      ui.notifications?.info(`Imported ${importedCount} file(s)${playlistMsg}`);
       this.render();
     }
+
+    if (failedCount > 0) {
+      ui.notifications?.warn(`Failed to import ${failedCount} file(s)`);
+    }
+  }
+
+  /**
+   * Smart channel detection based on filename keywords
+   */
+  private detectChannelFromFilename(filename: string): TrackGroup {
+    const lowerName = filename.toLowerCase();
+
+    // Music keywords
+    const musicKeywords = ['music', 'song', 'theme', 'bgm', 'soundtrack', 'score', 'melody', 'музык'];
+    if (musicKeywords.some(keyword => lowerName.includes(keyword))) {
+      return 'music';
+    }
+
+    // Ambience keywords
+    const ambienceKeywords = ['ambient', 'ambience', 'atmosphere', 'environment', 'background', 'nature', 'wind', 'rain', 'forest', 'cave', 'амбиент', 'окружен'];
+    if (ambienceKeywords.some(keyword => lowerName.includes(keyword))) {
+      return 'ambience';
+    }
+
+    // SFX keywords
+    const sfxKeywords = ['sfx', 'sound', 'effect', 'fx', 'hit', 'impact', 'explosion', 'spell', 'attack', 'footstep', 'door', 'sword', 'интерфейс', 'эффект'];
+    if (sfxKeywords.some(keyword => lowerName.includes(keyword))) {
+      return 'sfx';
+    }
+
+    // Default to music if no keywords detected
+    return 'music';
   }
 
   private async handleDropTrackToPlaylist(itemId: string, playlistId: string): Promise<void> {

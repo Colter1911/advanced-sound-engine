@@ -200,6 +200,21 @@ window.ASE.queue  // PlaybackQueueManager instance
     *   **Channel Assignment Bug**: Fixed critical bug in `LibraryManager.addItem` where the `group` parameter was hardcoded to `'music'`, causing all imported tracks to ignore their intended channel. Now correctly uses the passed `group` parameter.
     *   **Channel Mapping**: Foundry channel values are now properly mapped using string comparison (music/environment/interface).
 
+8.  **File System Drag-and-Drop (Jan 22)**:
+    *   **Local File Import**: Drag audio files from Windows Explorer (or any file manager) directly into ASE library
+    *   **Smart Channel Detection**: Automatically detects channel based on filename keywords:
+        *   Music: "music", "song", "theme", "bgm", "soundtrack", "score", "melody", "музык"
+        *   Ambience: "ambient", "ambience", "atmosphere", "environment", "background", "nature", "wind", "rain", "forest", "cave", "амбиент", "окружен"
+        *   SFX: "sfx", "sound", "effect", "fx", "hit", "impact", "explosion", "spell", "attack", "footstep", "door", "sword", "интерфейс", "эффект"
+    *   **File Storage**: Files are uploaded to `Data/ase_audio/` folder
+        *   Separate from worlds (no impact on world load times)
+        *   Separate from modules (safe from module updates)
+        *   Directory auto-created on first file upload
+    *   **File Validation**: Supports mp3, ogg, wav, flac, webm, m4a, aac formats
+    *   **Auto-Add to Playlist**: Automatically adds files to currently selected playlist
+    *   **Batch Import**: Upload multiple files at once with summary notification
+    *   **Requires GM**: Only GM users can upload files to server
+
 ## Next Session
 - Continue verifying UI interactions.
 - Proceed with detailed playback queue integration.
