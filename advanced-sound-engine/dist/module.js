@@ -1,5 +1,5 @@
-var H = Object.defineProperty;
-var K = (d, i, t) => i in d ? H(d, i, { enumerable: !0, configurable: !0, writable: !0, value: t }) : d[i] = t;
+var Y = Object.defineProperty;
+var K = (d, i, t) => i in d ? Y(d, i, { enumerable: !0, configurable: !0, writable: !0, value: t }) : d[i] = t;
 var m = (d, i, t) => K(d, typeof i != "symbol" ? i + "" : i, t);
 const F = "ASE", l = {
   info: (d, ...i) => {
@@ -1335,60 +1335,73 @@ class st extends Application {
   onDeleteTrack(t) {
     t.preventDefault(), t.stopPropagation();
     const e = String($(t.currentTarget).data("item-id")), a = this.library.getItem(e);
-    a && new Dialog({
-      title: "Delete Track",
-      content: `<p>Are you sure you want to delete "${a.name}"?</p>`,
-      buttons: {
-        delete: {
-          icon: '<i class="fas fa-trash"></i>',
-          label: "Delete",
-          callback: () => {
-            var s;
-            this.library.removeItem(e), this.render(), (s = ui.notifications) == null || s.info(`Deleted "${a.name}"`);
-          }
-        },
-        cancel: {
-          icon: '<i class="fas fa-times"></i>',
-          label: "Cancel"
-        }
-      },
+    if (!a) return;
+    const s = !!this.filterState.selectedPlaylistId, r = {
+      title: s ? "Manage Track" : "Delete Track",
+      content: `<p>${s ? `What would you like to do with "${a.name}"?` : `Are you sure you want to delete "${a.name}"?`}</p>`,
+      buttons: {},
       default: "cancel"
-    }).render(!0);
+    };
+    s && (r.buttons.removeFromPlaylist = {
+      icon: '<i class="fas fa-minus-circle"></i>',
+      label: "Remove from Playlist",
+      callback: () => {
+        this.filterState.selectedPlaylistId && this.removeTrackFromPlaylist(this.filterState.selectedPlaylistId, e);
+      }
+    }), r.buttons.delete = {
+      icon: '<i class="fas fa-trash"></i>',
+      label: s ? "Delete Track (Global)" : "Delete",
+      callback: () => {
+        var n;
+        this.library.removeItem(e), this.render(), (n = ui.notifications) == null || n.info(`Deleted "${a.name}"`);
+      }
+    }, r.buttons.cancel = {
+      icon: '<i class="fas fa-times"></i>',
+      label: "Cancel"
+    }, new Dialog(r).render(!0);
   }
   onTrackContext(t) {
     t.preventDefault(), t.stopPropagation();
     const e = String($(t.currentTarget).data("item-id"));
     if (!this.library.getItem(e)) return;
     $(".ase-context-menu").remove();
-    const s = $(`
+    const s = !!this.filterState.selectedPlaylistId, r = "Delete Track";
+    let n = `
       <div class="ase-context-menu" style="position: fixed; z-index: 9999; background: #1e283d; border: 1px solid #334155; border-radius: 4px; min-width: 150px; box-shadow: 0 4px 12px rgba(0,0,0,0.4);">
         <div class="ase-menu-item" data-action="rename" style="padding: 8px 12px; cursor: pointer; color: #e5e5e5; font-size: 12px;">
           <i class="fa-solid fa-pen" style="width: 16px;"></i> Rename
         </div>
         <div class="ase-menu-item" data-action="add-to-playlist" style="padding: 8px 12px; cursor: pointer; color: #e5e5e5; font-size: 12px;">
           <i class="fa-solid fa-list" style="width: 16px;"></i> Add to Playlist
-        </div>
+        </div>`;
+    s && (n += `
+        <div class="ase-menu-item" data-action="remove-from-playlist" style="padding: 8px 12px; cursor: pointer; color: #e5e5e5; font-size: 12px;">
+          <i class="fa-solid fa-minus-circle" style="width: 16px;"></i> Remove from Playlist
+        </div>`), n += `
         <div class="ase-menu-item" data-action="edit-tags" style="padding: 8px 12px; cursor: pointer; color: #e5e5e5; font-size: 12px;">
           <i class="fa-solid fa-tags" style="width: 16px;"></i> Edit Tags
         </div>
         <div style="border-top: 1px solid #334155; margin: 4px 0;"></div>
         <div class="ase-menu-item" data-action="delete" style="padding: 8px 12px; cursor: pointer; color: #f87171; font-size: 12px;">
-          <i class="fa-solid fa-trash" style="width: 16px;"></i> Delete
+          <i class="fa-solid fa-trash" style="width: 16px;"></i> ${r}
         </div>
       </div>
-    `);
-    s.css({ top: t.clientY, left: t.clientX }), $("body").append(s), s.find(".ase-menu-item").on("mouseenter", (r) => $(r.currentTarget).css("background", "#2d3a52")), s.find(".ase-menu-item").on("mouseleave", (r) => $(r.currentTarget).css("background", "transparent")), s.find('[data-action="rename"]').on("click", async () => {
-      s.remove(), await this.renameTrack(e);
-    }), s.find('[data-action="add-to-playlist"]').on("click", async () => {
-      s.remove(), await this.addTrackToPlaylistDialog(e);
-    }), s.find('[data-action="edit-tags"]').on("click", () => {
-      s.remove(), this.showTagEditor(e);
-    }), s.find('[data-action="delete"]').on("click", () => {
-      s.remove(), this.onDeleteTrack({ preventDefault: () => {
+    `;
+    const o = $(n);
+    o.css({ top: t.clientY, left: t.clientX }), $("body").append(o), o.find(".ase-menu-item").on("mouseenter", (c) => $(c.currentTarget).css("background", "#2d3a52")), o.find(".ase-menu-item").on("mouseleave", (c) => $(c.currentTarget).css("background", "transparent")), o.find('[data-action="rename"]').on("click", async () => {
+      o.remove(), await this.renameTrack(e);
+    }), o.find('[data-action="add-to-playlist"]').on("click", async () => {
+      o.remove(), await this.addTrackToPlaylistDialog(e);
+    }), s && o.find('[data-action="remove-from-playlist"]').on("click", async () => {
+      o.remove(), this.filterState.selectedPlaylistId && await this.removeTrackFromPlaylist(this.filterState.selectedPlaylistId, e);
+    }), o.find('[data-action="edit-tags"]').on("click", () => {
+      o.remove(), this.showTagEditor(e);
+    }), o.find('[data-action="delete"]').on("click", () => {
+      o.remove(), this.onDeleteTrack({ preventDefault: () => {
       }, stopPropagation: () => {
       }, currentTarget: $(`<div data-item-id="${e}">`)[0] });
     }), setTimeout(() => {
-      $(document).one("click", () => s.remove());
+      $(document).one("click", () => o.remove());
     }, 10);
   }
   onTrackTagContext(t) {
@@ -1909,6 +1922,14 @@ class st extends Application {
       s++;
     return `${t} (${s})`;
   }
+  async removeTrackFromPlaylist(t, e) {
+    var a, s;
+    try {
+      this.library.playlists.removeLibraryItemFromPlaylist(t, e), this.render(), (a = ui.notifications) == null || a.info("Removed track from playlist");
+    } catch (r) {
+      l.error("Failed to remove track from playlist:", r), (s = ui.notifications) == null || s.error("Failed to remove track from playlist");
+    }
+  }
   /**
    * Highlight playlists in sidebar that contain the specified track
    */
@@ -2347,7 +2368,7 @@ class st extends Application {
       }
   }
 }
-function V(d, i) {
+function G(d, i) {
   let t = 0, e = null;
   return function(...a) {
     const s = Date.now(), r = i - (s - t);
@@ -2364,9 +2385,9 @@ function rt(d, i) {
     }, i);
   };
 }
-const Y = "advanced-sound-engine";
+const H = "advanced-sound-engine";
 function nt() {
-  return game.settings.get(Y, "maxSimultaneousTracks") || 8;
+  return game.settings.get(H, "maxSimultaneousTracks") || 8;
 }
 class ot extends Application {
   constructor(t, e, a) {
@@ -2380,7 +2401,7 @@ class ot extends Application {
     return foundry.utils.mergeObject(super.defaultOptions, {
       id: "ase-sound-mixer",
       title: "Sound Mixer (GM)",
-      template: `modules/${Y}/templates/mixer.hbs`,
+      template: `modules/${H}/templates/mixer.hbs`,
       classes: ["ase-mixer"],
       width: 550,
       height: "auto",
@@ -2439,7 +2460,7 @@ class ot extends Application {
       const o = n.target.checked;
       this.socket.setSyncEnabled(o), this.updateSyncIndicator(t, o);
     });
-    const e = V((n, o) => {
+    const e = G((n, o) => {
       n === "master" ? (this.engine.setMasterVolume(o), this.socket.broadcastChannelVolume("master", o)) : (this.engine.setChannelVolume(n, o), this.socket.broadcastChannelVolume(n, o));
     }, 50);
     t.find(".ase-channel-slider").on("input", (n) => {
@@ -2466,14 +2487,14 @@ class ot extends Application {
       const o = $(n.currentTarget).data("track-id"), c = n.target.value;
       this.engine.setTrackChannel(o, c);
     });
-    const s = V((n, o) => {
+    const s = G((n, o) => {
       this.engine.setTrackVolume(n, o), this.socket.broadcastTrackVolume(n, o);
     }, 50);
     a.on("input", ".ase-volume-slider", (n) => {
       const o = $(n.currentTarget).closest(".ase-track").data("track-id"), c = parseFloat(n.target.value) / 100;
       s(o, c), $(n.currentTarget).siblings(".ase-volume-value").text(`${Math.round(c * 100)}%`);
     });
-    const r = V((n, o) => {
+    const r = G((n, o) => {
       const c = this.engine.getTrack(n), u = (c == null ? void 0 : c.state) === "playing";
       this.engine.seekTrack(n, o), this.socket.broadcastTrackSeek(n, o, u ?? !1);
     }, 100);
@@ -2917,7 +2938,7 @@ class ct {
     this.playlists.clear(), l.warn("All playlists cleared");
   }
 }
-const z = "advanced-sound-engine", G = 1;
+const z = "advanced-sound-engine", V = 1;
 class dt {
   constructor() {
     m(this, "items", /* @__PURE__ */ new Map());
@@ -3206,7 +3227,7 @@ class dt {
         return;
       }
       const e = JSON.parse(t);
-      e.version !== G && l.warn(`Library version mismatch: ${e.version} → ${G}`), this.items.clear(), Object.values(e.items).forEach((a) => {
+      e.version !== V && l.warn(`Library version mismatch: ${e.version} → ${V}`), this.items.clear(), Object.values(e.items).forEach((a) => {
         this.items.set(a.id, a);
       }), this.customTags = new Set(e.customTags || []), this.playlists.load(e.playlists || {}), this.favoritesOrder = e.favoritesOrder || [], l.info(`Library loaded: ${this.items.size} items, ${this.playlists.getAllPlaylists().length} playlists, ${this.customTags.size} custom tags`);
     } catch (t) {
@@ -3221,7 +3242,7 @@ class dt {
         playlists: this.playlists.export(),
         customTags: Array.from(this.customTags),
         favoritesOrder: this.favoritesOrder,
-        version: G,
+        version: V,
         lastModified: Date.now()
       };
       (i = game.settings) == null || i.set(z, "libraryState", JSON.stringify(t)), this.saveScheduled = !1, l.debug(`Library saved: ${this.items.size} items, ${this.playlists.getAllPlaylists().length} playlists`);

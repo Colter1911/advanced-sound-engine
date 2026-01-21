@@ -1043,26 +1043,43 @@ export class LocalLibraryApp extends Application {
     const item = this.library.getItem(itemId);
     if (!item) return;
 
-    new Dialog({
-      title: 'Delete Track',
-      content: `<p>Are you sure you want to delete "${item.name}"?</p>`,
-      buttons: {
-        delete: {
-          icon: '<i class="fas fa-trash"></i>',
-          label: 'Delete',
-          callback: () => {
-            this.library.removeItem(itemId);
-            this.render();
-            ui.notifications?.info(`Deleted "${item.name}"`);
-          }
-        },
-        cancel: {
-          icon: '<i class="fas fa-times"></i>',
-          label: 'Cancel'
-        }
-      },
+    const isInPlaylist = !!this.filterState.selectedPlaylistId;
+
+    const dialogData: any = {
+      title: isInPlaylist ? 'Manage Track' : 'Delete Track',
+      content: `<p>${isInPlaylist ? `What would you like to do with "${item.name}"?` : `Are you sure you want to delete "${item.name}"?`}</p>`,
+      buttons: {},
       default: 'cancel'
-    }).render(true);
+    };
+
+    if (isInPlaylist) {
+      dialogData.buttons.removeFromPlaylist = {
+        icon: '<i class="fas fa-minus-circle"></i>',
+        label: 'Remove from Playlist',
+        callback: () => {
+          if (this.filterState.selectedPlaylistId) {
+            this.removeTrackFromPlaylist(this.filterState.selectedPlaylistId, itemId);
+          }
+        }
+      };
+    }
+
+    dialogData.buttons.delete = {
+      icon: '<i class="fas fa-trash"></i>',
+      label: isInPlaylist ? 'Delete Track (Global)' : 'Delete',
+      callback: () => {
+        this.library.removeItem(itemId);
+        this.render();
+        ui.notifications?.info(`Deleted "${item.name}"`);
+      }
+    };
+
+    dialogData.buttons.cancel = {
+      icon: '<i class="fas fa-times"></i>',
+      label: 'Cancel'
+    };
+
+    new Dialog(dialogData).render(true);
   }
 
   private onTrackContext(event: JQuery.ContextMenuEvent): void {
@@ -1076,23 +1093,37 @@ export class LocalLibraryApp extends Application {
     // Remove existing menus
     $('.ase-context-menu').remove();
 
-    const menu = $(`
+    const isInPlaylist = !!this.filterState.selectedPlaylistId;
+    const deleteLabel = 'Delete Track';
+
+    let menuHtml = `
       <div class="ase-context-menu" style="position: fixed; z-index: 9999; background: #1e283d; border: 1px solid #334155; border-radius: 4px; min-width: 150px; box-shadow: 0 4px 12px rgba(0,0,0,0.4);">
         <div class="ase-menu-item" data-action="rename" style="padding: 8px 12px; cursor: pointer; color: #e5e5e5; font-size: 12px;">
           <i class="fa-solid fa-pen" style="width: 16px;"></i> Rename
         </div>
         <div class="ase-menu-item" data-action="add-to-playlist" style="padding: 8px 12px; cursor: pointer; color: #e5e5e5; font-size: 12px;">
           <i class="fa-solid fa-list" style="width: 16px;"></i> Add to Playlist
-        </div>
+        </div>`;
+
+    if (isInPlaylist) {
+      menuHtml += `
+        <div class="ase-menu-item" data-action="remove-from-playlist" style="padding: 8px 12px; cursor: pointer; color: #e5e5e5; font-size: 12px;">
+          <i class="fa-solid fa-minus-circle" style="width: 16px;"></i> Remove from Playlist
+        </div>`;
+    }
+
+    menuHtml += `
         <div class="ase-menu-item" data-action="edit-tags" style="padding: 8px 12px; cursor: pointer; color: #e5e5e5; font-size: 12px;">
           <i class="fa-solid fa-tags" style="width: 16px;"></i> Edit Tags
         </div>
         <div style="border-top: 1px solid #334155; margin: 4px 0;"></div>
         <div class="ase-menu-item" data-action="delete" style="padding: 8px 12px; cursor: pointer; color: #f87171; font-size: 12px;">
-          <i class="fa-solid fa-trash" style="width: 16px;"></i> Delete
+          <i class="fa-solid fa-trash" style="width: 16px;"></i> ${deleteLabel}
         </div>
       </div>
-    `);
+    `;
+
+    const menu = $(menuHtml);
 
     menu.css({ top: event.clientY, left: event.clientX });
     $('body').append(menu);
@@ -1109,6 +1140,15 @@ export class LocalLibraryApp extends Application {
       menu.remove();
       await this.addTrackToPlaylistDialog(itemId);
     });
+
+    if (isInPlaylist) {
+      menu.find('[data-action="remove-from-playlist"]').on('click', async () => {
+        menu.remove();
+        if (this.filterState.selectedPlaylistId) {
+          await this.removeTrackFromPlaylist(this.filterState.selectedPlaylistId, itemId);
+        }
+      });
+    }
 
     menu.find('[data-action="edit-tags"]').on('click', () => {
       menu.remove();
@@ -2054,6 +2094,17 @@ export class LocalLibraryApp extends Application {
     }
 
     return `${baseName} (${counter})`;
+  }
+
+  private async removeTrackFromPlaylist(playlistId: string, trackId: string): Promise<void> {
+    try {
+      this.library.playlists.removeLibraryItemFromPlaylist(playlistId, trackId);
+      this.render();
+      ui.notifications?.info('Removed track from playlist');
+    } catch (error) {
+      Logger.error('Failed to remove track from playlist:', error);
+      ui.notifications?.error('Failed to remove track from playlist');
+    }
   }
 
   /**
