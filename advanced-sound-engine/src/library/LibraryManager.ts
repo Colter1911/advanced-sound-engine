@@ -63,7 +63,7 @@ export class LibraryManager {
       url,
       name: itemName,
       tags: [],
-      group: 'music',
+      group: group,
       duration: 0,
       favorite: false,
       addedAt: now,

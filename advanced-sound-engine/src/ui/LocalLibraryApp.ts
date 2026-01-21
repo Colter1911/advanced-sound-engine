@@ -398,6 +398,7 @@ export class LocalLibraryApp extends Application {
 
     // Drag and drop
     this.setupDragAndDrop(html);
+    this.setupFoundryDragDrop(html);
 
     // Custom Context Menu for GLOBAL tags only (in top panel)
     html.find('.ase-tags-inline .ase-tag').on('contextmenu', this.onTagContext.bind(this));
@@ -1738,6 +1739,238 @@ export class LocalLibraryApp extends Application {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       ui.notifications?.error(`Failed to add to playlist: ${errorMessage}`);
     }
+  }
+
+  /**
+   * Setup drag-and-drop handler for Foundry native playlists
+   * Allows dragging PlaylistSound items into ASE library
+   */
+  private setupFoundryDragDrop(html: JQuery): void {
+    const dropZone = html.find('.ase-track-player-list');
+    if (!dropZone.length) return;
+
+    // Prevent default drag over to allow drop
+    dropZone.on('dragover', (event: JQuery.DragOverEvent) => {
+      event.preventDefault();
+      event.originalEvent!.dataTransfer!.dropEffect = 'copy';
+      dropZone.addClass('drag-over');
+    });
+
+    // Remove visual feedback on drag leave
+    dropZone.on('dragleave', (event: JQuery.DragLeaveEvent) => {
+      // Only remove if leaving the drop zone itself (not child elements)
+      if (event.currentTarget === event.target) {
+        dropZone.removeClass('drag-over');
+      }
+    });
+
+    // Handle drop
+    dropZone.on('drop', async (event: JQuery.DropEvent) => {
+      event.preventDefault();
+      dropZone.removeClass('drag-over');
+
+      await this.handleFoundryPlaylistDrop(event.originalEvent!);
+    });
+  }
+
+  /**
+   * Handle drop event from Foundry playlist
+   * Routes to appropriate handler based on type (single track vs full playlist)
+   */
+  private async handleFoundryPlaylistDrop(event: DragEvent): Promise<void> {
+    try {
+      // Extract drag data using Foundry's helper (V10+)
+      const dragData = TextEditor.getDragEventData(event) as any;
+
+      if (!dragData) {
+        Logger.debug('No drag data found, ignoring');
+        return;
+      }
+
+      Logger.debug('Foundry drop detected:', dragData.type);
+
+      // Route by type
+      if (dragData.type === 'PlaylistSound') {
+        await this.handlePlaylistSoundImport(dragData);
+
+
+      } else if (dragData.type === 'Playlist') {
+        await this.handlePlaylistImport(dragData);
+      } else {
+        Logger.debug(`Unsupported drop type: ${dragData.type}`);
+      }
+
+    } catch (error) {
+      Logger.error('Failed to handle Foundry playlist drop:', error);
+      ui.notifications?.error('Failed to import track from playlist');
+    }
+  }
+
+  /**
+   * Import single PlaylistSound track
+   */
+  private async handlePlaylistSoundImport(dragData: any): Promise<void> {
+    // Resolve UUID to get the actual PlaylistSound document
+    const sound = await fromUuid(dragData.uuid) as any;
+
+    if (!sound) {
+      ui.notifications?.error('Failed to resolve playlist sound');
+      return;
+    }
+
+    // Extract audio path and name
+    const audioPath = sound.path || sound.sound?.path;
+    const soundName = sound.name;
+
+    if (!audioPath) {
+      ui.notifications?.error('Playlist sound has no audio file path');
+      return;
+    }
+
+    // Check if already exists
+    const existing = this.library.findByUrl(audioPath);
+    if (existing) {
+      ui.notifications?.warn(`Track "${soundName}" already exists in library`);
+      return;
+    }
+
+    // Determine channel (use track channel, or default to 'music')
+    const channel = this.mapFoundryChannelToASE(sound.channel);
+
+    // Add to library
+    const newTrack = await this.library.addItem(audioPath, soundName, channel);
+
+    // If a playlist is currently selected, add the track to it automatically
+    if (this.filterState.selectedPlaylistId) {
+      try {
+        this.library.playlists.addTrackToPlaylist(
+          this.filterState.selectedPlaylistId,
+          newTrack.id,
+          channel
+        );
+        const playlist = this.library.playlists.getPlaylist(this.filterState.selectedPlaylistId);
+        ui.notifications?.info(`Added "${soundName}" to library and playlist "${playlist?.name}"`);
+      } catch (err) {
+        // Track might already be in playlist, just notify about library add
+        ui.notifications?.info(`Added "${soundName}" to library`);
+      }
+    } else {
+      ui.notifications?.info(`Added "${soundName}" to library`);
+    }
+
+    this.render();
+  }
+
+  /**
+   * Import entire Playlist with all tracks
+   */
+  private async handlePlaylistImport(dragData: any): Promise<void> {
+    try {
+      const playlist = await fromUuid(dragData.uuid) as any;
+
+      if (!playlist) {
+        ui.notifications?.error('Failed to resolve Foundry playlist');
+        return;
+      }
+
+      Logger.info(`Importing Foundry playlist: ${playlist.name} (${playlist.sounds.size} tracks)`);
+
+      const playlistName = this.generateUniquePlaylistName(playlist.name);
+      const asePlaylist = this.library.playlists.createPlaylist(playlistName);
+
+      let addedCount = 0;
+      let skippedCount = 0;
+
+      for (const sound of playlist.sounds) {
+        const audioPath = sound.path || sound.sound?.path;
+        if (!audioPath) {
+          Logger.warn(`Skipping sound "${sound.name}" - no path`);
+          continue;
+        }
+
+        // Resolve channel with inheritance
+        const foundryChannel = sound.channel || playlist.channel;
+
+        // Map Foundry channels to ASE channels
+        let channel: TrackGroup = 'music'; // default
+        if (foundryChannel === 'environment') {
+          channel = 'ambience';
+        } else if (foundryChannel === 'interface') {
+          channel = 'sfx';
+        } else if (foundryChannel === 'music' || !foundryChannel) {
+          channel = 'music';
+        }
+
+        let trackId = this.library.findByUrl(audioPath)?.id;
+
+        if (!trackId) {
+          try {
+            const track = await this.library.addItem(audioPath, sound.name, channel);
+            trackId = track.id;
+            addedCount++;
+          } catch (err) {
+            Logger.error(`Failed to add track "${sound.name}":`, err);
+            continue;
+          }
+        } else {
+          skippedCount++;
+        }
+
+        this.library.playlists.addTrackToPlaylist(asePlaylist.id, trackId, channel);
+      }
+
+      const message = `Imported playlist "${playlistName}": ${addedCount} new tracks${skippedCount > 0 ? `, ${skippedCount} already in library` : ''}`;
+      ui.notifications?.info(message);
+      this.render();
+
+    } catch (error) {
+      Logger.error('Failed to import Foundry playlist:', error);
+      ui.notifications?.error('Failed to import playlist');
+    }
+  }
+
+  private resolveFoundryChannel(sound: any, playlist: any): TrackGroup {
+    const effectiveChannel = sound.channel || sound.fadeIn?.type || playlist.channel || playlist.mode;
+
+    return this.mapFoundryChannelToASE(effectiveChannel);
+  }
+
+  private mapFoundryChannelToASE(foundryChannel: string | number | null | undefined): TrackGroup {
+    if (!foundryChannel && foundryChannel !== 0) return 'music';
+
+    // Convert to string for comparison
+    const channelStr = String(foundryChannel).toLowerCase();
+
+    // Foundry uses numeric constants (CONST.AUDIO_CHANNELS):
+    // 0 or "0" = music
+    // 1 or "1" = environment  
+    // 2 or "2" = interface
+    const channelMap: Record<string, TrackGroup> = {
+      '0': 'music',
+      '1': 'ambience',
+      '2': 'sfx',
+      'music': 'music',
+      'environment': 'ambience',
+      'interface': 'sfx'
+    };
+
+    const mapped = channelMap[channelStr] || 'music';
+
+    return mapped;
+  }
+
+  private generateUniquePlaylistName(baseName: string): string {
+    const existingPlaylists = this.library.playlists.getAllPlaylists();
+    const existingNames = new Set(existingPlaylists.map(p => p.name));
+
+    if (!existingNames.has(baseName)) return baseName;
+
+    let counter = 2;
+    while (existingNames.has(`${baseName} (${counter})`)) {
+      counter++;
+    }
+
+    return `${baseName} (${counter})`;
   }
 
   // ─────────────────────────────────────────────────────────────

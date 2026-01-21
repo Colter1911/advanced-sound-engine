@@ -100,8 +100,8 @@
     background-color: #1e2538;
   }
 
-  /* --- Filters Bar (New Top of Content) --- */
-  .ase-filters-bar {
+  /* --- Search Toolbar --- */
+  .ase-search-toolbar {
     display: flex;
     align-items: center;
     padding: 10px;
@@ -109,14 +109,12 @@
     gap: 10px;
     position: relative;
     flex-shrink: 0;
-    border-bottom: 1px solid #2d364e;
   }
 
-  /* --- Search Bar (Now in Content Controls) --- */
   .ase-search-input-wrapper {
     position: relative;
-    width: 100%;
-    /* Fill the Grid center track */
+    flex: 1;
+    max-width: 300px;
   }
 
   .ase-search-input-wrapper input {
@@ -144,6 +142,7 @@
     font-size: 14px;
     cursor: pointer;
     display: block;
+    /* Always visible */
     transition: color 0.2s;
 
     &:hover {
@@ -174,9 +173,9 @@
     font-weight: 500;
 
     &.active {
-      border-color: var(--accent-cyan);
-      color: var(--accent-cyan);
-      box-shadow: 0 0 5px rgba(34, 211, 238, 0.3);
+      border-color: #22c55e;
+      color: #22c55e;
+      box-shadow: 0 0 5px rgba(34, 197, 94, 0.2);
       font-weight: bold;
     }
 
@@ -481,11 +480,8 @@
 }
 
 .ase-content-controls {
-  display: grid;
-  grid-template-columns: 1fr 350px 1fr;
-  /* Fixed 350px center for narrower look */
-  align-items: center;
-  gap: 10px;
+  display: flex;
+  gap: 5px;
   padding: 5px 10px;
   background-color: #161b25;
   flex-shrink: 0;
@@ -508,8 +504,6 @@
 }
 
 .ase-btn-all-tracks {
-  justify-self: start;
-  /* Grid align left */
   width: 100px;
   height: 24px;
   padding: 0;
@@ -528,9 +522,7 @@
 }
 
 .ase-sort-dropdown {
-  justify-self: end;
-  /* Grid align right */
-  margin-left: 0;
+  margin-left: auto;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -567,14 +559,6 @@
   flex: 1;
   overflow-y: auto;
   padding-bottom: 10px;
-  transition: all 0.2s ease;
-
-  // Visual feedback when dragging Foundry playlist sounds
-  &.drag-over {
-    border: 2px dashed var(--accent-cyan);
-    background-color: rgba(34, 211, 238, 0.05);
-    box-shadow: inset 0 0 20px rgba(34, 211, 238, 0.1);
-  }
 }
 
 // Track player item - 2-row compact layout with controls vertically centered

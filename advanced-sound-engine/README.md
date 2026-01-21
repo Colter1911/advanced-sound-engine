@@ -165,7 +165,40 @@ window.ASE.queue  // PlaybackQueueManager instance
 
 3.  **Functionality Fixes**:
     *   **Tag Actions**: Corrected `data-action` attributes in template (`add-tag-item` → `add-tag-to-track`) to match TypeScript listeners.
-    *   **Context Menu**: Added missing `data-tag` attributes to tag spans, restoring the Right-Click context menu (Remove Tag) functionality.
+4.  **UI Layout & Styling Refactor**:
+    *   **Full-Height Sidebar**: Removed top separate toolbar. Sidebar now extends to the full height of the workspace.
+    *   **Centered Search Bar**:
+        *   Moved Search Input to the Content Header (center column).
+        *   Implemented **CSS Grid** (`1fr 350px 1fr`) to ensure strict centering and fixed width (350px) regardless of adjacent buttons.
+    *   **Filters Panel**: Moved Channel Filters and Tags into a dedicated `.ase-filters-bar` at the top of the content area.
+    *   **Visual Consistency**:
+        *   Updated active Filter Button color from Green (`#22c55e`) to **Cyan** (`var(--accent-cyan)`) to match the global theme.
+        *   **Dynamic Track Icons**: Track placeholders now display context-aware icons (`fa-music`, `fa-cloud`, `fa-bolt`) based on the assigned channel group.
+
+5.  **Foundry Playlist Integration (Drag-and-Drop)**:
+    *   **Native Foundry Compatibility**: Library now accepts drag-and-drop from Foundry's native playlists.
+    *   **PlaylistSound Import**: Dragging a PlaylistSound from any Foundry playlist into the ASE library area automatically:
+        *   Extracts the audio file URL using `TextEditor.getDragEventData()` and `fromUuid()`
+        *   Adds track to library with original name
+        *   Maps channel from Foundry to ASE (music/environment/interface → music/ambience/sfx)
+        *   **Auto-Add to Playlist**: If an ASE playlist is currently selected, the track is automatically added to that playlist
+    *   **Visual Feedback**: Drop zone displays cyan dashed border during drag-over
+    *   **Duplicate Detection**: Warns if track URL already exists in library
+
+6.  **Full Playlist Import (Drag-and-Drop)**:
+    *   **Bulk Import**: Dragging an entire Foundry Playlist imports all tracks and creates corresponding ASE playlist
+    *   **Channel Mapping**: Automatically maps Foundry audio channels to ASE channels:
+        *   `music` → `music`
+        *   `environment` → `ambience`
+        *   `interface` → `sfx`
+    *   **Channel Inheritance**: Tracks inherit playlist channel if not explicitly set
+    *   **Smart Naming**: Auto-generates unique playlist names with numeric suffixes if conflicts exist
+    *   **Deduplication**: Skips adding duplicate tracks to library but still adds them to playlist
+    *   **Progress Reporting**: Final notification shows "X new tracks, Y already in library"
+
+7.  **Bug Fixes (Jan 22)**:
+    *   **Channel Assignment Bug**: Fixed critical bug in `LibraryManager.addItem` where the `group` parameter was hardcoded to `'music'`, causing all imported tracks to ignore their intended channel. Now correctly uses the passed `group` parameter.
+    *   **Channel Mapping**: Foundry channel values are now properly mapped using string comparison (music/environment/interface).
 
 ## Next Session
 - Continue verifying UI interactions.
