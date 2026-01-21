@@ -400,6 +400,18 @@ export class LocalLibraryApp extends Application {
     this.setupDragAndDrop(html);
     this.setupFoundryDragDrop(html);
 
+    // Track hover highlighting for playlists
+    html.find('.ase-track-player-item').on('mouseenter', (event: JQuery.MouseEnterEvent) => {
+      const trackId = $(event.currentTarget).data('item-id');
+      if (trackId) {
+        this.highlightPlaylistsContainingTrack(trackId);
+      }
+    });
+
+    html.find('.ase-track-player-item').on('mouseleave', () => {
+      this.clearPlaylistHighlights();
+    });
+
     // Custom Context Menu for GLOBAL tags only (in top panel)
     html.find('.ase-tags-inline .ase-tag').on('contextmenu', this.onTagContext.bind(this));
 
@@ -2042,6 +2054,30 @@ export class LocalLibraryApp extends Application {
     }
 
     return `${baseName} (${counter})`;
+  }
+
+  /**
+   * Highlight playlists in sidebar that contain the specified track
+   */
+  private highlightPlaylistsContainingTrack(trackId: string): void {
+    const playlists = this.library.playlists.getAllPlaylists();
+
+    // Find playlists containing this track
+    const containingPlaylists = playlists.filter(playlist =>
+      playlist.items.some(item => item.libraryItemId === trackId)
+    );
+
+    // Highlight them in the UI
+    containingPlaylists.forEach(playlist => {
+      $(`[data-playlist-id="${playlist.id}"]`).addClass('highlight-contains-track');
+    });
+  }
+
+  /**
+   * Clear all playlist highlights
+   */
+  private clearPlaylistHighlights(): void {
+    $('.highlight-contains-track').removeClass('highlight-contains-track');
   }
 
   // ─────────────────────────────────────────────────────────────

@@ -830,8 +830,8 @@ class st extends Application {
     this.library.scanMissingDurations().then(() => {
     }), t = this.applyFilters(t), t = this.applySorting(t);
     const n = this.library.getOrderedFavorites().map((h) => {
-      var y, v, S, I;
-      const p = h.type === "track" ? ((v = (y = window.ASE) == null ? void 0 : y.queue) == null ? void 0 : v.hasItem(h.id)) ?? !1 : ((I = (S = window.ASE) == null ? void 0 : S.queue) == null ? void 0 : I.getItems().some((b) => b.playlistId === h.id)) ?? !1;
+      var y, v, S, E;
+      const p = h.type === "track" ? ((v = (y = window.ASE) == null ? void 0 : y.queue) == null ? void 0 : v.hasItem(h.id)) ?? !1 : ((E = (S = window.ASE) == null ? void 0 : S.queue) == null ? void 0 : E.getItems().some((b) => b.playlistId === h.id)) ?? !1;
       if (h.type === "track") {
         const b = this.library.getItem(h.id);
         return b ? {
@@ -978,7 +978,12 @@ class st extends Application {
     return e;
   }
   activateListeners(t) {
-    super.activateListeners(t), t.find('[data-action="add-track"]').on("click", this.onAddTrack.bind(this)), t.find(".ase-search-input").on("keydown", this.onSearchKeydown.bind(this)), t.find(".ase-search-input").on("input", this.onSearchInput.bind(this)), t.find(".ase-search-clear").on("click", this.onClearSearch.bind(this)), t.find('[data-action="filter-channel"]').on("click", this._onFilterChannel.bind(this)), t.find('[data-action="sort-change"]').on("change", this.onChangeSort.bind(this)), t.find('[data-action="clear-filters"]').on("click", this.onClearFilters.bind(this)), t.find('[data-action="toggle-tag"]').on("click", this.onToggleTag.bind(this)), t.find('[data-action="add-tag"]').on("click", this.onAddTag.bind(this)), t.find('[data-action="play-track"]').on("click", this.onPlayTrack.bind(this)), t.find('[data-action="pause-track"]').on("click", this.onPauseTrack.bind(this)), t.find('[data-action="stop-track"]').on("click", this.onStopTrack.bind(this)), t.find('[data-action="add-to-queue"]').on("click", this.onAddToQueue.bind(this)), t.find('[data-action="toggle-favorite"]').on("click", this.onToggleFavorite.bind(this)), t.find('[data-action="add-to-playlist"]').on("click", this.onAddToPlaylist.bind(this)), t.find('[data-action="track-menu"]').on("click", this.onTrackMenu.bind(this)), t.find('[data-action="add-tag-to-track"]').on("click", this.onAddTagToTrack.bind(this)), t.find('[data-action="channel-dropdown"]').on("click", this.onChannelDropdown.bind(this)), t.find('[data-action="delete-track"]').on("click", this.onDeleteTrack.bind(this)), t.find(".ase-track-player-item").on("contextmenu", this.onTrackContext.bind(this)), t.find(".ase-track-tags .ase-tag").on("contextmenu", this.onTrackTagContext.bind(this)), t.find('[data-action="select-playlist"]').on("click", this.onSelectPlaylist.bind(this)), t.find('[data-action="create-playlist"]').on("click", this.onCreatePlaylist.bind(this)), t.find('[data-action="toggle-playlist-favorite"]').on("click", this.onTogglePlaylistFavorite.bind(this)), t.find('[data-action="toggle-playlist-queue"]').on("click", this.onTogglePlaylistQueue.bind(this)), t.find('[data-action="playlist-menu"]').on("click", this.onPlaylistMenu.bind(this)), t.find(".ase-list-item[data-playlist-id]").on("contextmenu", this.onPlaylistContext.bind(this)), t.find('[data-action="remove-from-favorites"]').on("click", this.onRemoveFromFavorites.bind(this)), t.find('[data-action="toggle-favorite-queue"]').on("click", this.onToggleFavoriteQueue.bind(this)), this.setupDragAndDrop(t), this.setupFoundryDragDrop(t), t.find(".ase-tags-inline .ase-tag").on("contextmenu", this.onTagContext.bind(this)), l.debug("LocalLibraryApp listeners activated");
+    super.activateListeners(t), t.find('[data-action="add-track"]').on("click", this.onAddTrack.bind(this)), t.find(".ase-search-input").on("keydown", this.onSearchKeydown.bind(this)), t.find(".ase-search-input").on("input", this.onSearchInput.bind(this)), t.find(".ase-search-clear").on("click", this.onClearSearch.bind(this)), t.find('[data-action="filter-channel"]').on("click", this._onFilterChannel.bind(this)), t.find('[data-action="sort-change"]').on("change", this.onChangeSort.bind(this)), t.find('[data-action="clear-filters"]').on("click", this.onClearFilters.bind(this)), t.find('[data-action="toggle-tag"]').on("click", this.onToggleTag.bind(this)), t.find('[data-action="add-tag"]').on("click", this.onAddTag.bind(this)), t.find('[data-action="play-track"]').on("click", this.onPlayTrack.bind(this)), t.find('[data-action="pause-track"]').on("click", this.onPauseTrack.bind(this)), t.find('[data-action="stop-track"]').on("click", this.onStopTrack.bind(this)), t.find('[data-action="add-to-queue"]').on("click", this.onAddToQueue.bind(this)), t.find('[data-action="toggle-favorite"]').on("click", this.onToggleFavorite.bind(this)), t.find('[data-action="add-to-playlist"]').on("click", this.onAddToPlaylist.bind(this)), t.find('[data-action="track-menu"]').on("click", this.onTrackMenu.bind(this)), t.find('[data-action="add-tag-to-track"]').on("click", this.onAddTagToTrack.bind(this)), t.find('[data-action="channel-dropdown"]').on("click", this.onChannelDropdown.bind(this)), t.find('[data-action="delete-track"]').on("click", this.onDeleteTrack.bind(this)), t.find(".ase-track-player-item").on("contextmenu", this.onTrackContext.bind(this)), t.find(".ase-track-tags .ase-tag").on("contextmenu", this.onTrackTagContext.bind(this)), t.find('[data-action="select-playlist"]').on("click", this.onSelectPlaylist.bind(this)), t.find('[data-action="create-playlist"]').on("click", this.onCreatePlaylist.bind(this)), t.find('[data-action="toggle-playlist-favorite"]').on("click", this.onTogglePlaylistFavorite.bind(this)), t.find('[data-action="toggle-playlist-queue"]').on("click", this.onTogglePlaylistQueue.bind(this)), t.find('[data-action="playlist-menu"]').on("click", this.onPlaylistMenu.bind(this)), t.find(".ase-list-item[data-playlist-id]").on("contextmenu", this.onPlaylistContext.bind(this)), t.find('[data-action="remove-from-favorites"]').on("click", this.onRemoveFromFavorites.bind(this)), t.find('[data-action="toggle-favorite-queue"]').on("click", this.onToggleFavoriteQueue.bind(this)), this.setupDragAndDrop(t), this.setupFoundryDragDrop(t), t.find(".ase-track-player-item").on("mouseenter", (e) => {
+      const a = $(e.currentTarget).data("item-id");
+      a && this.highlightPlaylistsContainingTrack(a);
+    }), t.find(".ase-track-player-item").on("mouseleave", () => {
+      this.clearPlaylistHighlights();
+    }), t.find(".ase-tags-inline .ase-tag").on("contextmenu", this.onTagContext.bind(this)), l.debug("LocalLibraryApp listeners activated");
   }
   // ─────────────────────────────────────────────────────────────
   // Event Handlers
@@ -1861,17 +1866,17 @@ class st extends Application {
         const v = p.channel || o.channel;
         let S = "music";
         v === "environment" ? S = "ambience" : v === "interface" ? S = "sfx" : (v === "music" || !v) && (S = "music");
-        let I = (s = this.library.findByUrl(y)) == null ? void 0 : s.id;
-        if (I)
+        let E = (s = this.library.findByUrl(y)) == null ? void 0 : s.id;
+        if (E)
           g++;
         else
           try {
-            I = (await this.library.addItem(y, p.name, S)).id, f++;
+            E = (await this.library.addItem(y, p.name, S)).id, f++;
           } catch (b) {
             l.error(`Failed to add track "${p.name}":`, b);
             continue;
           }
-        this.library.playlists.addTrackToPlaylist(u.id, I, S);
+        this.library.playlists.addTrackToPlaylist(u.id, E, S);
       }
       const h = `Imported playlist "${c}": ${f} new tracks${g > 0 ? `, ${g} already in library` : ""}`;
       (r = ui.notifications) == null || r.info(h), this.render();
@@ -1903,6 +1908,22 @@ class st extends Application {
     for (; a.has(`${t} (${s})`); )
       s++;
     return `${t} (${s})`;
+  }
+  /**
+   * Highlight playlists in sidebar that contain the specified track
+   */
+  highlightPlaylistsContainingTrack(t) {
+    this.library.playlists.getAllPlaylists().filter(
+      (s) => s.items.some((r) => r.libraryItemId === t)
+    ).forEach((s) => {
+      $(`[data-playlist-id="${s.id}"]`).addClass("highlight-contains-track");
+    });
+  }
+  /**
+   * Clear all playlist highlights
+   */
+  clearPlaylistHighlights() {
+    $(".highlight-contains-track").removeClass("highlight-contains-track");
   }
   // ─────────────────────────────────────────────────────────────
   // Context Menus
@@ -3399,7 +3420,7 @@ class ut {
   }
 }
 const _ = "advanced-sound-engine";
-let k = null, T = null, E = null, w = null, P = null, x = null;
+let k = null, T = null, I = null, w = null, P = null, x = null;
 Hooks.on("getSceneControlButtons", (d) => {
   var i;
   try {
@@ -3497,12 +3518,12 @@ Hooks.once("ready", async () => {
     openLibrary: () => d && B("library"),
     engine: d ? k ?? void 0 : w ?? void 0,
     socket: x ?? void 0,
-    library: d ? E ?? void 0 : void 0,
+    library: d ? I ?? void 0 : void 0,
     queue: i
   }, gt(), l.info("Advanced Sound Engine ready");
 });
 async function ht() {
-  E = new dt(), k = new tt(), x.initializeAsGM(k), await k.loadSavedState();
+  I = new dt(), k = new tt(), x.initializeAsGM(k), await k.loadSavedState();
 }
 async function ft() {
   w = new et(), x.initializeAsPlayer(w);
@@ -3510,7 +3531,7 @@ async function ft() {
   w.setLocalVolume(d);
 }
 function B(d, i = !1) {
-  !k || !x || !E || (T && T.rendered ? (d && T.state.activeTab !== d && (T.state.activeTab = d, i = !0), i ? T.render(!1) : T.bringToTop()) : (T = new lt(k, x, E), d && (T.state.activeTab = d), T.render(!0)));
+  !k || !x || !I || (T && T.rendered ? (d && T.state.activeTab !== d && (T.state.activeTab = d, i = !0), i ? T.render(!1) : T.bringToTop()) : (T = new lt(k, x, I), d && (T.state.activeTab = d), T.render(!0)));
 }
 function pt() {
   w && (P && P.rendered ? P.bringToTop() : (P = new j(w), P.render(!0)));
@@ -3551,6 +3572,6 @@ function yt() {
   });
 }
 Hooks.once("closeGame", () => {
-  T == null || T.close(), P == null || P.close(), x == null || x.dispose(), k == null || k.dispose(), w == null || w.dispose(), E == null || E.dispose();
+  T == null || T.close(), P == null || P.close(), x == null || x.dispose(), k == null || k.dispose(), w == null || w.dispose(), I == null || I.dispose();
 });
 //# sourceMappingURL=module.js.map
