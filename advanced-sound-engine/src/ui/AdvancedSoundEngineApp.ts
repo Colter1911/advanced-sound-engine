@@ -26,7 +26,7 @@ export class AdvancedSoundEngineApp extends Application {
         syncEnabled: false
     };
 
-    constructor(engine: AudioEngine, socket: SocketManager, libraryManager: LibraryManager, options?: Partial<ApplicationOptions>) {
+    constructor(engine: AudioEngine, socket: SocketManager, libraryManager: LibraryManager, options: any = {}) {
         super(options);
         this.engine = engine;
         this.socket = socket;
@@ -34,11 +34,11 @@ export class AdvancedSoundEngineApp extends Application {
 
         // Initialize sub-controllers
         // Note: We pass this app instance or handle delegation
-        this.libraryApp = new LocalLibraryApp(this.libraryManager);
+        this.libraryApp = new LocalLibraryApp(this.libraryManager, this);
         this.mixerApp = new SoundMixerApp(this.engine, this.socket);
     }
 
-    static override get defaultOptions(): ApplicationOptions {
+    static override get defaultOptions() {
         return foundry.utils.mergeObject(super.defaultOptions, {
             id: 'advanced-sound-engine-app',
             title: 'Advanced Sound Engine',
@@ -49,7 +49,7 @@ export class AdvancedSoundEngineApp extends Application {
             resizable: true,
             popOut: true,
             tabs: [] // We handle tabs manually
-        }) as ApplicationOptions;
+        }) as any;
     }
 
     override async getData(): Promise<any> {
@@ -76,10 +76,10 @@ export class AdvancedSoundEngineApp extends Application {
         let tabContent = '';
         if (this.state.activeTab === 'library') {
             const libData = await this.libraryApp.getData();
-            tabContent = await renderTemplate('modules/advanced-sound-engine/templates/library.hbs', libData);
+            tabContent = await renderTemplate('modules/advanced-sound-engine/templates/library.hbs', libData as any);
         } else if (this.state.activeTab === 'mixer') {
             const mixerData = await this.mixerApp.getData();
-            tabContent = await renderTemplate(`modules/${MODULE_ID}/templates/mixer.hbs`, mixerData);
+            tabContent = await renderTemplate(`modules/${MODULE_ID}/templates/mixer.hbs`, mixerData as any);
         }
 
         return {
@@ -94,6 +94,40 @@ export class AdvancedSoundEngineApp extends Application {
             },
             syncEnabled: this.socket.syncEnabled
         };
+    }
+
+    public persistScrollOnce = false;
+    private _scrollLibrary = { tracks: 0, playlists: 0, favorites: 0 };
+
+    protected override async _render(force?: boolean, options?: any): Promise<void> {
+        // Save Scroll (only if explicitly requested via flag)
+        if (this.state.activeTab === 'library' && this.persistScrollOnce && this.element && this.element.length) {
+            const trackScroll = this.element.find('.ase-track-player-list').scrollTop() || 0;
+            if (trackScroll > 0) this._scrollLibrary.tracks = trackScroll;
+
+            this._scrollLibrary.playlists = this.element.find('.ase-list-group').first().scrollTop() || 0;
+            this._scrollLibrary.favorites = this.element.find('.ase-favorites-section .ase-list-group').scrollTop() || 0;
+        }
+
+        await super._render(force, options);
+
+        // Restore or Reset Scroll
+        if (this.state.activeTab === 'library') {
+            const el = this.element;
+            if (el && el.length) {
+                if (this.persistScrollOnce) {
+                    el.find('.ase-track-player-list').scrollTop(this._scrollLibrary.tracks);
+                    el.find('.ase-list-group').first().scrollTop(this._scrollLibrary.playlists);
+                    el.find('.ase-favorites-section .ase-list-group').scrollTop(this._scrollLibrary.favorites);
+                    this.persistScrollOnce = false;
+                } else {
+                    // Explicit reset to 0
+                    el.find('.ase-track-player-list').scrollTop(0);
+                    el.find('.ase-list-group').first().scrollTop(0);
+                    el.find('.ase-favorites-section .ase-list-group').scrollTop(0);
+                }
+            }
+        }
     }
 
     override activateListeners(html: JQuery): void {

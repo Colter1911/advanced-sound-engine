@@ -90,28 +90,33 @@ export class LocalLibraryApp extends Application {
     });
   }
 
-  constructor(library: LibraryManager, options = {}) {
+  private parentApp: any; // Using any to avoid circular import issues for now, or use interface
+
+  constructor(library: LibraryManager, parentApp: any, options = {}) {
     super(options);
     this.library = library;
+    this.parentApp = parentApp;
     this.filterState = {
       searchQuery: '',
-      selectedChannels: new Set(['music', 'ambience', 'sfx']), // Default all selected? Or none? User said "Green for active". Usually start with all or none. Let's start with all.
+      selectedChannels: new Set(['music', 'ambience', 'sfx']),
       selectedPlaylistId: null,
       selectedTags: new Set(),
       // Default sort
-      sortValue: 'date-desc'
+      sortBy: 'date-desc'
     } as any;
+  }
+
+  // Helper to request scroll persistence
+  private persistScroll(): void {
+    if (this.parentApp) {
+      this.parentApp.persistScrollOnce = true;
+    }
   }
 
   // Override render to delegate to main app
   override render(force?: boolean, options?: any): any {
     // If we are part of the unified app, we just trigger the main app to update
     if (window.ASE?.openPanel) {
-      // If we are the active tab, this will re-render the main app
-      // If not, it switches to us. 
-      // We pass 'library' to ensure we are looking at the library.
-      // But if we just want to update data without switching tabs (background update),
-      // we might need a more subtle approach. For now, this ensures consistency.
       window.ASE.openPanel('library', true);
       return;
     }
@@ -436,7 +441,11 @@ export class LocalLibraryApp extends Application {
 
   private async addTrackFromPath(path: string, group: TrackGroup = 'music'): Promise<void> {
     try {
-      const item = await this.library.addItem(path, undefined, group);
+      // Get currently selected tags
+      const selectedTags = Array.from(this.filterState.selectedTags);
+
+      const item = await this.library.addItem(path, undefined, group, selectedTags);
+      this.persistScroll();
       this.render();
       ui.notifications?.info(`Added to library: ${item.name}`);
     } catch (error) {
@@ -451,6 +460,7 @@ export class LocalLibraryApp extends Application {
     const itemId = $(event.currentTarget).closest('[data-item-id]').data('item-id') as string;
 
     try {
+      this.persistScroll();
       const isFavorite = this.library.toggleFavorite(itemId);
       this.render();
       ui.notifications?.info(isFavorite ? 'Added to favorites' : 'Removed from favorites');
@@ -473,6 +483,10 @@ export class LocalLibraryApp extends Application {
 
     try {
       const playlist = this.library.playlists.createPlaylist(name);
+      // Create playlist -> might want to scroll to it? Or keep position?
+      // User: "actions in zone of tracks". Playlists are separate zone. 
+      // But adding playlist shouldn't jump list to top? Let's persist.
+      this.persistScroll();
       this.render();
       ui.notifications?.info(`Created playlist: ${playlist.name}`);
     } catch (error) {
@@ -489,6 +503,7 @@ export class LocalLibraryApp extends Application {
     const playlistId = $(event.currentTarget).closest('[data-playlist-id]').data('playlist-id') as string;
 
     try {
+      this.persistScroll();
       const isFavorite = this.library.playlists.togglePlaylistFavorite(playlistId);
       this.render();
       ui.notifications?.info(isFavorite ? 'Added to favorites' : 'Removed from favorites');
@@ -721,6 +736,11 @@ export class LocalLibraryApp extends Application {
     }
 
     if (count > 0) {
+      // Renaming tag does not necessarily keep scroll unless it was a tag list interaction?
+      // User said "zone of tracks with tracks". Tag list is separate. 
+      // But renaming right from track context menu? Let's enabling it generally.
+      // Actually user said "zone of tracks". Let's persist.
+      this.persistScroll();
       this.render();
       ui.notifications?.info(`Renamed tag "${oldTag}" to "${newTag}" on ${count} tracks.`);
     }
@@ -742,7 +762,8 @@ export class LocalLibraryApp extends Application {
     // Remove from filter
     this.filterState.selectedTags.delete(tagStr);
 
-    // Always re-render (even if count is 0, tag might be custom-only)
+    // Always re-render
+    this.persistScroll();
     this.render();
     ui.notifications?.info(count > 0 ? `Deleted tag "${tagStr}" from ${count} tracks.` : `Deleted custom tag "${tagStr}".`);
   }
@@ -779,6 +800,7 @@ export class LocalLibraryApp extends Application {
     // Also add to queue if needed? 
     // User requested "Play adds to list of reproduction".
     // window.ASE.engine?.addToQueue(itemId); // TODO: Implement Queue
+    this.persistScroll();
   }
 
   private onStopTrack(event: JQuery.ClickEvent): void {
@@ -788,6 +810,7 @@ export class LocalLibraryApp extends Application {
 
     Logger.debug('Stop track:', itemId);
     window.ASE.engine?.stopTrack(itemId);
+    this.persistScroll();
   }
 
   private onPauseTrack(event: JQuery.ClickEvent): void {
@@ -796,6 +819,7 @@ export class LocalLibraryApp extends Application {
     const itemId = $(event.currentTarget).data('item-id') as string;
     Logger.debug('Pause track:', itemId);
     window.ASE.engine?.pauseTrack(itemId);
+    this.persistScroll();
   }
 
   private onAddToQueue(event: JQuery.ClickEvent): void {
@@ -830,6 +854,7 @@ export class LocalLibraryApp extends Application {
       ui.notifications?.info(`"${item.name}" added to queue`);
     }
 
+    this.persistScroll();
     this.render();
   }
 
@@ -922,6 +947,7 @@ export class LocalLibraryApp extends Application {
       }
     }
 
+    this.persistScroll();
     this.render();
   }
 
@@ -979,6 +1005,7 @@ export class LocalLibraryApp extends Application {
       }
     }
 
+    this.persistScroll();
     this.render();
   }
 
@@ -1031,6 +1058,7 @@ export class LocalLibraryApp extends Application {
 
     // Update group field directly (not as a tag)
     this.library.updateItem(itemId, { group: channel as TrackGroup });
+    this.persistScroll();
     this.render();
     ui.notifications?.info(`Channel set to ${channel}`);
   }
@@ -1408,6 +1436,7 @@ export class LocalLibraryApp extends Application {
     if (!playlist) return;
 
     // Create a custom context menu appended to body to avoid clipping
+
     const menuHtml = `
       <div id="ase-custom-context-menu" style="position: fixed; z-index: 10000; background: #222; border: 1px solid #444; border-radius: 4px; padding: 5px 0;">
         <div class="ase-ctx-item" data-action="edit" style="padding: 5px 15px; cursor: pointer; color: white;">
@@ -1463,6 +1492,7 @@ export class LocalLibraryApp extends Application {
     if (!newName || newName === playlist.name) return;
 
     this.library.playlists.updatePlaylist(playlistId, { name: newName });
+    this.persistScroll();
     this.render();
     ui.notifications?.info(`Renamed playlist to "${newName}"`);
   }
@@ -1773,11 +1803,15 @@ export class LocalLibraryApp extends Application {
           // Smart channel detection based on filename
           const channel = this.detectChannelFromFilename(file.name);
 
+          // Get selected tags
+          const selectedTags = Array.from(this.filterState.selectedTags);
+
           // Add to library
           const track = await this.library.addItem(
             response.path,
             file.name.split('.')[0], // Remove extension
-            channel
+            channel,
+            selectedTags
           );
 
           // Add to active playlist if one is selected
@@ -1961,7 +1995,11 @@ export class LocalLibraryApp extends Application {
     const channel = this.mapFoundryChannelToASE(sound.channel);
 
     // Add to library
-    const newTrack = await this.library.addItem(audioPath, soundName, channel);
+    // Get selected tags
+    const selectedTags = Array.from(this.filterState.selectedTags);
+
+    // Add to library
+    const newTrack = await this.library.addItem(audioPath, soundName, channel, selectedTags);
 
     // If a playlist is currently selected, add the track to it automatically
     if (this.filterState.selectedPlaylistId) {
@@ -2028,7 +2066,12 @@ export class LocalLibraryApp extends Application {
 
         if (!trackId) {
           try {
-            const track = await this.library.addItem(audioPath, sound.name, channel);
+            // Get selected tags
+            const selectedTags = Array.from(this.filterState.selectedTags);
+            // Log once per playlist import to avoid spam? Or just log.
+            // Logger.debug(`[ASE] PlaylistImport: Adding track with tags: ${JSON.stringify(selectedTags)}`);
+
+            const track = await this.library.addItem(audioPath, sound.name, channel, selectedTags);
             trackId = track.id;
             addedCount++;
           } catch (err) {
@@ -2173,6 +2216,7 @@ export class LocalLibraryApp extends Application {
           const itemId = li.data('item-id') as string;
           try {
             const isFavorite = this.library.toggleFavorite(itemId);
+            this.persistScroll();
             this.render();
             ui.notifications?.info(isFavorite ? 'Added to favorites' : 'Removed from favorites');
           } catch (error) {
@@ -2280,6 +2324,7 @@ export class LocalLibraryApp extends Application {
 
     try {
       this.library.updateItem(itemId, { name: newName });
+      this.persistScroll();
       this.render();
       ui.notifications?.info(`Renamed to: ${newName}`);
     } catch (error) {
@@ -2310,6 +2355,7 @@ export class LocalLibraryApp extends Application {
 
     try {
       this.library.updateItem(itemId, { tags: newTags });
+      this.persistScroll();
       this.render();
       ui.notifications?.info('Tags updated');
     } catch (error) {
@@ -2337,6 +2383,7 @@ export class LocalLibraryApp extends Application {
     if (confirmed) {
       try {
         this.library.removeItem(itemId);
+        this.persistScroll();
         this.render();
         ui.notifications?.info(`Deleted: ${item.name}`);
       } catch (error) {

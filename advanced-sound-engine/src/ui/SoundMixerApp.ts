@@ -23,7 +23,7 @@ interface MixerData {
   };
   playingCount: number;
   maxSimultaneous: number;
-  syncEnabled: boolean;
+  syncEnabled: boolean; // Reverted the CSS variable insertion here to maintain valid TypeScript syntax
 }
 
 interface TrackViewData {
@@ -92,7 +92,7 @@ export class SoundMixerApp extends Application {
     const state = player.getState();
     const currentTime = player.getCurrentTime();
     const duration = player.getDuration();
-    
+
     return {
       id: state.id,
       name: this.extractFileName(state.url),
@@ -137,12 +137,10 @@ export class SoundMixerApp extends Application {
     });
 
     // Channel volume sliders
-    const throttledChannelVolume = throttle((channel: string, value: number) => {
+    const throttledChannelBroadcast = throttle((channel: string, value: number) => {
       if (channel === 'master') {
-        this.engine.setMasterVolume(value);
         this.socket.broadcastChannelVolume('master', value);
       } else {
-        this.engine.setChannelVolume(channel as TrackGroup, value);
         this.socket.broadcastChannelVolume(channel as TrackGroup, value);
       }
     }, 50);
@@ -150,7 +148,15 @@ export class SoundMixerApp extends Application {
     html.find('.ase-channel-slider').on('input', (event) => {
       const channel = $(event.currentTarget).data('channel') as string;
       const value = parseFloat((event.target as HTMLInputElement).value) / 100;
-      throttledChannelVolume(channel, value);
+
+      // Update local engine immediately to prevent UI jitter/reset on re-render
+      if (channel === 'master') {
+        this.engine.setMasterVolume(value);
+      } else {
+        this.engine.setChannelVolume(channel as TrackGroup, value);
+      }
+
+      throttledChannelBroadcast(channel, value);
       $(event.currentTarget).siblings('.ase-channel-value').text(`${Math.round(value * 100)}%`);
     });
 
@@ -159,7 +165,7 @@ export class SoundMixerApp extends Application {
 
     // Track controls
     const tracks = html.find('.ase-tracks');
-    
+
     tracks.on('click', '.ase-btn-play', (event) => {
       const trackId = $(event.currentTarget).closest('.ase-track').data('track-id');
       this.onPlayTrack(trackId);
@@ -194,15 +200,17 @@ export class SoundMixerApp extends Application {
     });
 
     // Volume slider
-    const throttledVolume = throttle((trackId: string, value: number) => {
-      this.engine.setTrackVolume(trackId, value);
+    const throttledVolumeBroadcast = throttle((trackId: string, value: number) => {
       this.socket.broadcastTrackVolume(trackId, value);
     }, 50);
 
     tracks.on('input', '.ase-volume-slider', (event) => {
       const trackId = $(event.currentTarget).closest('.ase-track').data('track-id');
       const value = parseFloat((event.target as HTMLInputElement).value) / 100;
-      throttledVolume(trackId, value);
+
+      this.engine.setTrackVolume(trackId, value); // Decoupled engine update from throttle
+      throttledVolumeBroadcast(trackId, value);
+
       $(event.currentTarget).siblings('.ase-volume-value').text(`${Math.round(value * 100)}%`);
     });
 
@@ -272,7 +280,7 @@ export class SoundMixerApp extends Application {
       if (state === 'playing') playingCount++;
 
       trackEl.find('.ase-time-current').text(formatTime(currentTime));
-      
+
       const seekSlider = trackEl.find('.ase-seek-slider');
       if (!seekSlider.is(':active')) {
         seekSlider.val(progress);
@@ -280,7 +288,7 @@ export class SoundMixerApp extends Application {
 
       trackEl.removeClass('is-playing is-paused is-stopped is-loading');
       trackEl.addClass(`is-${state}`);
-      
+
       trackEl.find('.ase-btn-play').prop('disabled', state === 'playing' || state === 'loading');
       trackEl.find('.ase-btn-pause').prop('disabled', state !== 'playing');
       trackEl.find('.ase-btn-stop').prop('disabled', state === 'stopped');
@@ -335,7 +343,7 @@ export class SoundMixerApp extends Application {
   private onPauseTrack(trackId: string): void {
     const player = this.engine.getTrack(trackId);
     if (!player) return;
-    
+
     const pausedAt = player.getCurrentTime();
     this.engine.pauseTrack(trackId);
     this.socket.broadcastTrackPause(trackId, pausedAt);

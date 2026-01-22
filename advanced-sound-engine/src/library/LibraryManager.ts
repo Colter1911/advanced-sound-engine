@@ -35,7 +35,7 @@ export class LibraryManager {
   /**
    * Add new item to library
    */
-  async addItem(url: string, name?: string, group: TrackGroup = 'music'): Promise<LibraryItem> {
+  async addItem(url: string, name?: string, group: TrackGroup = 'music', tags: string[] = []): Promise<LibraryItem> {
     // Validate audio format
     const validation = validateAudioFile(url);
     if (!validation.valid) {
@@ -62,7 +62,7 @@ export class LibraryManager {
       id: generateUUID(),
       url,
       name: itemName,
-      tags: [],
+      tags: tags,
       group: group,
       duration: 0,
       favorite: false,

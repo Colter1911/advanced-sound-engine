@@ -3,7 +3,7 @@
   --bg-panel: #141926;
   --bg-header: #1a2133;
   --bg-active: #242d44;
-  --accent-blue: #3b82f6;
+  --accent-blue: #2563eb;
   --accent-cyan: #22d3ee;
   --text-main: #e2e8f0;
   --text-muted: #94a3b8;
@@ -1015,7 +1015,27 @@
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #555;
+  background: var(--accent-blue);
+}
+
+// Global scrollbar for the app container to ensure blue branding
+.ase-window-layout ::-webkit-scrollbar-thumb {
+  background: #333;
+}
+
+.ase-window-layout ::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-blue);
+}
+
+// Enforce scrollbar styling for Library App specifically using ID
+// Enforce scrollbar styling for Advanced Sound Engine App (Global, Aggressive)
+#advanced-sound-engine-app *::-webkit-scrollbar-thumb {
+  background-color: var(--accent-blue) !important;
+}
+
+#advanced-sound-engine-app *::-webkit-scrollbar {
+  width: 8px;
+  /* Force width */
 }
 
 // Highlight playlists containing hovered track

@@ -215,6 +215,23 @@ window.ASE.queue  // PlaybackQueueManager instance
     *   **Batch Import**: Upload multiple files at once with summary notification
     *   **Requires GM**: Only GM users can upload files to server
 
+9.  **Smart Scroll Position**:
+    *   **Conditional Persistence**: Scroll position is preserved *only* when interacting with tracks (Playback, Queue, Favorites, Context Menu).
+    *   **Auto-Reset**: Scroll automatically resets to top when changing filters, sorting, or playlists (explicit reset logic enforced).
+    *   **Zero Jitter**: Removed restoration delays for instant, smooth scrolling.
+
+10. **Playback Queue Architecture**:
+    *   Implemented `PlaybackQueueManager` for managing playback sequence.
+    *   Integrated Queue logic into Library App:
+        *   Add/Remove Grid Tracks.
+        *   Add/Remove entire Playlists.
+        *   Toggle Queue status via Context Menu.
+
+11. **UI Polish & Unified App**:
+    *   **Blue Scrollbars**: Enforced global blue scrollbar styling via aggressive CSS wildcard selectors.
+    *   **Unified Architecture**: Library App is now properly instantiated as a child of the main `AdvancedSoundEngineApp`, enabling better state communication (like scroll persistence).
+
 ## Next Session
+- **Refining File Deletion**: Improve UX and safety for deleting files from disk.
 - Continue verifying UI interactions.
 - Proceed with detailed playback queue integration.
