@@ -588,6 +588,12 @@
   border-bottom: 1px solid #333;
   cursor: grab;
   min-height: 66px;
+  transition: border-color 0.2s ease;
+
+  &:hover {
+    border-top: 1px solid rgba(34, 211, 238, 0.5);
+    border-bottom: 1px solid rgba(34, 211, 238, 0.5);
+  }
 
   &.dragging {
     opacity: 0.5;

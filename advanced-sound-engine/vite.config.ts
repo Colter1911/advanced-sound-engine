@@ -30,6 +30,7 @@ export default defineConfig({
       '@ui': path.resolve(__dirname, 'src/ui'),
       '@utils': path.resolve(__dirname, 'src/utils'),
       '@lib': path.resolve(__dirname, 'src/library'),
+      '@storage': path.resolve(__dirname, 'src/storage'),
       '@t': path.resolve(__dirname, 'src/types')
     }
   }

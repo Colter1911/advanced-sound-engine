@@ -1,4 +1,5 @@
-# Session Report - Jan 19 & 20, 2026
+ +
+  # Session Report - Jan 19 & 20, 2026
 
 ---
 
@@ -230,6 +231,21 @@ window.ASE.queue  // PlaybackQueueManager instance
 11. **UI Polish & Unified App**:
     *   **Blue Scrollbars**: Enforced global blue scrollbar styling via aggressive CSS wildcard selectors.
     *   **Unified Architecture**: Library App is now properly instantiated as a child of the main `AdvancedSoundEngineApp`, enabling better state communication (like scroll persistence).
+
+12. **Cross-World Library Storage (Jan 22 Evening)**:
+    *   **Global JSON Storage**: Library now persists to `Data/modules/advanced-sound-engine/library.json` instead of world-scoped game settings
+    *   **Cross-World Persistence**: Library content is now available across all Foundry worlds
+    *   **Automatic Migration**: Existing world-scoped data is automatically migrated on first load
+    *   **`GlobalStorage` Service**: New storage abstraction layer for cross-world file operations
+
+13. **Enhanced File Deletion (Jan 22 Evening)**:
+    *   **Three-Option Deletion Dialog**:
+        *   **Remove from Playlist**: When in playlist view, option to remove track from current playlist only
+        *   **Remove from Library**: Remove track from ASE library but keep audio file on disk
+        *   **Delete File from Disk**: Permanently delete the audio file from server storage (only for files in `ase_audio/` folder)
+    *   **Smart File Detection**: Automatically detects whether file can be safely deleted (imported vs uploaded)
+    *   **Enhanced UX**: Styled radio button dialogs with color-coded danger warnings
+    *   **Consistent Dialogs**: Both context menu deletion and trash icon deletion use the same enhanced dialog
 
 ## Next Session
 - **Refining File Deletion**: Improve UX and safety for deleting files from disk.

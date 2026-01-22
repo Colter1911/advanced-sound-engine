@@ -1219,6 +1219,7 @@ export class LocalLibraryApp extends Application {
     menu.find('[data-action="remove-tag"]').on('click', () => {
       menu.remove();
       this.library.removeTagFromItem(itemId, tagName);
+      this.persistScroll();
       this.render();
       ui.notifications?.info(`Removed tag "${tagName}"`);
     });
@@ -1304,6 +1305,7 @@ export class LocalLibraryApp extends Application {
             }
 
             this.library.updateItem(itemId, { tags: selectedTags });
+            this.persistScroll();
             this.render();
           }
         },

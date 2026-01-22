@@ -331,16 +331,16 @@ function setupAutoplayHandler(): void {
 // ─────────────────────────────────────────────────────────────
 
 function registerSettings(): void {
-  game.settings.register(MODULE_ID as any, 'mixerState', {
+  game.settings!.register(MODULE_ID as any, 'mixerState' as any, {
     name: 'Mixer State',
     hint: 'Internal storage for mixer state',
     scope: 'world',
     config: false,
     type: String,
     default: ''
-  });
+  } as any);
 
-  game.settings.register(MODULE_ID as any, 'maxSimultaneousTracks', {
+  game.settings!.register(MODULE_ID as any, 'maxSimultaneousTracks' as any, {
     name: 'Maximum Simultaneous Tracks',
     hint: 'Maximum number of tracks that can play simultaneously (1-32)',
     scope: 'world',
@@ -352,16 +352,16 @@ function registerSettings(): void {
       max: 32,
       step: 1
     }
-  });
+  } as any);
 
-  game.settings.register(MODULE_ID as any, 'libraryState', {
+  game.settings!.register(MODULE_ID as any, 'libraryState' as any, {
     name: 'Library State',
     hint: 'Internal storage for library items and playlists',
     scope: 'world',
     config: false,
     type: String,
     default: ''
-  });
+  } as any);
 }
 
 // ─────────────────────────────────────────────────────────────

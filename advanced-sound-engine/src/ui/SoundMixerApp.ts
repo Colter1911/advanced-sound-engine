@@ -10,7 +10,7 @@ import { generateUUID } from '@utils/uuid';
 const MODULE_ID = 'advanced-sound-engine';
 
 function getMaxSimultaneous(): number {
-  return (game.settings.get(MODULE_ID, 'maxSimultaneousTracks') as number) || 8;
+  return (game.settings?.get(MODULE_ID as any, 'maxSimultaneousTracks' as any) as number) || 8;
 }
 
 interface MixerData {
@@ -49,7 +49,7 @@ export class SoundMixerApp extends Application {
   private socket: SocketManager;
   private updateInterval: ReturnType<typeof setInterval> | null = null;
 
-  static override get defaultOptions(): ApplicationOptions {
+  static override get defaultOptions() {
     return foundry.utils.mergeObject(super.defaultOptions, {
       id: 'ase-sound-mixer',
       title: 'Sound Mixer (GM)',
@@ -60,10 +60,10 @@ export class SoundMixerApp extends Application {
       resizable: true,
       minimizable: true,
       popOut: true
-    }) as ApplicationOptions;
+    }) as any;
   }
 
-  constructor(engine: AudioEngine, socket: SocketManager, options?: Partial<ApplicationOptions>) {
+  constructor(engine: AudioEngine, socket: SocketManager, options?: any) {
     super(options);
     this.engine = engine;
     this.socket = socket;

@@ -5,6 +5,7 @@ import { validateAudioFile } from '@utils/audio-validation';
 import { Logger } from '@utils/logger';
 import { debounce } from '@utils/throttle';
 import { PlaylistManager } from './PlaylistManager';
+import { GlobalStorage } from '@storage/GlobalStorage';
 
 const MODULE_ID = 'advanced-sound-engine';
 const LIBRARY_VERSION = 1;
@@ -25,7 +26,8 @@ export class LibraryManager {
 
   constructor() {
     this.playlists = new PlaylistManager(() => this.scheduleSave());
-    this.loadFromSettings();
+    // Load is now async, so we call it via then() to handle Promise
+    this.loadFromSettings().catch(err => Logger.error('Failed initial load:', err));
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -499,15 +501,18 @@ export class LibraryManager {
   // Persistence
   // ─────────────────────────────────────────────────────────────
 
-  private loadFromSettings(): void {
+  private async loadFromSettings(): Promise<void> {
     try {
-      const saved = (game.settings as any)?.get(MODULE_ID, 'libraryState') as string;
-      if (!saved) {
+      // First, try to migrate from old world-scoped settings
+      await GlobalStorage.migrateFromWorldSettings();
+
+      // Load from global storage
+      const state = await GlobalStorage.load();
+
+      if (!state) {
         Logger.info('No saved library state, starting fresh');
         return;
       }
-
-      const state: LibraryState = JSON.parse(saved);
 
       // Migrate if needed
       if (state.version !== LIBRARY_VERSION) {
@@ -517,8 +522,8 @@ export class LibraryManager {
 
       // Load items
       this.items.clear();
-      Object.values(state.items).forEach(item => {
-        this.items.set(item.id, item);
+      Object.values(state.items).forEach((item: any) => {
+        this.items.set(item.id, item as LibraryItem);
       });
 
       // Load custom tags
@@ -536,7 +541,7 @@ export class LibraryManager {
     }
   }
 
-  private saveToSettings(): void {
+  private async saveToSettings(): Promise<void> {
     try {
       const state: LibraryState = {
         items: Object.fromEntries(this.items),
@@ -547,7 +552,7 @@ export class LibraryManager {
         lastModified: Date.now()
       } as any;
 
-      (game.settings as any)?.set(MODULE_ID, 'libraryState', JSON.stringify(state));
+      await GlobalStorage.save(state);
       this.saveScheduled = false;
 
       Logger.debug(`Library saved: ${this.items.size} items, ${this.playlists.getAllPlaylists().length} playlists`);
