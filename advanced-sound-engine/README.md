@@ -251,3 +251,135 @@ window.ASE.queue  // PlaybackQueueManager instance
 - **Refining File Deletion**: Improve UX and safety for deleting files from disk.
 - Continue verifying UI interactions.
 - Proceed with detailed playback queue integration.
+
+---
+
+## Completed Work (Jan 23, 2026)
+
+### 1. Cross-World Library Storage - Path Fix
+*   **Storage Path Change**: Moved library storage from `Data/modules/advanced-sound-engine/` to `Data/ase_library/`
+    *   **Reason**: Module folder is overwritten on updates, causing data loss
+    *   **New Path**: `Data/ase_library/library.json`
+    *   **Benefit**: Library survives module updates
+    *   **Auto-Creation**: Directory created automatically on first save
+
+### 2. Notification Suppression
+*   **Issue**: "library.json saved to ase_library" notification appeared on every library change
+*   **Solution**: Temporarily override `ui.notifications.info` during `FilePicker.upload()` call
+*   **Result**: Silent saves without spamming notifications
+
+### 3. Scroll Position Persistence for Tags
+*   **Issue**: Scroll position reset when adding/removing tags on tracks
+*   **Fixed Methods**:
+    *   `showTagEditor` - tag dialog save callback
+    *   `onTrackTagContext` - context menu tag removal
+*   **Solution**: Added `persistScroll()` calls before `render()`
+
+### 4. Track Hover Highlight
+*   **Feature**: Subtle visual feedback on track hover
+*   **Implementation**: 
+    *   `border-top` and `border-bottom` always present (1px solid #333)
+    *   On hover: color changes to `rgba(34, 211, 238, 0.5)` (cyan)
+    *   No animation (instant), no layout shift
+
+### 5. Drag-and-Drop Visual Feedback Refinement
+*   **Internal vs External Drag Detection**: 
+    *   Added custom data type `application/x-ase-internal` as internal drag marker
+*   **Main Content Area (tracks zone)**:
+    *   Dashed border appears only for EXTERNAL drags (Foundry/file system)
+    *   No border for internal track drags
+*   **Playlist Items**:
+    *   Highlight appears only for INTERNAL track drags
+    *   Users can see which playlist will receive the track
+
+### 6. Playlist/Favorites Drag Reorder Fix
+*   **Issue**: Drag-over styles "stuck" on all playlists during reorder
+*   **Solution**: Clear `drag-above/drag-below` classes from ALL items before adding to current target
+*   **Applied to**: Both playlists and favorites lists
+
+---
+
+## Mixer UI Development - Task List
+
+### Phase 1: Research & Preparation
+- [ ] **1.1** Review all Mixer-related files:
+    *   `src/ui/MixerApp.ts` (or similar)
+    *   `templates/mixer.hbs`
+    *   `styles/sound-engine.scss` (mixer sections)
+- [ ] **1.2** Understand sound management architecture:
+    *   `PlaybackQueueManager` integration
+    *   Channel volume controls
+    *   Sound playback methods
+- [ ] **1.3** Review `QueueItem` interface and playback state management
+
+### Phase 2: Mixer Cleanup
+- [ ] **2.1** Clear existing Mixer-block content (central area on Mixer tab)
+    *   Keep: Top navigation tabs
+    *   Keep: Bottom mixer panel (SFX/Ambience/Music/Master sliders + SYNC + Play/Pause/Stop)
+    *   Remove: All content in central "Mixer-block" area
+- [ ] **2.2** Clear obsolete code and cache:
+    *   Remove unused Mixer-specific templates/components
+    *   Clean up old state management if separate from Library
+    *   Remove any standalone Mixer data structures
+
+### Phase 3: Architecture Integration
+- [ ] **3.1** Unify Library and Mixer sound control:
+    *   Single source of truth for playback state
+    *   Shared event system for state changes
+    *   Synchronized UI updates across tabs
+- [ ] **3.2** Connect both Library and Mixer to existing sound engine methods
+- [ ] **3.3** Ensure bottom mixer panel controls work identically from both tabs
+
+### Phase 4: Playlist Queue View (Right Section of Mixer-block)
+- [ ] **4.1** Create Playlist Queue component:
+    *   Display all tracks currently in playback queue
+    *   Group by playlist with collapsible sections
+    *   Accordion behavior: collapsed shows only playing/paused tracks
+- [ ] **4.2** Implement Mixer Track Item (extended from Library Track):
+    *   All Library track buttons: Play, Pause, Stop, Add to Queue, Favorite, Delete
+    *   **Additional**: Timeline/Progress bar with seek functionality
+    *   **Additional**: Individual volume slider
+    *   **Playback State Indicators**:
+        *   Playing: Visual highlight (e.g., glow, color)
+        *   Paused: Different highlight
+        *   Stopped: No highlight
+- [ ] **4.3** Implement playlist collapse/expand:
+    *   Collapsed: Show only playing/paused tracks
+    *   Expanded: Show all tracks in playlist
+
+### Phase 5: Favorites Section (Left Section of Mixer-block)
+- [ ] **5.1** Replicate Favorites list from Library:
+    *   Same visual appearance
+    *   Same functionality (add/remove favorites)
+- [ ] **5.2** Add playback controls to each favorite:
+    *   Play, Pause, Stop buttons per item
+    *   Quick-add to queue functionality
+
+### Phase 6: Sound Engine Integration
+- [ ] **6.1** Connect all UI elements to existing sound methods:
+    *   Library: Play/Pause/Stop buttons
+    *   Mixer: Play/Pause/Stop buttons  
+    *   Mixer: Timeline seek
+    *   Mixer: Individual volume controls
+- [ ] **6.2** Implement sync mode:
+    *   Use existing module sync functionality
+    *   No new sync methods needed - just connect to existing
+- [ ] **6.3** Connect bottom mixer controls:
+    *   Channel volume sliders (SFX, Ambience, Music, Master)
+    *   Global Play/Pause/Stop
+    *   Sync toggle
+
+### Completion Criteria
+- [ ] Playlist Queue fully functional in Mixer
+- [ ] Mixer and Library synchronized
+- [ ] All playback buttons (Play/Pause/Stop) work everywhere
+- [ ] Bottom mixer panel controls audio correctly
+- [ ] Timeline seek works on Mixer tracks
+- [ ] Individual track volume works
+- [ ] Playback state visually indicated
+- [ ] SYNC mode functions correctly
+
+### Reference Images
+*   **Image 1**: Current Mixer state - central area to be cleared
+*   **Image 2**: Target track layout with timeline, volume, and playback controls
+

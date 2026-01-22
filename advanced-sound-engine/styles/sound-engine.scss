@@ -585,14 +585,14 @@
   padding-left: 72px;
   /* Space for image (50px + gap) */
   padding-right: 220px; // Reserve space for controls
+  border-top: 1px solid #333;
   border-bottom: 1px solid #333;
   cursor: grab;
   min-height: 66px;
-  transition: border-color 0.2s ease;
 
   &:hover {
-    border-top: 1px solid rgba(34, 211, 238, 0.5);
-    border-bottom: 1px solid rgba(34, 211, 238, 0.5);
+    border-top-color: rgba(34, 211, 238, 0.5);
+    border-bottom-color: rgba(34, 211, 238, 0.5);
   }
 
   &.dragging {

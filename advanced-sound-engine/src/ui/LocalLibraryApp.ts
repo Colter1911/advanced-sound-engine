@@ -1566,7 +1566,7 @@ export class LocalLibraryApp extends Application {
       // Let's check template.
       // Template: <div class="ase-track-player-item"> inside each item. 
       // Actually, my template rewrite in 751:
-      // {{#each items}} <div class="ase-track-player-item"> ... <div class="ase-track-actions"> <i ... data-item-id="{{this.id}}"> 
+      // {{#each items}} <div class="ase-track-player-item"> ... <div class="ase-track-actions"> <i ... data-item-id="{{this.id}}">
       // The row itself DOES NOT have data-item-id in the rewrite! 
       // I NEED TO ADD IT TO THE TEMPLATE OR FIND IT.
       // I will assume I will fix the template to include data-item-id on the row, or find it inside.
@@ -1575,6 +1575,8 @@ export class LocalLibraryApp extends Application {
 
       event.originalEvent!.dataTransfer!.effectAllowed = 'copy';
       event.originalEvent!.dataTransfer!.setData('text/plain', id);
+      // Mark as internal ASE drag with custom type
+      event.originalEvent!.dataTransfer!.setData('application/x-ase-internal', 'true');
       $(event.currentTarget).addClass('dragging');
     });
 
@@ -1587,7 +1589,12 @@ export class LocalLibraryApp extends Application {
     html.find('.ase-list-item[data-playlist-id]').on('dragover', (event: JQuery.DragOverEvent) => {
       event.preventDefault();
       event.originalEvent!.dataTransfer!.dropEffect = 'copy';
-      $(event.currentTarget).addClass('drag-over');
+      // Show drag-over highlight when dragging tracks onto playlists
+      // Internal drags have 'application/x-ase-internal' marker
+      const isInternalDrag = event.originalEvent!.dataTransfer!.types.includes('application/x-ase-internal');
+      if (isInternalDrag) {
+        $(event.currentTarget).addClass('drag-over');
+      }
     });
 
     html.find('.ase-list-item[data-playlist-id]').on('dragleave', (event: JQuery.DragLeaveEvent) => {
@@ -1650,7 +1657,9 @@ export class LocalLibraryApp extends Application {
       const midY = rect.top + rect.height / 2;
       const isAbove = event.clientY! < midY;
 
-      $(event.currentTarget).removeClass('drag-above drag-below');
+      // Clear drag classes from ALL playlist items first
+      html.find('.ase-list-item[data-playlist-id]').removeClass('drag-above drag-below drag-over');
+      // Then add to current target
       $(event.currentTarget).addClass(isAbove ? 'drag-above' : 'drag-below');
     });
 
@@ -1666,7 +1675,9 @@ export class LocalLibraryApp extends Application {
       const midY = rect.top + rect.height / 2;
       const isAbove = event.clientY! < midY;
 
-      $(event.currentTarget).removeClass('drag-above drag-below');
+      // Clear drag classes from ALL favorite items first
+      html.find('.ase-favorite-item').removeClass('drag-above drag-below drag-over');
+      // Then add to current target
       $(event.currentTarget).addClass(isAbove ? 'drag-above' : 'drag-below');
     });
 
@@ -1912,7 +1923,12 @@ export class LocalLibraryApp extends Application {
     dropZone.on('dragover', (event: JQuery.DragOverEvent) => {
       event.preventDefault();
       event.originalEvent!.dataTransfer!.dropEffect = 'copy';
-      dropZone.addClass('drag-over');
+      // Only show drag-over border for external drags (Foundry playlists/files)
+      // Internal drags have 'application/x-ase-internal' marker
+      const isInternalDrag = event.originalEvent!.dataTransfer!.types.includes('application/x-ase-internal');
+      if (!isInternalDrag) {
+        dropZone.addClass('drag-over');
+      }
     });
 
     // Remove visual feedback on drag leave
