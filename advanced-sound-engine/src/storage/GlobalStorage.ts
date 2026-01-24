@@ -52,7 +52,7 @@ export class GlobalStorage {
             // Temporarily suppress Foundry's file upload notifications
             const originalInfo = ui.notifications?.info;
             if (ui.notifications) {
-                ui.notifications.info = () => { }; // Suppress all info notifications
+                ui.notifications.info = (() => { }) as any; // Suppress all info notifications
             }
 
             try {

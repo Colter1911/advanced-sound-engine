@@ -13,10 +13,10 @@ import { Logger } from '@utils/logger';
 const MODULE_ID = 'advanced-sound-engine';
 
 // GM
-// GM
 let gmEngine: AudioEngine | null = null;
 let mainApp: AdvancedSoundEngineApp | null = null;
 let libraryManager: LibraryManager | null = null;
+let queueManager: PlaybackQueueManager | null = null;
 
 // Player
 let playerEngine: PlayerAudioEngine | null = null;
@@ -233,7 +233,7 @@ Hooks.once('ready', async () => {
   }
 
   // Initialize queue manager (runtime, no persistence)
-  const queueManager = new PlaybackQueueManager();
+  queueManager = new PlaybackQueueManager();
 
   window.ASE = {
     isGM,
@@ -286,7 +286,7 @@ function openMainApp(tab?: string, forceRender: boolean = false): void {
       mainApp.bringToTop();
     }
   } else {
-    mainApp = new AdvancedSoundEngineApp(gmEngine, socketManager, libraryManager);
+    mainApp = new AdvancedSoundEngineApp(gmEngine, socketManager, libraryManager, queueManager!);
     if (tab) mainApp.state.activeTab = tab as any;
     mainApp.render(true);
   }

@@ -120,7 +120,8 @@
     <div class="ase-track-player-list" style="flex: 1; overflow-y: auto;">
       {{#if items.length}}
       {{#each items}}
-      <div class="ase-track-player-item" draggable="true" data-item-id="{{this.id}}">
+      <div class="ase-track-player-item {{#if this.isPlaying}}is-playing{{else if this.isPaused}}is-paused{{/if}}"
+        draggable="true" data-item-id="{{this.id}}">
         <!-- Cover Art (Placeholder for now) -->
         <div class="ase-track-image">
           {{#if (eq this.group 'music')}}

@@ -1055,3 +1055,638 @@
 
   transition: all 0.15s ease;
 }
+
+// ═══════════════════════════════════════════════════════════════
+// MIXER TAB STYLES
+// ═══════════════════════════════════════════════════════════════
+
+.ase-mixer-block {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  gap: 12px;
+  padding: 12px;
+  background: var(--bg-dark);
+  overflow: hidden;
+}
+
+// ─── Section Header ───
+.ase-section-header {
+  padding: 8px 12px;
+  background: var(--bg-header);
+  border-bottom: 1px solid var(--border-color);
+
+  h3 {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-main);
+
+    i {
+      margin-right: 8px;
+      color: var(--accent-cyan);
+    }
+  }
+}
+
+// ─── Favorites Column ───
+.ase-mixer-favorites {
+  width: 280px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-panel);
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  overflow: hidden;
+
+  .ase-favorites-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+  }
+}
+
+.ase-mixer-favorite-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  background: var(--bg-dark);
+  border-radius: 4px;
+  margin-bottom: 6px;
+  border-left: 3px solid transparent;
+  transition: all 0.15s ease;
+
+  &:hover {
+    background: var(--bg-active);
+    border-left-color: var(--accent-cyan);
+  }
+
+  .ase-favorite-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+
+    i {
+      color: var(--text-muted);
+      font-size: 12px;
+    }
+
+    .ase-favorite-name {
+      font-size: 12px;
+      color: var(--text-main);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+  }
+
+  .ase-favorite-controls {
+    display: flex;
+    gap: 4px;
+
+    .ase-btn-icon {
+      padding: 4px 6px;
+      font-size: 10px;
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      border-radius: 3px;
+
+      &:hover {
+        background: rgba(255, 255, 255, 0.1);
+        color: var(--accent-cyan);
+      }
+    }
+  }
+}
+
+// ─── Queue Column ───
+.ase-mixer-queue {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-panel);
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  overflow: hidden;
+  min-width: 0;
+
+  .ase-queue-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+  }
+}
+
+// ─── Queue Playlist Group ───
+.ase-queue-playlist {
+  margin-bottom: 12px;
+  background: var(--bg-dark);
+  border-radius: 6px;
+  overflow: hidden;
+
+  &.is-collapsed {
+    .ase-queue-tracks {
+      display: none;
+    }
+
+    .ase-collapse-icon {
+      transform: rotate(-90deg);
+    }
+  }
+}
+
+.ase-queue-playlist-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--bg-header);
+  cursor: pointer;
+  border-bottom: 1px solid var(--border-color);
+
+  &:hover {
+    background: var(--bg-active);
+  }
+
+  .ase-collapse-icon {
+    color: var(--text-muted);
+    font-size: 10px;
+    transition: transform 0.2s ease;
+  }
+
+  .ase-playlist-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-main);
+    flex: 1;
+  }
+
+  .ase-playlist-count {
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+}
+
+// ─── Queue Track Item ───
+.ase-queue-track {
+  padding: 12px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border-color);
+  border-left: 3px solid transparent;
+  transition: all 0.15s ease;
+
+  &:last-child {
+    border-bottom: none;
+  }
+
+  // Playback states
+  &.is-playing {
+    border-left-color: var(--ase-success);
+    background: rgba(34, 197, 94, 0.08);
+
+    .ase-track-name {
+      color: var(--ase-success);
+    }
+  }
+
+  &.is-paused {
+    border-left-color: var(--ase-warning);
+    background: rgba(251, 191, 36, 0.08);
+
+    .ase-track-name {
+      color: var(--ase-warning);
+    }
+  }
+
+  &:hover {
+    background: var(--bg-active);
+  }
+}
+
+// Row 1: Name and Controls
+.ase-queue-track-row1 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+
+  .ase-track-name {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-main);
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .ase-track-controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+
+    .ase-btn-icon {
+      padding: 5px 7px;
+      font-size: 11px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-color);
+      color: var(--text-muted);
+      cursor: pointer;
+      border-radius: 4px;
+
+      &:hover:not(:disabled) {
+        background: var(--accent-cyan);
+        color: #000;
+        border-color: var(--accent-cyan);
+      }
+
+      &:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+    }
+
+    .ase-channel-select {
+      padding: 4px 8px;
+      font-size: 11px;
+      background: var(--bg-dark);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      border-radius: 4px;
+      cursor: pointer;
+    }
+  }
+}
+
+// Row 2: Tags
+.ase-queue-track-row2 {
+  margin-bottom: 8px;
+
+  .ase-track-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+}
+
+// Row 3: Timeline
+.ase-queue-track-row3 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+
+  .ase-time-current,
+  .ase-time-duration {
+    font-size: 10px;
+    color: var(--text-muted);
+    min-width: 35px;
+  }
+
+  .ase-time-current {
+    text-align: right;
+  }
+
+  .ase-seek-slider {
+    flex: 1;
+    height: 4px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: #334155;
+    border-radius: 2px;
+    outline: none;
+
+    &::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 12px;
+      height: 12px;
+      background: var(--accent-cyan);
+      border-radius: 50%;
+      cursor: pointer;
+    }
+  }
+}
+
+// Row 4: Volume and Options
+.ase-queue-track-row4 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  .ase-track-volume {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    max-width: 200px;
+
+    i {
+      color: var(--text-muted);
+      font-size: 11px;
+    }
+
+    .ase-volume-slider {
+      flex: 1;
+      height: 3px;
+      -webkit-appearance: none;
+      appearance: none;
+      background: #334155;
+      border-radius: 2px;
+
+      &::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        width: 10px;
+        height: 10px;
+        background: var(--accent-blue);
+        border-radius: 50%;
+        cursor: pointer;
+      }
+    }
+
+    .ase-volume-value {
+      font-size: 10px;
+      color: var(--text-muted);
+      min-width: 30px;
+    }
+  }
+
+  .ase-track-options {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    .ase-loop-label {
+      display: flex;
+      align-items: center;
+      cursor: pointer;
+
+      input[type="checkbox"] {
+        display: none;
+      }
+
+      i {
+        font-size: 12px;
+        color: var(--text-muted);
+        transition: color 0.15s ease;
+      }
+
+      input:checked+i {
+        color: var(--accent-cyan);
+      }
+    }
+
+    .ase-btn-remove {
+      padding: 4px 6px;
+      font-size: 11px;
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+
+      &:hover {
+        color: var(--ase-danger);
+      }
+    }
+  }
+}
+
+// ─── Empty Section ───
+.ase-empty-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--text-muted);
+
+  i {
+    font-size: 32px;
+    margin-bottom: 12px;
+    opacity: 0.3;
+  }
+
+  p {
+    margin: 4px 0;
+    font-size: 13px;
+  }
+
+  .ase-hint {
+    font-size: 11px;
+    opacity: 0.7;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MIXER SPECIFIC STYLES
+// ═══════════════════════════════════════════════════════════════
+
+// Mixer workspace (uses Library layout)
+
+
+// Mixer favorite controls in sidebar
+.ase-mixer-favorite-controls {
+  display: flex;
+  gap: 4px;
+
+  i {
+    font-size: 11px;
+    padding: 4px;
+    cursor: pointer;
+    color: var(--text-muted);
+    border-radius: 3px;
+    transition: all 0.15s ease;
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: var(--accent-cyan);
+    }
+  }
+}
+
+// Queue playlist grouping
+.ase-queue-playlist {
+  margin-bottom: 16px;
+
+  &.is-collapsed {
+    .ase-collapse-icon {
+      transform: rotate(-90deg);
+    }
+  }
+}
+
+.ase-queue-playlist-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid var(--border-color);
+  cursor: pointer;
+  margin-bottom: 8px;
+  border-radius: 4px;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.05);
+  }
+
+  .ase-collapse-icon {
+    font-size: 10px;
+    color: var(--text-muted);
+    transition: transform 0.2s ease;
+  }
+
+  .ase-playlist-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-main);
+    flex: 1;
+  }
+
+  .ase-playlist-count {
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+}
+
+// Timeline slider for queue tracks
+.ase-queue-track-timeline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+
+  .ase-time-current,
+  .ase-time-duration {
+    font-size: 10px;
+    color: var(--text-muted);
+    min-width: 35px;
+    font-family: monospace;
+  }
+
+  .ase-time-current {
+    text-align: right;
+  }
+
+  .ase-seek-slider {
+    flex: 1;
+    height: 4px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: #334155;
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+
+    &::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 12px;
+      height: 12px;
+      background: var(--accent-cyan);
+      border-radius: 50%;
+      cursor: pointer;
+      transition: all 0.15s ease;
+
+      &:hover {
+        transform: scale(1.2);
+      }
+    }
+
+    &::-moz-range-thumb {
+      width: 12px;
+      height: 12px;
+      background: var(--accent-cyan);
+      border-radius: 50%;
+      border: none;
+      cursor: pointer;
+    }
+  }
+}
+
+// Volume slider for queue tracks
+.ase-queue-track-volume {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px 8px;
+
+  i {
+    color: var(--text-muted);
+    font-size: 11px;
+  }
+
+  .ase-volume-slider {
+    flex: 1;
+    max-width: 150px;
+    height: 3px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: #334155;
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+
+    &::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 10px;
+      height: 10px;
+      background: var(--accent-blue);
+      border-radius: 50%;
+      cursor: pointer;
+    }
+
+    &::-moz-range-thumb {
+      width: 10px;
+      height: 10px;
+      background: var(--accent-blue);
+      border-radius: 50%;
+      border: none;
+      cursor: pointer;
+    }
+  }
+
+  .ase-volume-value {
+    font-size: 10px;
+    color: var(--text-muted);
+    min-width: 35px;
+    font-family: monospace;
+  }
+}
+
+// Playing/paused state for mixer favorite items
+.ase-mixer-favorite-item.is-playing {
+  border-left: 3px solid var(--ase-success);
+  background: rgba(34, 197, 94, 0.08);
+}
+
+.ase-mixer-favorite-item.is-paused {
+  border-left: 3px solid var(--ase-warning);
+  background: rgba(251, 191, 36, 0.08);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// LIBRARY TRACK PLAYBACK STATE BORDERS
+// ═══════════════════════════════════════════════════════════════
+
+.ase-track-player-item {
+  border-left: 3px solid transparent;
+  transition: border-left-color 0.2s ease;
+
+  &.is-playing {
+    border-left-color: var(--ase-success) !important;
+  }
+
+  &.is-paused {
+    border-left-color: var(--ase-warning) !important;
+  }
+}

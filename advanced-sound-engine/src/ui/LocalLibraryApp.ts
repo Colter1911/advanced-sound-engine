@@ -53,6 +53,8 @@ interface LibraryItemViewData {
   favorite: boolean;
   group: string;
   inQueue: boolean;
+  isPlaying: boolean;
+  isPaused: boolean;
 }
 
 interface PlaylistViewData {
@@ -251,6 +253,11 @@ export class LocalLibraryApp extends Application {
     const inQueue = window.ASE?.queue?.hasItem(item.id) ?? false;
     const durationFormatted = formatTime(item.duration);
 
+    // Get playback state from AudioEngine
+    const player = (window.ASE?.engine as any)?.getTrack?.(item.id);
+    const isPlaying = player?.state === 'playing';
+    const isPaused = player?.state === 'paused';
+
     return {
       id: item.id,
       name: item.name,
@@ -261,7 +268,9 @@ export class LocalLibraryApp extends Application {
       tags: item.tags,
       favorite: item.favorite,
       group: item.group || 'music',
-      inQueue
+      inQueue,
+      isPlaying,
+      isPaused
     };
   }
 
@@ -789,18 +798,60 @@ export class LocalLibraryApp extends Application {
   // Track Event Handlers (Extended)
   // ─────────────────────────────────────────────────────────────
 
-  private onPlayTrack(event: JQuery.ClickEvent): void {
+  private async onPlayTrack(event: JQuery.ClickEvent): Promise<void> {
     event.preventDefault();
     event.stopPropagation();
     const itemId = $(event.currentTarget).data('item-id') as string;
 
     Logger.debug('Play track:', itemId);
-    Logger.debug('Play track:', itemId);
-    window.ASE.engine?.playTrack(itemId);
-    // Also add to queue if needed? 
-    // User requested "Play adds to list of reproduction".
-    // window.ASE.engine?.addToQueue(itemId); // TODO: Implement Queue
+
+    const item = this.library.getItem(itemId);
+    if (!item) {
+      Logger.warn('Track not found:', itemId);
+      return;
+    }
+
+    // Get engine and queue from window.ASE
+    const engine = window.ASE?.engine;
+    const queue = window.ASE?.queue;
+
+    if (!engine) {
+      Logger.warn('Audio engine not available');
+      return;
+    }
+
+    // Add to queue if not already there
+    if (queue && !queue.hasItem(itemId)) {
+      queue.addItem(itemId, {
+        group: item.group,
+        volume: 1,
+        loop: false
+      });
+    }
+
+    // Get or create player
+    let player = (engine as any).getTrack?.(itemId);
+    if (!player) {
+      player = await (engine as any).createTrack?.({
+        id: itemId,
+        url: item.url,
+        group: item.group,
+        volume: 1,
+        loop: false
+      });
+    }
+
+    // Check if track is paused and get current position
+    let offset = 0;
+    if (player && player.state === 'paused') {
+      offset = player.getCurrentTime();
+    }
+
+    // Play the track (resume from offset if paused)
+    await (engine as any).playTrack?.(itemId, offset);
+
     this.persistScroll();
+    this.render();
   }
 
   private onStopTrack(event: JQuery.ClickEvent): void {
@@ -809,8 +860,17 @@ export class LocalLibraryApp extends Application {
     const itemId = $(event.currentTarget).data('item-id') as string;
 
     Logger.debug('Stop track:', itemId);
+
+    // Stop the track
     window.ASE.engine?.stopTrack(itemId);
+
+    // Remove from queue
+    if (window.ASE?.queue) {
+      window.ASE.queue.removeByLibraryItemId(itemId);
+    }
+
     this.persistScroll();
+    this.render();
   }
 
   private onPauseTrack(event: JQuery.ClickEvent): void {
@@ -820,6 +880,7 @@ export class LocalLibraryApp extends Application {
     Logger.debug('Pause track:', itemId);
     window.ASE.engine?.pauseTrack(itemId);
     this.persistScroll();
+    this.render(); // Update UI and bottom panel indicators
   }
 
   private onAddToQueue(event: JQuery.ClickEvent): void {

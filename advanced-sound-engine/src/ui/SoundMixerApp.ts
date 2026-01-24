@@ -1,35 +1,46 @@
 import type { TrackGroup } from '@t/audio';
+import type { QueueItem } from '@t/queue';
+import type { LibraryItem, Playlist } from '@t/library';
 import { AudioEngine } from '@core/AudioEngine';
 import { SocketManager } from '@sync/SocketManager';
-import { StreamingPlayer } from '@core/StreamingPlayer';
+import { LibraryManager } from '@lib/LibraryManager';
+import { PlaybackQueueManager } from '@queue/PlaybackQueueManager';
 import { Logger } from '@utils/logger';
 import { formatTime } from '@utils/time';
-import { throttle } from '@utils/throttle';
-import { generateUUID } from '@utils/uuid';
 
 const MODULE_ID = 'advanced-sound-engine';
 
-function getMaxSimultaneous(): number {
-  return (game.settings?.get(MODULE_ID as any, 'maxSimultaneousTracks' as any) as number) || 8;
+// ─────────────────────────────────────────────────────────────
+// Types for Mixer View Data
+// ─────────────────────────────────────────────────────────────
+
+interface MixerViewData {
+  favorites: FavoriteViewData[];
+  queuePlaylists: QueuePlaylistViewData[];
 }
 
-interface MixerData {
-  tracks: TrackViewData[];
-  volumes: {
-    master: number;
-    music: number;
-    ambience: number;
-    sfx: number;
-  };
-  playingCount: number;
-  maxSimultaneous: number;
-  syncEnabled: boolean; // Reverted the CSS variable insertion here to maintain valid TypeScript syntax
-}
-
-interface TrackViewData {
+interface FavoriteViewData {
   id: string;
   name: string;
+  type: 'track' | 'playlist';
+  group?: TrackGroup;
+  isPlaying: boolean;
+  isPaused: boolean;
+}
+
+interface QueuePlaylistViewData {
+  id: string | null;
+  name: string;
+  collapsed: boolean;
+  tracks: QueueTrackViewData[];
+}
+
+interface QueueTrackViewData {
+  queueId: string;
+  libraryItemId: string;
+  name: string;
   group: TrackGroup;
+  tags: string[];
   isPlaying: boolean;
   isPaused: boolean;
   isStopped: boolean;
@@ -44,218 +55,446 @@ interface TrackViewData {
   progress: number;
 }
 
-export class SoundMixerApp extends Application {
+// ─────────────────────────────────────────────────────────────
+// SoundMixerApp - Mixer Tab Controller
+// ─────────────────────────────────────────────────────────────
+
+export class SoundMixerApp {
   private engine: AudioEngine;
   private socket: SocketManager;
+  private libraryManager: LibraryManager;
+  private queueManager: PlaybackQueueManager;
+  private collapsedPlaylists: Set<string> = new Set();
   private updateInterval: ReturnType<typeof setInterval> | null = null;
+  private html: JQuery | null = null;
+  private renderParent: (() => void) | null = null;
 
-  static override get defaultOptions() {
-    return foundry.utils.mergeObject(super.defaultOptions, {
-      id: 'ase-sound-mixer',
-      title: 'Sound Mixer (GM)',
-      template: `modules/${MODULE_ID}/templates/mixer.hbs`,
-      classes: ['ase-mixer'],
-      width: 550,
-      height: 'auto',
-      resizable: true,
-      minimizable: true,
-      popOut: true
-    }) as any;
-  }
-
-  constructor(engine: AudioEngine, socket: SocketManager, options?: any) {
-    super(options);
+  constructor(
+    engine: AudioEngine,
+    socket: SocketManager,
+    libraryManager: LibraryManager,
+    queueManager: PlaybackQueueManager
+  ) {
     this.engine = engine;
     this.socket = socket;
+    this.libraryManager = libraryManager;
+    this.queueManager = queueManager;
+
+    // Subscribe to queue changes for real-time updates
+    this.queueManager.on('change', () => this.onQueueChange());
   }
 
-  override getData(): MixerData {
-    const tracks = this.engine.getAllTracks().map(player => this.getTrackViewData(player));
-    const volumes = this.engine.volumes;
-    const playingCount = tracks.filter(t => t.isPlaying).length;
+  // Set callback for requesting parent render
+  setRenderCallback(callback: () => void): void {
+    this.renderParent = callback;
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // Data Provider
+  // ─────────────────────────────────────────────────────────────
+
+  getData(): MixerViewData {
+    // Get ordered favorites from library (includes both tracks and playlists)
+    const orderedFavorites = this.libraryManager.getOrderedFavorites();
+    const favorites: FavoriteViewData[] = [];
+
+    for (const fav of orderedFavorites) {
+      if (fav.type === 'track') {
+        const item = this.libraryManager.getItem(fav.id);
+        if (item) {
+          const player = this.engine.getTrack(item.id);
+          favorites.push({
+            id: item.id,
+            name: item.name,
+            type: 'track',
+            group: item.group,
+            isPlaying: player?.state === 'playing',
+            isPaused: player?.state === 'paused',
+          });
+        }
+      } else if (fav.type === 'playlist') {
+        const playlist = this.libraryManager.playlists.getPlaylist(fav.id);
+        if (playlist) {
+          favorites.push({
+            id: playlist.id,
+            name: playlist.name,
+            type: 'playlist',
+            group: undefined,
+            isPlaying: false, // Playlists don't have individual play state
+            isPaused: false,
+          });
+        }
+      }
+    }
+
+    // Get queue items grouped by playlist
+    const queueItems = this.queueManager.getItems();
+    const queuePlaylists = this.groupQueueByPlaylist(queueItems);
 
     return {
-      tracks,
-      volumes: {
-        master: Math.round(volumes.master * 100),
-        music: Math.round(volumes.music * 100),
-        ambience: Math.round(volumes.ambience * 100),
-        sfx: Math.round(volumes.sfx * 100)
-      },
-      playingCount,
-      maxSimultaneous: getMaxSimultaneous(),
-      syncEnabled: this.socket.syncEnabled
+      favorites,
+      queuePlaylists,
     };
   }
 
-  private getTrackViewData(player: StreamingPlayer): TrackViewData {
-    const state = player.getState();
-    const currentTime = player.getCurrentTime();
-    const duration = player.getDuration();
+  private groupQueueByPlaylist(queueItems: QueueItem[]): QueuePlaylistViewData[] {
+    const groups = new Map<string | null, QueueItem[]>();
+
+    // Group by playlistId (null for un-grouped tracks)
+    for (const item of queueItems) {
+      const key = item.playlistId ?? null;
+      if (!groups.has(key)) {
+        groups.set(key, []);
+      }
+      groups.get(key)!.push(item);
+    }
+
+    const playlists: QueuePlaylistViewData[] = [];
+
+    for (const [playlistId, items] of groups) {
+      // Get playlist name
+      let name = 'Ungrouped';
+      if (playlistId) {
+        const playlist = this.libraryManager.playlists.getPlaylist(playlistId);
+        name = playlist?.name ?? 'Unknown Playlist';
+      }
+
+      const tracks = items.map(queueItem => this.getQueueTrackViewData(queueItem));
+
+      playlists.push({
+        id: playlistId,
+        name,
+        collapsed: playlistId ? this.collapsedPlaylists.has(playlistId) : false,
+        tracks,
+      });
+    }
+
+    return playlists;
+  }
+
+  private getQueueTrackViewData(queueItem: QueueItem): QueueTrackViewData {
+    const libraryItem = this.libraryManager.getItem(queueItem.libraryItemId);
+    const player = this.engine.getTrack(queueItem.libraryItemId);
+
+    const currentTime = player?.getCurrentTime() ?? 0;
+    const duration = libraryItem?.duration ?? player?.getDuration() ?? 0;
+    const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
     return {
-      id: state.id,
-      name: this.extractFileName(state.url),
-      group: state.group,
-      isPlaying: state.playbackState === 'playing',
-      isPaused: state.playbackState === 'paused',
-      isStopped: state.playbackState === 'stopped',
-      isLoading: state.playbackState === 'loading',
-      volume: state.volume,
-      volumePercent: Math.round(state.volume * 100),
-      loop: state.loop,
+      queueId: queueItem.id,
+      libraryItemId: queueItem.libraryItemId,
+      name: libraryItem?.name ?? 'Unknown Track',
+      group: queueItem.group,
+      tags: libraryItem?.tags ?? [],
+      isPlaying: player?.state === 'playing',
+      isPaused: player?.state === 'paused',
+      isStopped: !player || player.state === 'stopped',
+      isLoading: player?.state === 'loading',
+      volume: queueItem.volume,
+      volumePercent: Math.round(queueItem.volume * 100),
+      loop: queueItem.loop,
       currentTime,
       currentTimeFormatted: formatTime(currentTime),
       duration,
       durationFormatted: formatTime(duration),
-      progress: duration > 0 ? (currentTime / duration) * 100 : 0
+      progress,
     };
   }
 
-  private extractFileName(url: string): string {
-    if (!url) return 'Unknown';
-    try {
-      const decoded = decodeURIComponent(url);
-      const parts = decoded.split('/');
-      const fileName = parts[parts.length - 1];
-      return fileName.replace(/\.[^.]+$/, '');
-    } catch {
-      const parts = url.split('/');
-      const fileName = parts[parts.length - 1];
-      return fileName.replace(/\.[^.]+$/, '');
+  // ─────────────────────────────────────────────────────────────
+  // Event Listeners
+  // ─────────────────────────────────────────────────────────────
+
+  activateListeners(html: JQuery): void {
+    this.html = html;
+    this.startUpdates();
+
+    // Favorites controls
+    html.find('[data-action="play-favorite"]').on('click', (e) => this.onPlayFavorite(e));
+    html.find('[data-action="pause-favorite"]').on('click', (e) => this.onPauseFavorite(e));
+    html.find('[data-action="stop-favorite"]').on('click', (e) => this.onStopFavorite(e));
+
+    // Queue controls
+    html.find('[data-action="play-queue"]').on('click', (e) => this.onPlayQueueItem(e));
+    html.find('[data-action="pause-queue"]').on('click', (e) => this.onPauseQueueItem(e));
+    html.find('[data-action="stop-queue"]').on('click', (e) => this.onStopQueueItem(e));
+    html.find('[data-action="remove-queue"]').on('click', (e) => this.onRemoveQueueItem(e));
+    html.find('[data-action="loop-queue"]').on('click', (e) => this.onLoopQueueItem(e));
+
+    // Playlist collapse/expand
+    html.find('[data-action="toggle-playlist"]').on('click', (e) => this.onTogglePlaylist(e));
+
+    // Track controls
+    html.find('[data-action="seek"]').on('input', (e) => this.onSeek(e));
+    html.find('[data-action="volume"]').on('input', (e) => this.onVolumeChange(e));
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // Favorites Handlers
+  // ─────────────────────────────────────────────────────────────
+
+  private async onPlayFavorite(event: JQuery.ClickEvent): Promise<void> {
+    event.preventDefault();
+    event.stopPropagation();
+    const $el = $(event.currentTarget);
+    const id = $el.data('favorite-id') as string;
+    const type = $el.data('favorite-type') as 'track' | 'playlist';
+
+    if (type === 'track') {
+      await this.playTrack(id);
+    } else {
+      // Play entire playlist
+      await this.playPlaylist(id);
+    }
+    this.requestRender();
+  }
+
+  private onPauseFavorite(event: JQuery.ClickEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+    const $el = $(event.currentTarget);
+    const id = $el.data('favorite-id') as string;
+    const type = $el.data('favorite-type') as string;
+
+    if (type === 'track') {
+      this.pauseTrack(id);
+    }
+    this.requestRender();
+  }
+
+  private onStopFavorite(event: JQuery.ClickEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+    const $el = $(event.currentTarget);
+    const id = $el.data('favorite-id') as string;
+    const type = $el.data('favorite-type') as string;
+
+    if (type === 'track') {
+      this.stopTrack(id);
+    } else {
+      // Stop all tracks in playlist
+      this.stopPlaylist(id);
+    }
+    this.requestRender();
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // Queue Item Handlers
+  // ─────────────────────────────────────────────────────────────
+
+  private async onPlayQueueItem(event: JQuery.ClickEvent): Promise<void> {
+    event.preventDefault();
+    event.stopPropagation();
+    const $track = $(event.currentTarget).closest('.ase-queue-track');
+    const itemId = $track.data('item-id') as string;
+    await this.playTrack(itemId);
+    this.requestRender();
+  }
+
+  private onPauseQueueItem(event: JQuery.ClickEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+    const $track = $(event.currentTarget).closest('.ase-queue-track');
+    const itemId = $track.data('item-id') as string;
+    this.pauseTrack(itemId);
+    this.requestRender();
+  }
+
+  private onStopQueueItem(event: JQuery.ClickEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+    const $track = $(event.currentTarget).closest('.ase-queue-track');
+    const itemId = $track.data('item-id') as string;
+    this.stopTrack(itemId);
+    this.requestRender();
+  }
+
+  private onRemoveQueueItem(event: JQuery.ClickEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+    const $track = $(event.currentTarget).closest('.ase-queue-track');
+    const queueId = $track.data('queue-id') as string;
+    const itemId = $track.data('item-id') as string;
+
+    // Stop the track first
+    this.stopTrack(itemId);
+    // Remove from queue
+    this.queueManager.removeItem(queueId);
+    this.requestRender();
+  }
+
+  private onLoopQueueItem(event: JQuery.ClickEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+    const $track = $(event.currentTarget).closest('.ase-queue-track');
+    const itemId = $track.data('item-id') as string;
+    const $icon = $(event.currentTarget);
+
+    const currentLoop = $icon.hasClass('active');
+    const newLoop = !currentLoop;
+
+    this.engine.setTrackLoop(itemId, newLoop);
+
+    if (newLoop) {
+      $icon.addClass('active').css('color', 'var(--accent-cyan)');
+    } else {
+      $icon.removeClass('active').css('color', '');
     }
   }
 
-  override activateListeners(html: JQuery): void {
-    super.activateListeners(html);
+  // ─────────────────────────────────────────────────────────────
+  // Playlist Toggle
+  // ─────────────────────────────────────────────────────────────
 
-    // Sync toggle
-    html.find('#ase-sync-toggle').on('change', (event) => {
-      const enabled = (event.target as HTMLInputElement).checked;
-      this.socket.setSyncEnabled(enabled);
-      this.updateSyncIndicator(html, enabled);
-    });
+  private onTogglePlaylist(event: JQuery.ClickEvent): void {
+    const $playlist = $(event.currentTarget).closest('.ase-queue-playlist');
+    const playlistId = $playlist.data('playlist-id') as string;
 
-    // Channel volume sliders
-    const throttledChannelBroadcast = throttle((channel: string, value: number) => {
-      if (channel === 'master') {
-        this.socket.broadcastChannelVolume('master', value);
-      } else {
-        this.socket.broadcastChannelVolume(channel as TrackGroup, value);
-      }
-    }, 50);
+    if (!playlistId) return;
 
-    html.find('.ase-channel-slider').on('input', (event) => {
-      const channel = $(event.currentTarget).data('channel') as string;
-      const value = parseFloat((event.target as HTMLInputElement).value) / 100;
-
-      // Update local engine immediately to prevent UI jitter/reset on re-render
-      if (channel === 'master') {
-        this.engine.setMasterVolume(value);
-      } else {
-        this.engine.setChannelVolume(channel as TrackGroup, value);
-      }
-
-      throttledChannelBroadcast(channel, value);
-      $(event.currentTarget).siblings('.ase-channel-value').text(`${Math.round(value * 100)}%`);
-    });
-
-    // Add track
-    html.find('#ase-add-track').on('click', () => this.onAddTrack());
-
-    // Track controls
-    const tracks = html.find('.ase-tracks');
-
-    tracks.on('click', '.ase-btn-play', (event) => {
-      const trackId = $(event.currentTarget).closest('.ase-track').data('track-id');
-      this.onPlayTrack(trackId);
-    });
-
-    tracks.on('click', '.ase-btn-pause', (event) => {
-      const trackId = $(event.currentTarget).closest('.ase-track').data('track-id');
-      this.onPauseTrack(trackId);
-    });
-
-    tracks.on('click', '.ase-btn-stop', (event) => {
-      const trackId = $(event.currentTarget).closest('.ase-track').data('track-id');
-      this.onStopTrack(trackId);
-    });
-
-    tracks.on('click', '.ase-btn-remove', (event) => {
-      const trackId = $(event.currentTarget).closest('.ase-track').data('track-id');
-      this.onRemoveTrack(trackId);
-    });
-
-    tracks.on('change', '.ase-loop-toggle', (event) => {
-      const trackId = $(event.currentTarget).closest('.ase-track').data('track-id');
-      const loop = (event.target as HTMLInputElement).checked;
-      this.engine.setTrackLoop(trackId, loop);
-      this.socket.broadcastTrackLoop(trackId, loop);
-    });
-
-    tracks.on('change', '.ase-channel-select', (event) => {
-      const trackId = $(event.currentTarget).data('track-id') as string;
-      const channel = (event.target as HTMLSelectElement).value as TrackGroup;
-      this.engine.setTrackChannel(trackId, channel);
-    });
-
-    // Volume slider
-    const throttledVolumeBroadcast = throttle((trackId: string, value: number) => {
-      this.socket.broadcastTrackVolume(trackId, value);
-    }, 50);
-
-    tracks.on('input', '.ase-volume-slider', (event) => {
-      const trackId = $(event.currentTarget).closest('.ase-track').data('track-id');
-      const value = parseFloat((event.target as HTMLInputElement).value) / 100;
-
-      this.engine.setTrackVolume(trackId, value); // Decoupled engine update from throttle
-      throttledVolumeBroadcast(trackId, value);
-
-      $(event.currentTarget).siblings('.ase-volume-value').text(`${Math.round(value * 100)}%`);
-    });
-
-    // Seek slider
-    const throttledSeek = throttle((trackId: string, time: number) => {
-      const player = this.engine.getTrack(trackId);
-      const isPlaying = player?.state === 'playing';
-      this.engine.seekTrack(trackId, time);
-      this.socket.broadcastTrackSeek(trackId, time, isPlaying ?? false);
-    }, 100);
-
-    tracks.on('input', '.ase-seek-slider', (event) => {
-      const trackId = $(event.currentTarget).closest('.ase-track').data('track-id');
-      const player = this.engine.getTrack(trackId);
-      if (player) {
-        const percent = parseFloat((event.target as HTMLInputElement).value);
-        const time = (percent / 100) * player.getDuration();
-        throttledSeek(trackId, time);
-      }
-    });
-
-    // Stop all
-    html.find('#ase-stop-all').on('click', () => {
-      this.engine.stopAll();
-      this.socket.broadcastStopAll();
-      this.render();
-    });
-
-    this.startUpdates();
+    if (this.collapsedPlaylists.has(playlistId)) {
+      this.collapsedPlaylists.delete(playlistId);
+      $playlist.removeClass('is-collapsed');
+      // Show all tracks
+      $playlist.find('.ase-queue-track').show();
+    } else {
+      this.collapsedPlaylists.add(playlistId);
+      $playlist.addClass('is-collapsed');
+      // Hide non-playing/paused tracks
+      $playlist.find('.ase-queue-track').each((_, el) => {
+        const $el = $(el);
+        if (!$el.hasClass('is-playing') && !$el.hasClass('is-paused')) {
+          $el.hide();
+        }
+      });
+    }
   }
 
-  private updateSyncIndicator(html: JQuery, enabled: boolean): void {
-    const indicator = html.find('.ase-sync-status');
-    indicator.toggleClass('is-active', enabled);
-    indicator.find('span').text(enabled ? 'SYNC ON' : 'SYNC OFF');
+  // ─────────────────────────────────────────────────────────────
+  // Track Controls
+  // ─────────────────────────────────────────────────────────────
+
+  private onSeek(event: JQuery.TriggeredEvent): void {
+    const $track = $(event.currentTarget).closest('.ase-queue-track');
+    const itemId = $track.data('item-id') as string;
+    const value = parseFloat($(event.currentTarget).val() as string);
+
+    const player = this.engine.getTrack(itemId);
+    if (player) {
+      const seekTime = (value / 100) * player.getDuration();
+      this.engine.seekTrack(itemId, seekTime);
+
+      // Sync if enabled
+      if (this.socket.syncEnabled) {
+        this.socket.broadcastTrackSeek(itemId, seekTime, player.state === 'playing');
+      }
+    }
   }
+
+  private onVolumeChange(event: JQuery.TriggeredEvent): void {
+    const $track = $(event.currentTarget).closest('.ase-queue-track');
+    const itemId = $track.data('item-id') as string;
+    const value = parseInt($(event.currentTarget).val() as string, 10);
+    const volume = value / 100;
+
+    // Update engine volume
+    this.engine.setTrackVolume(itemId, volume);
+
+    // Sync if enabled
+    if (this.socket.syncEnabled) {
+      this.socket.broadcastTrackVolume(itemId, volume);
+    }
+
+    // Update display
+    $track.find('.ase-volume-value').text(`${value}%`);
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // Playback Core Methods
+  // ─────────────────────────────────────────────────────────────
+
+  private async playTrack(itemId: string): Promise<void> {
+    const libraryItem = this.libraryManager.getItem(itemId);
+    if (!libraryItem) {
+      Logger.warn('Track not found in library:', itemId);
+      return;
+    }
+
+    let player = this.engine.getTrack(itemId);
+
+    // If player exists and is paused, resume from current position
+    if (player && player.state === 'paused') {
+      const offset = player.getCurrentTime();
+      await this.engine.playTrack(itemId, offset);
+
+      if (this.socket.syncEnabled) {
+        this.socket.broadcastTrackPlay(itemId, offset);
+      }
+      return;
+    }
+
+    // Create track if not exists
+    if (!player) {
+      player = await this.engine.createTrack({
+        id: itemId,
+        url: libraryItem.url,
+        group: libraryItem.group,
+        volume: 1,
+        loop: false,
+      });
+    }
+
+    await this.engine.playTrack(itemId);
+
+    // Sync if enabled
+    if (this.socket.syncEnabled) {
+      this.socket.broadcastTrackPlay(itemId, 0);
+    }
+  }
+
+  private pauseTrack(itemId: string): void {
+    const player = this.engine.getTrack(itemId);
+    this.engine.pauseTrack(itemId);
+
+    if (this.socket.syncEnabled && player) {
+      this.socket.broadcastTrackPause(itemId, player.getCurrentTime());
+    }
+  }
+
+  private stopTrack(itemId: string): void {
+    this.engine.stopTrack(itemId);
+
+    if (this.socket.syncEnabled) {
+      this.socket.broadcastTrackStop(itemId);
+    }
+  }
+
+  private async playPlaylist(playlistId: string): Promise<void> {
+    const tracks = this.libraryManager.playlists.getPlaylistTracks(playlistId);
+    if (!tracks.length) return;
+
+    // Play first track
+    const firstTrack = tracks[0];
+    await this.playTrack(firstTrack.libraryItemId);
+  }
+
+  private stopPlaylist(playlistId: string): void {
+    const tracks = this.libraryManager.playlists.getPlaylistTracks(playlistId);
+    for (const track of tracks) {
+      this.stopTrack(track.libraryItemId);
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // Real-time Updates
+  // ─────────────────────────────────────────────────────────────
 
   private startUpdates(): void {
-    this.stopUpdates();
-    this.updateInterval = setInterval(() => {
-      this.updateTrackDisplays();
-    }, 250);
+    if (this.updateInterval) return;
+    this.updateInterval = setInterval(() => this.updateTrackDisplays(), 100);
   }
 
-  private stopUpdates(): void {
+  stopUpdates(): void {
     if (this.updateInterval) {
       clearInterval(this.updateInterval);
       this.updateInterval = null;
@@ -263,104 +502,40 @@ export class SoundMixerApp extends Application {
   }
 
   private updateTrackDisplays(): void {
-    const html = this.element;
-    if (!html || !html.length) return;
+    if (!this.html) return;
 
-    let playingCount = 0;
+    this.html.find('.ase-queue-track').each((_, el) => {
+      const $track = $(el);
+      const itemId = $track.data('item-id') as string;
+      const player = this.engine.getTrack(itemId);
 
-    for (const player of this.engine.getAllTracks()) {
-      const trackEl = html.find(`.ase-track[data-track-id="${player.id}"]`);
-      if (!trackEl.length) continue;
+      if (player) {
+        const currentTime = player.getCurrentTime();
+        const duration = player.getDuration();
+        const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
-      const currentTime = player.getCurrentTime();
-      const duration = player.getDuration();
-      const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
-      const state = player.state;
+        $track.find('.ase-time-current').text(formatTime(currentTime));
+        $track.find('.ase-seek-slider').val(progress);
 
-      if (state === 'playing') playingCount++;
-
-      trackEl.find('.ase-time-current').text(formatTime(currentTime));
-
-      const seekSlider = trackEl.find('.ase-seek-slider');
-      if (!seekSlider.is(':active')) {
-        seekSlider.val(progress);
-      }
-
-      trackEl.removeClass('is-playing is-paused is-stopped is-loading');
-      trackEl.addClass(`is-${state}`);
-
-      trackEl.find('.ase-btn-play').prop('disabled', state === 'playing' || state === 'loading');
-      trackEl.find('.ase-btn-pause').prop('disabled', state !== 'playing');
-      trackEl.find('.ase-btn-stop').prop('disabled', state === 'stopped');
-    }
-
-    const totalTracks = this.engine.getAllTracks().length;
-    html.find('.ase-track-count').text(`${playingCount}/${totalTracks} playing`);
-  }
-
-  private async onAddTrack(): Promise<void> {
-    const fp = new FilePicker({
-      type: 'audio',
-      current: '',
-      callback: async (path: string) => {
-        await this.addTrackFromPath(path);
+        // Update state classes
+        $track.removeClass('is-playing is-paused');
+        if (player.state === 'playing') {
+          $track.addClass('is-playing');
+        } else if (player.state === 'paused') {
+          $track.addClass('is-paused');
+        }
       }
     });
-    fp.render(true);
   }
 
-  async addTrackFromPath(path: string, group: TrackGroup = 'music'): Promise<void> {
-    const trackId = generateUUID();
+  private onQueueChange(): void {
+    Logger.debug('Queue changed, mixer should refresh');
+    this.requestRender();
+  }
 
-    try {
-      await this.engine.createTrack({
-        id: trackId,
-        url: path,
-        group,
-        volume: 1,
-        loop: false
-      });
-
-      this.render();
-      ui.notifications?.info(`Added: ${this.extractFileName(path)}`);
-
-    } catch (error) {
-      Logger.error('Failed to add track:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      ui.notifications?.error(`Failed to load: ${errorMessage}`);
+  private requestRender(): void {
+    if (this.renderParent) {
+      this.renderParent();
     }
-  }
-
-  private async onPlayTrack(trackId: string): Promise<void> {
-    const player = this.engine.getTrack(trackId);
-    if (!player) return;
-
-    const offset = player.state === 'paused' ? player.getCurrentTime() : 0;
-    await this.engine.playTrack(trackId, offset);
-    this.socket.broadcastTrackPlay(trackId, offset);
-  }
-
-  private onPauseTrack(trackId: string): void {
-    const player = this.engine.getTrack(trackId);
-    if (!player) return;
-
-    const pausedAt = player.getCurrentTime();
-    this.engine.pauseTrack(trackId);
-    this.socket.broadcastTrackPause(trackId, pausedAt);
-  }
-
-  private onStopTrack(trackId: string): void {
-    this.engine.stopTrack(trackId);
-    this.socket.broadcastTrackStop(trackId);
-  }
-
-  private onRemoveTrack(trackId: string): void {
-    this.engine.removeTrack(trackId);
-    this.render();
-  }
-
-  override close(options?: Application.CloseOptions): Promise<void> {
-    this.stopUpdates();
-    return super.close(options);
   }
 }

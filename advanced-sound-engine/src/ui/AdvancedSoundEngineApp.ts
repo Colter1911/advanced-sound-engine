@@ -1,6 +1,7 @@
 import { AudioEngine } from '@core/AudioEngine';
 import { SocketManager } from '@sync/SocketManager';
 import { LibraryManager } from '@lib/LibraryManager';
+import { PlaybackQueueManager } from '@queue/PlaybackQueueManager';
 import { LocalLibraryApp } from './LocalLibraryApp';
 import { SoundMixerApp } from './SoundMixerApp';
 import { Logger } from '@utils/logger';
@@ -16,26 +17,41 @@ export class AdvancedSoundEngineApp extends Application {
     private engine: AudioEngine;
     private socket: SocketManager;
     private libraryManager: LibraryManager;
+    private queueManager: PlaybackQueueManager;
 
     // Sub-apps (Controllers)
     private libraryApp: LocalLibraryApp;
-    private mixerApp: SoundMixerApp; // We might need to refactor this later, but for now we'll wrap it
+    private mixerApp: SoundMixerApp;
 
     public state: AppState = {
         activeTab: 'library', // Default to library as per user focus
         syncEnabled: false
     };
 
-    constructor(engine: AudioEngine, socket: SocketManager, libraryManager: LibraryManager, options: any = {}) {
+    constructor(engine: AudioEngine, socket: SocketManager, libraryManager: LibraryManager, queueManager: PlaybackQueueManager, options: any = {}) {
         super(options);
         this.engine = engine;
         this.socket = socket;
         this.libraryManager = libraryManager;
+        this.queueManager = queueManager;
 
         // Initialize sub-controllers
-        // Note: We pass this app instance or handle delegation
         this.libraryApp = new LocalLibraryApp(this.libraryManager, this);
-        this.mixerApp = new SoundMixerApp(this.engine, this.socket);
+        this.mixerApp = new SoundMixerApp(this.engine, this.socket, this.libraryManager, this.queueManager);
+
+        // Set render callback for mixer to trigger parent re-render
+        this.mixerApp.setRenderCallback(() => {
+            if (this.state.activeTab === 'mixer') {
+                this.render(false);
+            }
+        });
+
+        // Subscribe to queue changes for UI updates
+        this.queueManager.on('change', () => {
+            if (this.state.activeTab === 'mixer') {
+                this.render(false);
+            }
+        });
     }
 
     static override get defaultOptions() {
@@ -173,14 +189,14 @@ export class AdvancedSoundEngineApp extends Application {
         this.render(); // Re-render to ensure all sync indicators update (button + toggle)
     }
 
-    private onGlobalPlay(): void {
+    private async onGlobalPlay(): Promise<void> {
         this.engine.resume();
-        // Resume all paused tracks
-        // TODO: This logic probably belongs in AudioEngine as resumeAll()
+        // Resume all paused tracks from their current position
         const tracks = this.engine.getAllTracks();
         for (const track of tracks) {
             if (track.state === 'paused') {
-                track.play();
+                const offset = track.getCurrentTime();
+                await track.play(offset); // Resume from current position
             }
         }
         Logger.debug('Global Play/Resume Clicked');
@@ -201,7 +217,12 @@ export class AdvancedSoundEngineApp extends Application {
 
     private onGlobalStop(): void {
         this.engine.stopAll();
-        // this.socket.broadcastStopAll(); // Logic handled in SoundMixerApp usually
+
+        // Broadcast to sync if enabled
+        if (this.socket.syncEnabled) {
+            this.socket.broadcastStopAll();
+        }
+
         this.render(); // Update UI
     }
 
