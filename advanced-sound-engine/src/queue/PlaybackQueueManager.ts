@@ -1,5 +1,6 @@
 import type { QueueItem, PlaybackQueueState } from '@t/queue';
 import type { TrackGroup } from '@t/audio';
+import { generateUUID } from '@utils/uuid';
 import { Logger } from '../utils/logger';
 
 type QueueEventType = 'add' | 'remove' | 'change' | 'active';
@@ -27,7 +28,7 @@ export class PlaybackQueueManager {
      */
     addItem(libraryItemId: string, options?: Partial<Omit<QueueItem, 'id' | 'libraryItemId' | 'addedAt'>>): QueueItem {
         const item: QueueItem = {
-            id: foundry.utils.randomID(),
+            id: generateUUID(),
             libraryItemId,
             group: options?.group ?? 'music',
             addedAt: Date.now(),

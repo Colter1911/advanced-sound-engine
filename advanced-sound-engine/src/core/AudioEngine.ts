@@ -8,7 +8,7 @@ import { validateAudioFile } from '@utils/audio-validation';
 const MODULE_ID = 'advanced-sound-engine';
 
 function getMaxSimultaneous(): number {
-  return (game.settings.get(MODULE_ID, 'maxSimultaneousTracks') as number) || 8;
+  return ((game.settings as any).get(MODULE_ID, 'maxSimultaneousTracks') as number) || 8;
 }
 
 export class AudioEngine {
@@ -16,32 +16,32 @@ export class AudioEngine {
   private masterGain: GainNode;
   private channelGains: Record<TrackGroup, GainNode>;
   private players: Map<string, StreamingPlayer> = new Map();
-  
+
   private _volumes: ChannelVolumes = {
     master: 1,
     music: 1,
     ambience: 1,
     sfx: 1
   };
-  
+
   private saveTimeout: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
     this.ctx = new AudioContext();
-    
+
     this.masterGain = this.ctx.createGain();
     this.masterGain.connect(this.ctx.destination);
-    
+
     this.channelGains = {
       music: this.ctx.createGain(),
       ambience: this.ctx.createGain(),
       sfx: this.ctx.createGain()
     };
-    
+
     this.channelGains.music.connect(this.masterGain);
     this.channelGains.ambience.connect(this.masterGain);
     this.channelGains.sfx.connect(this.masterGain);
-    
+
     Logger.info('AudioEngine initialized');
   }
 
@@ -51,7 +51,7 @@ export class AudioEngine {
 
   private scheduleSave(): void {
     if (!game.user?.isGM) return;
-    
+
     if (this.saveTimeout) {
       clearTimeout(this.saveTimeout);
     }
@@ -62,11 +62,11 @@ export class AudioEngine {
 
   private async saveState(): Promise<void> {
     if (!game.ready || !game.user?.isGM) return;
-    
+
     const state = this.getState();
-    
+
     try {
-      await game.settings.set(MODULE_ID, 'mixerState', JSON.stringify(state));
+      await (game.settings as any).set(MODULE_ID, 'mixerState', JSON.stringify(state));
       Logger.debug('Mixer state saved');
     } catch (error) {
       Logger.error('Failed to save mixer state:', error);
@@ -75,14 +75,14 @@ export class AudioEngine {
 
   async loadSavedState(): Promise<void> {
     if (!game.ready) return;
-    
+
     try {
-      const savedJson = game.settings.get(MODULE_ID, 'mixerState') as string;
+      const savedJson = (game.settings as any).get(MODULE_ID, 'mixerState') as string;
       if (!savedJson) return;
-      
+
       const state = JSON.parse(savedJson) as MixerState;
       await this.restoreState(state);
-      
+
       Logger.info('Mixer state restored');
     } catch (error) {
       Logger.error('Failed to load mixer state:', error);
@@ -145,7 +145,7 @@ export class AudioEngine {
     player.dispose();
     this.players.delete(id);
     this.scheduleSave();
-    
+
     Logger.info(`Track removed: ${id}`);
     return true;
   }
@@ -161,7 +161,7 @@ export class AudioEngine {
   setTrackChannel(id: string, newGroup: TrackGroup): void {
     const player = this.players.get(id);
     if (!player) return;
-    
+
     player.setChannel(newGroup, this.channelGains[newGroup]);
     this.scheduleSave();
   }
@@ -254,7 +254,7 @@ export class AudioEngine {
 
   getState(): MixerState {
     const tracks: TrackState[] = [];
-    
+
     for (const player of this.players.values()) {
       tracks.push(player.getState());
     }
@@ -272,7 +272,7 @@ export class AudioEngine {
     // Restore volumes
     this._volumes.master = state.masterVolume;
     this.masterGain.gain.setValueAtTime(this._volumes.master, this.ctx.currentTime);
-    
+
     if (state.channelVolumes) {
       for (const channel of ['music', 'ambience', 'sfx'] as TrackGroup[]) {
         this._volumes[channel] = state.channelVolumes[channel];

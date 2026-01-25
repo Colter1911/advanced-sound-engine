@@ -43,23 +43,23 @@ declare global {
 
 // Add button to scene controls
 // Add button to scene controls
-Hooks.on('getSceneControlButtons' as any, (controls: any[]) => {
+// Add button to scene controls
+Hooks.on('getSceneControlButtons', (controls: SceneControl[]) => {
   try {
     const isGM = game.user?.isGM ?? false;
 
-    const aseTools: any[] = [
+    const aseTools: SceneControlTool[] = [
       {
         name: 'ase-open-mixer',
         title: isGM ? 'Open Sound Mixer' : 'Open Sound Volume',
         icon: isGM ? 'fas fa-sliders-h' : 'fas fa-volume-up',
         button: true,
         onClick: () => {
-          console.log('ASE | Button clicked: Open Mixer/Volume');
+          Logger.debug('Button clicked: Open Mixer/Volume');
           if (window.ASE) {
-            console.log('ASE | Window.ASE exists', window.ASE);
             window.ASE.openPanel();
           } else {
-            console.error('ASE | Window.ASE is undefined!');
+            Logger.error('Window.ASE is undefined!');
           }
         }
       }
@@ -72,29 +72,26 @@ Hooks.on('getSceneControlButtons' as any, (controls: any[]) => {
         icon: 'fas fa-book-open',
         button: true,
         onClick: () => {
-          console.log('ASE | Button clicked: Open Library');
+          Logger.debug('Button clicked: Open Library');
           if (window.ASE && window.ASE.openLibrary) {
             window.ASE.openLibrary();
           } else {
-            console.error('ASE | Window.ASE or openLibrary undefined');
+            Logger.error('Window.ASE or openLibrary undefined');
           }
         }
       });
     }
 
-    // Debug what we received
-    console.log('ASE | getSceneControlButtons called with:', controls);
-
     // V13+ Compatibility: controls might be an object/record instead of an array
     if (!Array.isArray(controls) && typeof controls === 'object' && controls !== null) {
-      console.log('ASE | Detected non-array controls structure (V13?)');
+      Logger.info('Detected non-array controls structure (V13?)');
 
       // Check if "sounds" exists as a property
       const soundsLayer = (controls as any).sounds;
 
       if (soundsLayer && Array.isArray(soundsLayer.tools)) {
         soundsLayer.tools.push(...aseTools);
-        console.log('ASE | Added tools to "sounds" layer (V13 Object Mode)');
+        Logger.info('Added tools to "sounds" layer (V13 Object Mode)');
       } else {
         // Fallback: Add as a new property
         (controls as any)['advanced-sound-engine'] = {
@@ -104,7 +101,7 @@ Hooks.on('getSceneControlButtons' as any, (controls: any[]) => {
           visible: true,
           tools: aseTools
         };
-        console.log('ASE | Created dedicated control group (V13 Object Mode)');
+        Logger.info('Created dedicated control group (V13 Object Mode)');
       }
       return;
     }
@@ -112,12 +109,11 @@ Hooks.on('getSceneControlButtons' as any, (controls: any[]) => {
     // V10-V12 Compatibility: controls is an array
     if (Array.isArray(controls)) {
       // Try to find the "sounds" layer control group
-      const soundsLayer = controls.find(c => c.name === 'sounds');
+      const soundsLayer = controls.find((c: SceneControl) => c.name === 'sounds');
 
       if (soundsLayer) {
         // Add our tools to the existing sounds layer
         soundsLayer.tools.push(...aseTools);
-        console.log('ASE | Added tools to "sounds" layer');
       } else {
         // Fallback: Create a dedicated group if "sounds" layer is missing
         controls.push({
@@ -127,63 +123,54 @@ Hooks.on('getSceneControlButtons' as any, (controls: any[]) => {
           visible: true,
           tools: aseTools
         });
-        console.log('ASE | Created dedicated control group');
       }
     } else {
-      console.warn('ASE | Unknown controls structure:', controls);
+      Logger.warn('Unknown controls structure:', controls);
     }
 
   } catch (error) {
-    console.error('ASE | Failed to initialize scene controls:', error);
+    Logger.error('Failed to initialize scene controls:', error);
   }
 });
 
 // Manually bind click listeners in case standard onClick fails (V13 compat)
-Hooks.on('renderSceneControls', (controls: any, html: any) => {
+Hooks.on('renderSceneControls', (controls: any, html: JQuery) => {
   try {
     // Detect if html is jQuery or native Element
-    // In V13+, hooks might return native HTMLElements.
-    // jQuery objects have a .jquery property or .find method.
-
     const findElement = (selector: string): HTMLElement | null => {
-      if (typeof html.find === 'function') {
-        const el = html.find(selector);
+      // Foundry often passes jQuery objects
+      if (typeof (html as any).find === 'function') {
+        const el = (html as any).find(selector);
         return el.length ? el[0] : null;
-      } else if (html instanceof HTMLElement) {
+      }
+      // Native HTMLElement
+      else if (html instanceof HTMLElement) {
         return html.querySelector(selector);
-      } else if (html.length && html[0] instanceof HTMLElement) {
-        // Maybe an array of elements or jQuery-like structure without .find?
-        // Unlikely for renderSceneControls which usually passes the container, but possible.
-        return (html[0] as HTMLElement).querySelector(selector) ?? null;
       }
       return null;
     };
 
     const mixerBtn = findElement('[data-tool="ase-open-mixer"]');
     if (mixerBtn) {
-      // Use native events for maximum compatibility
-      mixerBtn.onclick = (event: any) => {
+      mixerBtn.onclick = (event: MouseEvent) => {
         event.preventDefault();
         event.stopPropagation();
-        console.log('ASE | Manual click handler (native): Open Mixer');
+        Logger.debug('Manual click handler (native): Open Mixer');
         window.ASE?.openPanel();
       };
-      console.log('ASE | Bound manual click listener to mixer button');
     }
 
     const libraryBtn = findElement('[data-tool="ase-open-library"]');
     if (libraryBtn) {
-      // Use native events for maximum compatibility
-      libraryBtn.onclick = (event: any) => {
+      libraryBtn.onclick = (event: MouseEvent) => {
         event.preventDefault();
         event.stopPropagation();
-        console.log('ASE | Manual click handler (native): Open Library');
+        Logger.debug('Manual click handler (native): Open Library');
         window.ASE?.openLibrary?.();
       };
-      console.log('ASE | Bound manual click listener to library button');
     }
   } catch (error) {
-    console.warn('ASE | Failed to bind manual click listeners:', error);
+    Logger.warn('Failed to bind manual click listeners:', error);
   }
 });
 // ─────────────────────────────────────────────────────────────
@@ -331,16 +318,16 @@ function setupAutoplayHandler(): void {
 // ─────────────────────────────────────────────────────────────
 
 function registerSettings(): void {
-  game.settings!.register(MODULE_ID as any, 'mixerState' as any, {
+  (game.settings as any).register(MODULE_ID, 'mixerState', {
     name: 'Mixer State',
     hint: 'Internal storage for mixer state',
     scope: 'world',
     config: false,
     type: String,
     default: ''
-  } as any);
+  });
 
-  game.settings!.register(MODULE_ID as any, 'maxSimultaneousTracks' as any, {
+  (game.settings as any).register(MODULE_ID, 'maxSimultaneousTracks', {
     name: 'Maximum Simultaneous Tracks',
     hint: 'Maximum number of tracks that can play simultaneously (1-32)',
     scope: 'world',
@@ -352,23 +339,23 @@ function registerSettings(): void {
       max: 32,
       step: 1
     }
-  } as any);
+  });
 
-  game.settings!.register(MODULE_ID as any, 'libraryState' as any, {
+  (game.settings as any).register(MODULE_ID, 'libraryState', {
     name: 'Library State',
     hint: 'Internal storage for library items and playlists',
     scope: 'world',
     config: false,
     type: String,
     default: ''
-  } as any);
+  });
 }
 
 // ─────────────────────────────────────────────────────────────
 // Cleanup
 // ─────────────────────────────────────────────────────────────
 
-Hooks.once('closeGame' as any, () => {
+Hooks.once('closeGame', () => {
   mainApp?.close();
   volumePanel?.close();
   socketManager?.dispose();

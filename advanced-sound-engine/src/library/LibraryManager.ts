@@ -1,4 +1,4 @@
-import type { LibraryItem, LibraryState } from '@t/library';
+import type { LibraryItem, LibraryState, LibraryStats } from '@t/library';
 import type { TrackGroup } from '@t/audio';
 import { generateUUID } from '@utils/uuid';
 import { validateAudioFile } from '@utils/audio-validation';
@@ -501,6 +501,37 @@ export class LibraryManager {
   // Persistence
   // ─────────────────────────────────────────────────────────────
 
+  /**
+   * Get library statistics
+   */
+  getStats(): LibraryStats {
+    const items = this.getAllItems();
+    const playlistStats = this.playlists.getStats();
+
+    return {
+      totalItems: items.length,
+      favoriteItems: items.filter(i => i.favorite).length,
+      totalDuration: items.reduce((sum, i) => sum + i.duration, 0),
+      tagCount: this.getAllTags().length,
+      totalPlaylists: playlistStats.totalPlaylists,
+      itemsByGroup: this.getGroupCounts(),
+    };
+  }
+
+  private getGroupCounts(): Record<TrackGroup, number> {
+    const counts: Record<TrackGroup, number> = { music: 0, ambience: 0, sfx: 0 };
+    for (const item of this.items.values()) {
+      if (counts[item.group] !== undefined) {
+        counts[item.group]++;
+      }
+    }
+    return counts;
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // Persistence
+  // ─────────────────────────────────────────────────────────────
+
   private async loadFromSettings(): Promise<void> {
     try {
       // First, try to migrate from old world-scoped settings
@@ -522,9 +553,14 @@ export class LibraryManager {
 
       // Load items
       this.items.clear();
-      Object.values(state.items).forEach((item: any) => {
-        this.items.set(item.id, item as LibraryItem);
-      });
+      // Use strict type guard or iteration
+      if (state.items) {
+        Object.values(state.items).forEach((item) => {
+          if (this.isValidLibraryItem(item)) {
+            this.items.set(item.id, item);
+          }
+        });
+      }
 
       // Load custom tags
       this.customTags = new Set(state.customTags || []);
@@ -533,12 +569,16 @@ export class LibraryManager {
       this.playlists.load(state.playlists || {});
 
       // Load favorites order
-      this.favoritesOrder = (state as any).favoritesOrder || [];
+      this.favoritesOrder = state.favoritesOrder || [];
 
       Logger.info(`Library loaded: ${this.items.size} items, ${this.playlists.getAllPlaylists().length} playlists, ${this.customTags.size} custom tags`);
     } catch (error) {
       Logger.error('Failed to load library state:', error);
     }
+  }
+
+  private isValidLibraryItem(item: any): item is LibraryItem {
+    return item && typeof item.id === 'string' && typeof item.url === 'string';
   }
 
   private async saveToSettings(): Promise<void> {
@@ -547,10 +587,10 @@ export class LibraryManager {
         items: Object.fromEntries(this.items),
         playlists: this.playlists.export(),
         customTags: Array.from(this.customTags),
-        favoritesOrder: this.favoritesOrder,
+        favoritesOrder: this.favoritesOrder, // Extended property in state (needs interface update if missing)
         version: LIBRARY_VERSION,
         lastModified: Date.now()
-      } as any;
+      };
 
       await GlobalStorage.save(state);
       this.saveScheduled = false;
@@ -578,22 +618,6 @@ export class LibraryManager {
     } catch {
       return 'Unknown Track';
     }
-  }
-
-  /**
-   * Get library statistics
-   */
-  getStats() {
-    const items = this.getAllItems();
-    const playlistStats = this.playlists.getStats();
-
-    return {
-      totalItems: items.length,
-      favoriteItems: items.filter(i => i.favorite).length,
-      totalDuration: items.reduce((sum, i) => sum + i.duration, 0),
-      tagCount: this.getAllTags().length,
-      playlists: playlistStats.totalPlaylists
-    };
   }
 
   /**

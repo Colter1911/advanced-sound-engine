@@ -216,7 +216,7 @@ export class LocalLibraryApp extends Application {
       stats: {
         totalItems: stats.totalItems,
         favoriteItems: stats.favoriteItems,
-        playlists: stats.playlists,
+        playlists: stats.totalPlaylists,
         tagCount: stats.tagCount
       },
       // Filter state for UI

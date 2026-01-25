@@ -6,7 +6,7 @@ const MODULE_ID = 'advanced-sound-engine';
 export class PlayerVolumePanel extends Application {
   private engine: PlayerAudioEngine;
 
-  static override get defaultOptions(): ApplicationOptions {
+  static override get defaultOptions() {
     return foundry.utils.mergeObject(super.defaultOptions, {
       id: 'ase-player-volume',
       title: 'Sound Volume',
@@ -17,10 +17,10 @@ export class PlayerVolumePanel extends Application {
       resizable: false,
       minimizable: true,
       popOut: true
-    }) as ApplicationOptions;
+    }) as any;
   }
 
-  constructor(engine: PlayerAudioEngine, options?: Partial<ApplicationOptions>) {
+  constructor(engine: PlayerAudioEngine, options?: any) {
     super(options);
     this.engine = engine;
   }
@@ -38,7 +38,7 @@ export class PlayerVolumePanel extends Application {
       const value = parseFloat((event.target as HTMLInputElement).value) / 100;
       this.engine.setLocalVolume(value);
       html.find('.ase-volume-value').text(`${Math.round(value * 100)}%`);
-      
+
       // Save preference
       this.saveVolume(value);
     });

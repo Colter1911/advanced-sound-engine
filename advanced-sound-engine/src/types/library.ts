@@ -63,6 +63,7 @@ export interface LibraryState {
   items: Record<string, LibraryItem>;      // Map ID -> LibraryItem
   playlists: Record<string, Playlist>;     // Map ID -> Playlist
   customTags?: string[];                   // Persistent list of custom tags (even if unused)
+  favoritesOrder?: Array<{ id: string, type: 'track' | 'playlist', addedAt: number }>; // Sorted order
   version: number;                         // Версия схемы данных
   lastModified: number;                    // Timestamp последнего изменения
 }
@@ -101,6 +102,7 @@ export interface LibraryStats {
   totalPlaylists: number;
   totalDuration: number;         // Суммарная длительность всех треков
   favoriteItems: number;
+  tagCount: number;              // Count of unique tags
   itemsByGroup: Record<TrackGroup, number>;
   storageSize?: number;          // Примерный размер в байтах (если известен)
 }
