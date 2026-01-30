@@ -1,3 +1,4 @@
+console.log("ADVANCED SOUND ENGINE: Entry point loaded");
 import '../styles/sound-engine.scss';
 import { AudioEngine } from '@core/AudioEngine';
 import { PlayerAudioEngine } from '@core/PlayerAudioEngine';
@@ -201,10 +202,15 @@ function registerHandlebarsHelpers(): void {
 // Init Hooks
 // ─────────────────────────────────────────────────────────────
 
-Hooks.once('init', () => {
+Hooks.once('init', async () => {
   Logger.info('Initializing Advanced Sound Engine...');
   registerSettings();
   registerHandlebarsHelpers();
+
+  // Preload templates
+  await loadTemplates([
+    `modules/${MODULE_ID}/templates/partials/effect-card.hbs`
+  ]);
 });
 
 Hooks.once('ready', async () => {
@@ -246,12 +252,12 @@ async function initializeGM(): Promise<void> {
 }
 
 async function initializePlayer(): Promise<void> {
-  playerEngine = new PlayerAudioEngine();
+  playerEngine = new PlayerAudioEngine(socketManager!);
   socketManager!.initializeAsPlayer(playerEngine);
 
   // Restore saved local volume
   const savedVolume = PlayerVolumePanel.loadSavedVolume();
-  playerEngine.setLocalVolume(savedVolume);
+  playerEngine!.setLocalVolume(savedVolume);
 }
 
 // ─────────────────────────────────────────────────────────────

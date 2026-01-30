@@ -10,9 +10,84 @@ const MODULE_ID = 'advanced-sound-engine';
  * which persists across all worlds in Foundry and survives module updates
  */
 export class GlobalStorage {
-    private static readonly FILE_PATH = 'ase_library/library.json';
+    private static readonly FILE_PATH = '/ase_library/library.json';
+    private static readonly PRESETS_FILE_PATH = '/ase_library/presets.json';
     private static readonly FILE_SOURCE = 'data';
     private static readonly DIRECTORY = 'ase_library';
+
+    /**
+     * Load presets from global JSON file
+     */
+    static async loadPresets(): Promise<any[]> {
+        try {
+            const response = await fetch(`${this.PRESETS_FILE_PATH}?t=${Date.now()}`);
+            if (!response.ok) return this.getDefaultPresets();
+            const data = await response.json();
+            return data.length > 0 ? data : this.getDefaultPresets();
+        } catch (error) {
+            Logger.warn('Failed to load presets:', error);
+            return this.getDefaultPresets();
+        }
+    }
+
+    private static getDefaultPresets(): any[] {
+        return [
+            {
+                id: 'preset-cave',
+                name: 'Cave',
+                effects: [
+                    { type: 'reverb', params: { ir: 'cave', level: 1.2 }, routing: { music: false, sfx: true, ambience: true } },
+                    { type: 'delay', params: { time: 0.15, feedback: 0.3, level: 0.5 }, routing: { music: false, sfx: true, ambience: false } }
+                ]
+            },
+            {
+                id: 'preset-underwater',
+                name: 'Underwater',
+                effects: [
+                    { type: 'filter', params: { type: 'lowpass', frequency: 600, Q: 1.0, level: 1.0 }, routing: { music: true, sfx: true, ambience: true } }
+                ]
+            },
+            {
+                id: 'preset-radio',
+                name: 'Old Radio',
+                effects: [
+                    { type: 'filter', params: { type: 'bandpass', frequency: 2000, Q: 2.0, level: 1.5 }, routing: { music: true, sfx: true, ambience: true } },
+                    { type: 'distortion', params: { drive: 20, level: 0.8 }, routing: { music: true, sfx: true, ambience: true } }
+                ]
+            }
+        ];
+    }
+
+    /**
+     * Save presets to global JSON file
+     */
+    static async savePresets(presets: any[]): Promise<void> {
+        return this.saveFile(this.PRESETS_FILE_PATH, presets);
+    }
+
+    /**
+     * Generic save helper (refactored from save method)
+     */
+    private static async saveFile(path: string, data: any): Promise<void> {
+        try {
+            await this.ensureDirectory();
+            const json = JSON.stringify(data, null, 2);
+            const blob = new Blob([json], { type: 'application/json' });
+            const file = new File([blob], path.split('/').pop()!, { type: 'application/json' });
+
+            const originalInfo = ui.notifications?.info;
+            if (ui.notifications) ui.notifications.info = (() => { }) as any;
+
+            try {
+                await FilePicker.upload(this.FILE_SOURCE, this.DIRECTORY, file, {});
+            } finally {
+                if (ui.notifications && originalInfo) ui.notifications.info = originalInfo;
+            }
+        } catch (error) {
+            Logger.error(`Failed to save file ${path}:`, error);
+            throw error;
+        }
+    }
 
     /**
      * Load library state from global JSON file
@@ -41,35 +116,7 @@ export class GlobalStorage {
      */
     static async save(state: LibraryState): Promise<void> {
         try {
-            // Ensure directory exists
-            await this.ensureDirectory();
-
-            // Convert state to JSON
-            const json = JSON.stringify(state, null, 2);
-            const blob = new Blob([json], { type: 'application/json' });
-            const file = new File([blob], 'library.json', { type: 'application/json' });
-
-            // Temporarily suppress Foundry's file upload notifications
-            const originalInfo = ui.notifications?.info;
-            if (ui.notifications) {
-                ui.notifications.info = (() => { }) as any; // Suppress all info notifications
-            }
-
-            try {
-                // Upload using FilePicker API
-                await FilePicker.upload(
-                    this.FILE_SOURCE,
-                    this.DIRECTORY,
-                    file,
-                    {}
-                );
-            } finally {
-                // Restore original notification function
-                if (ui.notifications && originalInfo) {
-                    ui.notifications.info = originalInfo;
-                }
-            }
-
+            await this.saveFile(this.FILE_PATH, state);
             Logger.info('Saved library to global storage');
         } catch (error) {
             Logger.error('Failed to save library to global storage:', error);

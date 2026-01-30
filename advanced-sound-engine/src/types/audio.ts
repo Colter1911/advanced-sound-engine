@@ -1,3 +1,5 @@
+import type { EffectState } from './effects';
+
 export type TrackGroup = 'music' | 'ambience' | 'sfx';
 export type PlaybackState = 'stopped' | 'playing' | 'paused' | 'loading';
 
@@ -32,24 +34,30 @@ export interface MixerState {
   masterVolume: number;
   channelVolumes: ChannelVolumes;
   tracks: TrackState[];
+  effects: EffectState[]; // [NEW] Added for effects system
   timestamp: number;
   syncEnabled: boolean;
 }
 
 // Socket
-export type SocketMessageType = 
+export type SocketMessageType =
   | 'sync-start'
   | 'sync-stop'
   | 'sync-state'
+  | 'player-ready'
+  | 'sync-request'  // Player requesting full sync from GM
   | 'track-play'
   | 'track-pause'
   | 'track-stop'
-  | 'track-seek'
   | 'track-volume'
+  | 'track-seek'
   | 'track-loop'
+  | 'master-volume'
   | 'channel-volume'
   | 'stop-all'
-  | 'player-ready';
+  | 'effect-param'
+  | 'effect-routing'
+  | 'effect-enabled';
 
 export interface SocketMessage {
   type: SocketMessageType;
@@ -61,6 +69,7 @@ export interface SocketMessage {
 export interface SyncStatePayload {
   tracks: SyncTrackState[];
   channelVolumes: ChannelVolumes;
+  effects: EffectState[]; // Added effects sync
 }
 
 export interface SyncTrackState {
@@ -108,6 +117,23 @@ export interface TrackVolumePayload {
 export interface TrackLoopPayload {
   trackId: string;
   loop: boolean;
+}
+
+export interface EffectParamPayload {
+  effectId: string;
+  paramId: string;
+  value: any;
+}
+
+export interface EffectRoutingPayload {
+  effectId: string;
+  channel: TrackGroup;
+  active: boolean;
+}
+
+export interface EffectEnabledPayload {
+  effectId: string;
+  enabled: boolean;
 }
 
 export interface ChannelVolumePayload {

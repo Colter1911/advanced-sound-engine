@@ -6,12 +6,12 @@ export class StreamingPlayer {
   private ctx: AudioContext;
   private _group: TrackGroup;
   private _url: string = '';
-  
+
   private audio: HTMLAudioElement;
   private sourceNode: MediaElementAudioSourceNode | null = null;
   private gainNode: GainNode;
   private outputNode: GainNode;
-  
+
   private _state: PlaybackState = 'stopped';
   private _volume: number = 1;
   private _loop: boolean = false;
@@ -26,17 +26,17 @@ export class StreamingPlayer {
     this.id = id;
     this.ctx = ctx;
     this._group = group;
-    
+
     this.audio = new Audio();
     this.audio.crossOrigin = 'anonymous';
     this.audio.preload = 'auto';
-    
+
     this.gainNode = ctx.createGain();
     this.outputNode = ctx.createGain();
-    
+
     this.gainNode.connect(this.outputNode);
     this.outputNode.connect(channelOutput);
-    
+
     this.setupAudioEvents();
   }
 
@@ -57,6 +57,9 @@ export class StreamingPlayer {
     });
 
     this.audio.addEventListener('error', (e) => {
+      // Ignore errors if we are disposing (src cleared)
+      if (this.audio.getAttribute('src') === '' || !this.audio.src) return;
+
       Logger.error(`Track ${this.id} error:`, this.audio.error);
       this._state = 'stopped';
     });
@@ -95,13 +98,13 @@ export class StreamingPlayer {
       const onCanPlay = () => {
         this.audio.removeEventListener('canplay', onCanPlay);
         this.audio.removeEventListener('error', onError);
-        
+
         // Connect to Web Audio
         if (!this.sourceNode) {
           this.sourceNode = this.ctx.createMediaElementSource(this.audio);
           this.sourceNode.connect(this.gainNode);
         }
-        
+
         this._ready = true;
         this._state = 'stopped';
         Logger.debug(`Track loaded: ${this.id}`);
@@ -117,7 +120,7 @@ export class StreamingPlayer {
 
       this.audio.addEventListener('canplay', onCanPlay, { once: true });
       this.audio.addEventListener('error', onError, { once: true });
-      
+
       this.audio.src = url;
       this.audio.load();
     });
@@ -142,7 +145,7 @@ export class StreamingPlayer {
 
   pause(): void {
     if (this._state !== 'playing') return;
-    
+
     this.audio.pause();
     this._state = 'paused';
     Logger.debug(`Track ${this.id} paused at ${this.audio.currentTime.toFixed(2)}s`);

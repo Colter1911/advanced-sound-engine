@@ -4,6 +4,10 @@
 * **Core:** Foundry VTT
 * **Version:** 13.381 (STRICT)
 * **Module Type:** Game System / Add-on Module
+* **Documentation:** https://foundryvtt.com/api/ Foundry VTT API
+* **Foundry VTT:** https://foundryvtt.com/ Foundry VTT
+ 
+
 
 ## Critical Version Rules (Foundry v13 Specifics)
 You are writing code specifically for **Foundry VTT v13**.

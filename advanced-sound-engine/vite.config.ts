@@ -2,10 +2,12 @@ import { defineConfig } from 'vite';
 import path from 'path';
 
 export default defineConfig({
+  plugins: [],
   build: {
     outDir: 'dist',
     emptyOutDir: true,
     sourcemap: true,
+    minify: false, // Disable minification for debugging
     lib: {
       entry: 'src/main.ts',
       formats: ['es'],
@@ -15,12 +17,17 @@ export default defineConfig({
       output: {
         assetFileNames: (assetInfo) => {
           if (assetInfo.name?.endsWith('.css')) {
-            return 'styles/sound-engine-v3.css';
+            return 'styles/sound-engine-v5.css';
           }
           return assetInfo.name || 'asset';
         }
       }
     }
+  },
+  esbuild: {
+    drop: [], // Ensure console and debugger are NOT dropped
+    minifyIdentifiers: false, // Optional: easier debugging
+    keepNames: true // Optional: easier debugging
   },
   resolve: {
     alias: {

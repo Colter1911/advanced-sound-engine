@@ -1,16 +1,15 @@
 {{!-- Mixer Tab Content - Reuses Library styles --}}
 <div class="ase-workspace ase-mixer-workspace">
 
-  {{!-- Left Column: Favorites (reuses sidebar style) --}}
+  {{!-- Left Column: Favorites Panel (Full Height) --}}
   <aside class="ase-sidebar">
-    <div class="ase-sidebar-section ase-favorites-section">
+    <div class="ase-sidebar-section ase-mixer-favorites">
       <div class="ase-sidebar-header">
         <span class="ase-sidebar-title"><i class="fa-solid fa-star"></i> Favorites</span>
       </div>
       <ul class="ase-list-group" data-section="mixer-favorites">
         {{#each favorites}}
-        <li
-          class="ase-list-item ase-mixer-favorite-item {{#if isPlaying}}is-playing{{else if isPaused}}is-paused{{/if}}"
+        <li class="ase-list-item ase-favorite-item {{#if isPlaying}}is-playing{{else if isPaused}}is-paused{{/if}}"
           data-favorite-id="{{id}}" data-favorite-type="{{type}}">
           <div class="ase-favorite-info">
             {{#if (eq type 'playlist')}}
@@ -26,11 +25,11 @@
             {{/if}}
             <span>{{name}}</span>
           </div>
-          <div class="ase-mixer-favorite-controls">
+          <div class="ase-icons">
+            <i class="ase-icon-add-queue" data-action="add-to-queue-from-favorite" data-favorite-id="{{id}}"
+              data-favorite-type="{{type}}" title="Add to Queue"></i>
             <i class="fa-solid fa-play" data-action="play-favorite" data-favorite-id="{{id}}"
               data-favorite-type="{{type}}" title="Play"></i>
-            <i class="fa-solid fa-pause" data-action="pause-favorite" data-favorite-id="{{id}}"
-              data-favorite-type="{{type}}" title="Pause"></i>
             <i class="fa-solid fa-stop" data-action="stop-favorite" data-favorite-id="{{id}}"
               data-favorite-type="{{type}}" title="Stop"></i>
           </div>
@@ -138,7 +137,7 @@
         <center style="opacity: 0.5;">
           <i class="fa-solid fa-list" style="font-size: 48px; margin-bottom: 20px;"></i>
           <p>Queue is empty</p>
-          <p style="font-size: 11px;">Add tracks from the Library</p>
+          <p style="font-size: 11px;">Add tracks from Favorites or Library</p>
         </center>
       </div>
       {{/if}}

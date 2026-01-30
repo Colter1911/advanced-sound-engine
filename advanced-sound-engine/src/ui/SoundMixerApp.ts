@@ -69,6 +69,11 @@ export class SoundMixerApp {
   private html: JQuery | null = null;
   private renderParent: (() => void) | null = null;
 
+  // Throttle for socket broadcasts
+  private seekThrottleTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
+  private volumeThrottleTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
+  private static THROTTLE_MS = 200;
+
   constructor(
     engine: AudioEngine,
     socket: SocketManager,
@@ -82,6 +87,11 @@ export class SoundMixerApp {
 
     // Subscribe to queue changes for real-time updates
     this.queueManager.on('change', () => this.onQueueChange());
+
+    // Listen for external favorite changes (Global Hook)
+    Hooks.on('ase.favoritesChanged' as any, () => {
+      this.requestRender();
+    });
   }
 
   // Set callback for requesting parent render
@@ -180,6 +190,10 @@ export class SoundMixerApp {
     const duration = libraryItem?.duration ?? player?.getDuration() ?? 0;
     const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
+    // Get volume and loop from player if available (persisted state), fallback to queueItem
+    const volume = player?.volume ?? queueItem.volume;
+    const loop = player?.loop ?? queueItem.loop;
+
     return {
       queueId: queueItem.id,
       libraryItemId: queueItem.libraryItemId,
@@ -190,9 +204,9 @@ export class SoundMixerApp {
       isPaused: player?.state === 'paused',
       isStopped: !player || player.state === 'stopped',
       isLoading: player?.state === 'loading',
-      volume: queueItem.volume,
-      volumePercent: Math.round(queueItem.volume * 100),
-      loop: queueItem.loop,
+      volume,
+      volumePercent: Math.round(volume * 100),
+      loop,
       currentTime,
       currentTimeFormatted: formatTime(currentTime),
       duration,
@@ -213,6 +227,7 @@ export class SoundMixerApp {
     html.find('[data-action="play-favorite"]').on('click', (e) => this.onPlayFavorite(e));
     html.find('[data-action="pause-favorite"]').on('click', (e) => this.onPauseFavorite(e));
     html.find('[data-action="stop-favorite"]').on('click', (e) => this.onStopFavorite(e));
+    html.find('[data-action="add-to-queue-from-favorite"]').on('click', (e) => this.onAddToQueueFromFavorite(e));
 
     // Queue controls
     html.find('[data-action="play-queue"]').on('click', (e) => this.onPlayQueueItem(e));
@@ -335,11 +350,46 @@ export class SoundMixerApp {
 
     this.engine.setTrackLoop(itemId, newLoop);
 
+    // Trigger save to persist loop state
+    (this.engine as any).scheduleSave?.();
+
     if (newLoop) {
       $icon.addClass('active').css('color', 'var(--accent-cyan)');
     } else {
       $icon.removeClass('active').css('color', '');
     }
+  }
+
+  private async onAddToQueueFromFavorite(event: JQuery.ClickEvent): Promise<void> {
+    event.preventDefault();
+    event.stopPropagation();
+    const $el = $(event.currentTarget);
+    const id = $el.data('favorite-id') as string;
+    const type = $el.data('favorite-type') as 'track' | 'playlist';
+
+    if (type === 'track') {
+      const libraryItem = this.libraryManager.getItem(id);
+      if (libraryItem) {
+        this.queueManager.addItem(id, { group: libraryItem.group });
+        Logger.info('Added track to queue:', libraryItem.name);
+      }
+    } else {
+      // Add entire playlist to queue
+      const playlist = this.libraryManager.playlists.getPlaylist(id);
+      if (playlist) {
+        const tracks = this.libraryManager.playlists.getPlaylistTracks(id);
+        const playlistItems = tracks.map(t => {
+          const item = this.libraryManager.getItem(t.libraryItemId);
+          return {
+            libraryItemId: t.libraryItemId,
+            group: item?.group || 'music' as const,
+          };
+        });
+        this.queueManager.addPlaylist(id, playlistItems as any);
+        Logger.info('Added playlist to queue:', playlist.name);
+      }
+    }
+    this.requestRender();
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -384,9 +434,17 @@ export class SoundMixerApp {
       const seekTime = (value / 100) * player.getDuration();
       this.engine.seekTrack(itemId, seekTime);
 
-      // Sync if enabled
+      // Throttled sync for socket
       if (this.socket.syncEnabled) {
-        this.socket.broadcastTrackSeek(itemId, seekTime, player.state === 'playing');
+        if (!this.seekThrottleTimers.has(itemId)) {
+          this.seekThrottleTimers.set(itemId, setTimeout(() => {
+            this.seekThrottleTimers.delete(itemId);
+            const currentPlayer = this.engine.getTrack(itemId);
+            if (currentPlayer) {
+              this.socket.broadcastTrackSeek(itemId, currentPlayer.getCurrentTime(), currentPlayer.state === 'playing');
+            }
+          }, SoundMixerApp.THROTTLE_MS));
+        }
       }
     }
   }
@@ -400,9 +458,17 @@ export class SoundMixerApp {
     // Update engine volume
     this.engine.setTrackVolume(itemId, volume);
 
-    // Sync if enabled
+    // Throttled sync for socket
     if (this.socket.syncEnabled) {
-      this.socket.broadcastTrackVolume(itemId, volume);
+      if (!this.volumeThrottleTimers.has(itemId)) {
+        this.volumeThrottleTimers.set(itemId, setTimeout(() => {
+          this.volumeThrottleTimers.delete(itemId);
+          const currentPlayer = this.engine.getTrack(itemId);
+          if (currentPlayer) {
+            this.socket.broadcastTrackVolume(itemId, currentPlayer.volume);
+          }
+        }, SoundMixerApp.THROTTLE_MS));
+      }
     }
 
     // Update display

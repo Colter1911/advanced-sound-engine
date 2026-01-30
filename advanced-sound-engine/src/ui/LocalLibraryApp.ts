@@ -11,7 +11,7 @@ interface FilterState {
   selectedChannels: Set<TrackGroup>;
   selectedPlaylistId: string | null;
   selectedTags: Set<string>;
-  sortBy: 'name-asc' | 'name-desc' | 'date-asc' | 'date-desc' | 'duration-asc' | 'duration-desc';
+  sortBy: 'name-asc' | 'name-desc' | 'date-asc' | 'date-desc' | 'duration-asc' | 'duration-desc' | 'playable';
 }
 
 interface LibraryData {
@@ -110,8 +110,8 @@ export class LocalLibraryApp extends Application {
 
   // Helper to request scroll persistence
   private persistScroll(): void {
-    if (this.parentApp) {
-      this.parentApp.persistScrollOnce = true;
+    if (this.parentApp && typeof this.parentApp.captureLibraryScroll === 'function') {
+      this.parentApp.captureLibraryScroll();
     }
   }
 
@@ -333,6 +333,30 @@ export class LocalLibraryApp extends Application {
     const sorted = [...items];
 
     switch (this.filterState.sortBy) {
+      case 'playable': {
+        // Sort by playback state: playing first, paused second, rest by date
+        const viewDataCache = new Map<string, LibraryItemViewData>();
+        for (const item of sorted) {
+          viewDataCache.set(item.id, this.getItemViewData(item));
+        }
+
+        sorted.sort((a, b) => {
+          const aData = viewDataCache.get(a.id)!;
+          const bData = viewDataCache.get(b.id)!;
+
+          // Priority: playing > paused > stopped
+          const aPriority = aData.isPlaying ? 2 : (aData.isPaused ? 1 : 0);
+          const bPriority = bData.isPlaying ? 2 : (bData.isPaused ? 1 : 0);
+
+          if (aPriority !== bPriority) {
+            return bPriority - aPriority; // Higher priority first
+          }
+
+          // If same state, sort by date (newest first)
+          return b.addedAt - a.addedAt;
+        });
+        break;
+      }
       case 'name-asc':
         sorted.sort((a, b) => a.name.localeCompare(b.name));
         break;
@@ -466,11 +490,26 @@ export class LocalLibraryApp extends Application {
 
   private async onToggleFavorite(event: JQuery.ClickEvent): Promise<void> {
     event.preventDefault();
-    const itemId = $(event.currentTarget).closest('[data-item-id]').data('item-id') as string;
+    event.stopPropagation();
+
+    const btn = $(event.currentTarget);
+    const itemId = btn.closest('[data-item-id]').data('item-id') as string;
 
     try {
+      // Optimistic UI update for instant feedback
+      const icon = btn.find('i');
+      if (icon.hasClass('far')) {
+        icon.removeClass('far').addClass('fas active');
+        btn.addClass('active');
+      } else {
+        icon.removeClass('fas active').addClass('far');
+        btn.removeClass('active');
+      }
+
       this.persistScroll();
       const isFavorite = this.library.toggleFavorite(itemId);
+
+      // We still re-render to update the sidebar/state fully, but the button interaction felt instant
       this.render();
       ui.notifications?.info(isFavorite ? 'Added to favorites' : 'Removed from favorites');
     } catch (error) {
@@ -850,6 +889,13 @@ export class LocalLibraryApp extends Application {
     // Play the track (resume from offset if paused)
     await (engine as any).playTrack?.(itemId, offset);
 
+    // Sync if enabled
+    const socket = window.ASE?.socket;
+    if (socket && socket.syncEnabled) {
+      Logger.debug('LocalLibrary: Broadcasting Play for track', itemId);
+      socket.broadcastTrackPlay(itemId, offset);
+    }
+
     this.persistScroll();
     this.render();
   }
@@ -864,6 +910,12 @@ export class LocalLibraryApp extends Application {
     // Stop the track
     window.ASE.engine?.stopTrack(itemId);
 
+    // Sync if enabled
+    const socket = window.ASE?.socket;
+    if (socket && socket.syncEnabled) {
+      socket.broadcastTrackStop(itemId);
+    }
+
     // Remove from queue
     if (window.ASE?.queue) {
       window.ASE.queue.removeByLibraryItemId(itemId);
@@ -877,8 +929,24 @@ export class LocalLibraryApp extends Application {
     event.preventDefault();
     event.stopPropagation();
     const itemId = $(event.currentTarget).data('item-id') as string;
-    Logger.debug('Pause track:', itemId);
-    window.ASE.engine?.pauseTrack(itemId);
+    console.log('[ASE DEBUG] onPauseTrack called for:', itemId);
+
+    // Get current time before pausing for sync
+    const engine = window.ASE?.engine;
+    const player = (engine as any)?.getTrack?.(itemId);
+    const currentTime = player?.getCurrentTime() ?? 0;
+    console.log('[ASE DEBUG] Pause - currentTime:', currentTime, 'player state:', player?.state);
+
+    engine?.pauseTrack(itemId);
+
+    // Sync if enabled
+    const socket = window.ASE?.socket;
+    console.log('[ASE DEBUG] Socket syncEnabled:', socket?.syncEnabled);
+    if (socket && socket.syncEnabled) {
+      console.log('[ASE DEBUG] Broadcasting pause for', itemId);
+      socket.broadcastTrackPause(itemId, currentTime);
+    }
+
     this.persistScroll();
     this.render(); // Update UI and bottom panel indicators
   }
@@ -1158,6 +1226,7 @@ export class LocalLibraryApp extends Application {
       label: isInPlaylist ? 'Delete Track (Global)' : 'Delete',
       callback: () => {
         this.library.removeItem(itemId);
+        this.persistScroll();
         this.render();
         ui.notifications?.info(`Deleted "${item.name}"`);
       }
@@ -1297,6 +1366,7 @@ export class LocalLibraryApp extends Application {
     const newName = await this.promptInput('Rename Track', 'Track Name:', item.name);
     if (newName && newName !== item.name) {
       this.library.updateItem(itemId, { name: newName });
+      this.persistScroll();
       this.render();
       ui.notifications?.info(`Renamed to "${newName}"`);
     }
@@ -1317,6 +1387,7 @@ export class LocalLibraryApp extends Application {
 
     const group = this.inferGroupFromTags(item.tags) as TrackGroup;
     this.library.playlists.addTrackToPlaylist(selectedPlaylistId, itemId, group);
+    this.persistScroll();
     this.render();
     ui.notifications?.info(`Added "${item.name}" to playlist`);
   }
@@ -2221,6 +2292,7 @@ export class LocalLibraryApp extends Application {
   private async removeTrackFromPlaylist(playlistId: string, trackId: string): Promise<void> {
     try {
       this.library.playlists.removeLibraryItemFromPlaylist(playlistId, trackId);
+      this.persistScroll();
       this.render();
       ui.notifications?.info('Removed track from playlist');
     } catch (error) {

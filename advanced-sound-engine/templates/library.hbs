@@ -106,6 +106,7 @@
       <div class="ase-sort-dropdown">
         <span style="color: #666; font-size: 11px;">Sorting...</span>
         <select class="ase-sort-select" data-action="sort-change">
+          <option value="playable" {{#if (eq sortBy 'playable' )}}selected{{/if}}>Playable</option>
           <option value="date-desc" {{#if (eq sortBy 'date-desc' )}}selected{{/if}}>Date Added (Newest)</option>
           <option value="date-asc" {{#if (eq sortBy 'date-asc' )}}selected{{/if}}>Date Added (Oldest)</option>
           <option value="duration-desc" {{#if (eq sortBy 'duration-desc' )}}selected{{/if}}>Duration (Longest)</option>

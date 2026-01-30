@@ -1,5 +1,5 @@
-import type { 
-  SocketMessage, 
+import type {
+  SocketMessage,
   SocketMessageType,
   SyncStatePayload,
   SyncTrackState,
@@ -11,7 +11,9 @@ import type {
   TrackLoopPayload,
   ChannelVolumePayload,
   TrackGroup,
-  ChannelVolumes
+  ChannelVolumes,
+  EffectParamPayload,
+  EffectRoutingPayload
 } from '@t/audio';
 import { AudioEngine } from '@core/AudioEngine';
 import { PlayerAudioEngine } from '@core/PlayerAudioEngine';
@@ -28,17 +30,17 @@ export class SocketManager {
   private _syncEnabled: boolean = false;
   private isGM: boolean = false;
 
-  constructor() {}
+  constructor() { }
 
   initializeAsGM(engine: AudioEngine): void {
     this.isGM = true;
     this.gmEngine = engine;
     this.socket = game.socket;
-    
+
     this.socket?.on(SOCKET_NAME, (message: SocketMessage) => {
       this.handleGMMessage(message);
     });
-    
+
     Logger.info('SocketManager initialized as GM');
   }
 
@@ -46,16 +48,16 @@ export class SocketManager {
     this.isGM = false;
     this.playerEngine = engine;
     this.socket = game.socket;
-    
+
     this.socket?.on(SOCKET_NAME, (message: SocketMessage) => {
       this.handlePlayerMessage(message);
     });
-    
+
     // Request current state on join
     setTimeout(() => {
       this.send('player-ready', {});
     }, 1000);
-    
+
     Logger.info('SocketManager initialized as Player');
   }
 
@@ -69,15 +71,15 @@ export class SocketManager {
 
   setSyncEnabled(enabled: boolean): void {
     if (!this.isGM) return;
-    
+
     this._syncEnabled = enabled;
-    
+
     if (enabled) {
       this.broadcastSyncStart();
     } else {
       this.broadcastSyncStop();
     }
-    
+
     Logger.info(`Sync mode: ${enabled ? 'ON' : 'OFF'}`);
   }
 
@@ -87,9 +89,15 @@ export class SocketManager {
 
   private handleGMMessage(message: SocketMessage): void {
     if (message.senderId === game.user?.id) return;
-    
+
     if (message.type === 'player-ready' && this._syncEnabled) {
       // Send current state to newly joined player
+      this.sendStateTo(message.senderId);
+    }
+
+    if (message.type === 'sync-request' && this._syncEnabled) {
+      // Player is requesting full sync (likely due to detected mismatch)
+      console.log('[ASE GM] Received sync request from player:', message.senderId);
       this.sendStateTo(message.senderId);
     }
   }
@@ -101,66 +109,81 @@ export class SocketManager {
   private async handlePlayerMessage(message: SocketMessage): Promise<void> {
     if (message.senderId === game.user?.id) return;
     if (!this.playerEngine) return;
-    
+
     Logger.debug(`Player received: ${message.type}`, message.payload);
-    
+
     switch (message.type) {
       case 'sync-start':
         const startPayload = message.payload as SyncStatePayload;
-        await this.playerEngine.syncState(startPayload.tracks, startPayload.channelVolumes);
+        await this.playerEngine.syncState(startPayload.tracks, startPayload.channelVolumes, startPayload.effects);
         break;
-        
+
       case 'sync-stop':
         this.playerEngine.clearAll();
         break;
-        
+
       case 'sync-state':
         const statePayload = message.payload as SyncStatePayload;
-        await this.playerEngine.syncState(statePayload.tracks, statePayload.channelVolumes);
+        await this.playerEngine.syncState(statePayload.tracks, statePayload.channelVolumes, statePayload.effects);
         break;
-        
+
       case 'track-play':
         const playPayload = message.payload as TrackPlayPayload;
         await this.playerEngine.handlePlay(playPayload);
         break;
-        
+
       case 'track-pause':
         const pausePayload = message.payload as TrackPausePayload;
         this.playerEngine.handlePause(pausePayload.trackId);
         break;
-        
+
       case 'track-stop':
         const stopPayload = message.payload as TrackStopPayload;
         this.playerEngine.handleStop(stopPayload.trackId);
         break;
-        
+
       case 'track-seek':
         const seekPayload = message.payload as TrackSeekPayload;
         this.playerEngine.handleSeek(
-          seekPayload.trackId, 
-          seekPayload.time, 
+          seekPayload.trackId,
+          seekPayload.time,
           seekPayload.isPlaying,
           seekPayload.seekTimestamp
         );
         break;
-        
+
       case 'track-volume':
         const volPayload = message.payload as TrackVolumePayload;
         this.playerEngine.handleTrackVolume(volPayload.trackId, volPayload.volume);
         break;
-        
+
       case 'track-loop':
         const loopPayload = message.payload as TrackLoopPayload;
         this.playerEngine.handleTrackLoop(loopPayload.trackId, loopPayload.loop);
         break;
-        
+
       case 'channel-volume':
         const chVolPayload = message.payload as ChannelVolumePayload;
         this.playerEngine.setGMVolume(chVolPayload.channel, chVolPayload.volume);
         break;
-        
+
       case 'stop-all':
         this.playerEngine.stopAll();
+        break;
+
+      case 'effect-param':
+        const paramPayload = message.payload as EffectParamPayload;
+        (this.playerEngine as any).setEffectParam(paramPayload.effectId, paramPayload.paramId, paramPayload.value);
+        break;
+
+      case 'effect-routing':
+        const routingPayload = message.payload as EffectRoutingPayload;
+        (this.playerEngine as any).setEffectRouting(routingPayload.effectId, routingPayload.channel, routingPayload.active);
+        break;
+
+      case 'effect-enabled':
+        const enabledPayload = message.payload as any; // EffectEnabledPayload
+        (this.playerEngine as any).setEffectEnabled(enabledPayload.effectId, enabledPayload.enabled);
         break;
     }
   }
@@ -190,12 +213,12 @@ export class SocketManager {
 
   private getCurrentSyncState(): SyncStatePayload {
     if (!this.gmEngine) {
-      return { tracks: [], channelVolumes: { master: 1, music: 1, ambience: 1, sfx: 1 } };
+      return { tracks: [], channelVolumes: { master: 1, music: 1, ambience: 1, sfx: 1 }, effects: [] };
     }
-    
+
     const now = getServerTime();
     const tracks: SyncTrackState[] = [];
-    
+
     for (const player of this.gmEngine.getAllTracks()) {
       const state = player.getState();
       tracks.push({
@@ -209,11 +232,17 @@ export class SocketManager {
         startTimestamp: now
       });
     }
-    
+
     return {
       tracks,
-      channelVolumes: this.gmEngine.volumes
+      channelVolumes: this.gmEngine.volumes,
+      effects: this.gmEngine.getAllEffects().map(e => this.gmEngine!.getEffectState(e.id)!)
     };
+  }
+
+  public broadcastFullState(): void {
+    if (!this._syncEnabled) return;
+    this.broadcastSyncStart(); // Re-uses sync-start or sync-state logic
   }
 
   private broadcastSyncStart(): void {
@@ -236,10 +265,10 @@ export class SocketManager {
 
   broadcastTrackPlay(trackId: string, offset: number): void {
     if (!this._syncEnabled || !this.gmEngine) return;
-    
+
     const player = this.gmEngine.getTrack(trackId);
     if (!player) return;
-    
+
     const payload: TrackPlayPayload = {
       trackId,
       url: player.url,
@@ -249,27 +278,27 @@ export class SocketManager {
       offset,
       startTimestamp: getServerTime()
     };
-    
+
     this.send('track-play', payload);
   }
 
   broadcastTrackPause(trackId: string, pausedAt: number): void {
     if (!this._syncEnabled) return;
-    
+
     const payload: TrackPausePayload = { trackId, pausedAt };
     this.send('track-pause', payload);
   }
 
   broadcastTrackStop(trackId: string): void {
     if (!this._syncEnabled) return;
-    
+
     const payload: TrackStopPayload = { trackId };
     this.send('track-stop', payload);
   }
 
   broadcastTrackSeek(trackId: string, time: number, isPlaying: boolean): void {
     if (!this._syncEnabled) return;
-    
+
     const payload: TrackSeekPayload = {
       trackId,
       time,
@@ -281,21 +310,21 @@ export class SocketManager {
 
   broadcastTrackVolume(trackId: string, volume: number): void {
     if (!this._syncEnabled) return;
-    
+
     const payload: TrackVolumePayload = { trackId, volume };
     this.send('track-volume', payload);
   }
 
   broadcastTrackLoop(trackId: string, loop: boolean): void {
     if (!this._syncEnabled) return;
-    
+
     const payload: TrackLoopPayload = { trackId, loop };
     this.send('track-loop', payload);
   }
 
   broadcastChannelVolume(channel: TrackGroup | 'master', volume: number): void {
     if (!this._syncEnabled) return;
-    
+
     const payload: ChannelVolumePayload = { channel, volume };
     this.send('channel-volume', payload);
   }
@@ -307,5 +336,33 @@ export class SocketManager {
 
   dispose(): void {
     this.socket?.off(SOCKET_NAME);
+  }
+
+  // Effects
+
+  broadcastEffectParam(effectId: string, paramId: string, value: any): void {
+    if (!this._syncEnabled) return;
+    console.log('[ASE GM] Broadcasting effect param:', effectId, paramId, value);
+    this.send('effect-param', { effectId, paramId, value } as EffectParamPayload);
+  }
+
+  broadcastEffectRouting(effectId: string, channel: TrackGroup, active: boolean): void {
+    if (!this._syncEnabled) return;
+    console.log('[ASE GM] Broadcasting effect routing:', effectId, channel, active);
+    this.send('effect-routing', { effectId, channel, active } as EffectRoutingPayload);
+  }
+
+  broadcastEffectEnabled(effectId: string, enabled: boolean): void {
+    if (!this._syncEnabled) return;
+    console.log('[ASE GM] Broadcasting effect enabled:', effectId, enabled);
+    this.send('effect-enabled', { effectId, enabled } as any);
+  }
+  // ─────────────────────────────────────────────────────────────
+  // Player Methods (request sync from GM)
+  // ─────────────────────────────────────────────────────────────
+
+  requestFullSync(): void {
+    console.log('[ASE PLAYER] Requesting full sync from GM');
+    this.send('sync-request', {});
   }
 }

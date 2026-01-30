@@ -35,6 +35,11 @@ declare global {
         function on(hook: 'canvasReady', fn: () => void): number;
         function on(hook: 'closeGame', fn: () => void): number;
         function once(hook: string, fn: Function): number;
+        function once(hook: string, fn: Function): number;
+    }
+
+    interface HookConfig {
+        "ase.favoritesChanged": (data: { id: string; isFavorite: boolean }) => void;
     }
 
     // ─── Settings ───

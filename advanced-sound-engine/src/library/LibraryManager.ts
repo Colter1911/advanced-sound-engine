@@ -16,6 +16,7 @@ export class LibraryManager {
   private favoritesOrder: Array<{ id: string, type: 'track' | 'playlist', addedAt: number }> = [];
   private saveScheduled = false;
   public readonly playlists: PlaylistManager;
+  public readonly storage: GlobalStorage;
 
   // New property to track if we've initiated a scan this session
   private hasScannedDurations = false;
@@ -25,6 +26,7 @@ export class LibraryManager {
   }, 500);
 
   constructor() {
+    this.storage = new GlobalStorage();
     this.playlists = new PlaylistManager(() => this.scheduleSave());
     // Load is now async, so we call it via then() to handle Promise
     this.loadFromSettings().catch(err => Logger.error('Failed initial load:', err));
@@ -423,23 +425,28 @@ export class LibraryManager {
   /**
    * Toggle favorite status
    */
-  toggleFavorite(itemId: string): boolean {
-    const item = this.getItem(itemId);
+  toggleFavorite(id: string): boolean {
+    const item = this.items.get(id);
     if (!item) {
-      throw new Error(`Library item not found: ${itemId}`);
+      throw new Error('Item not found');
     }
 
     item.favorite = !item.favorite;
     item.updatedAt = Date.now();
 
-    // Update favorites order
+    // Update favorites order array
     if (item.favorite) {
-      this.addToFavoritesOrder(itemId, 'track');
+      this.addToFavoritesOrder(item.id, 'track');
+      Logger.info(`Added favorite: ${item.name}`);
     } else {
-      this.removeFromFavoritesOrder(itemId, 'track');
+      this.removeFromFavoritesOrder(item.id, 'track'); // Assuming 'track' type for removal
+      Logger.info(`Removed favorite: ${item.name}`);
     }
 
     this.scheduleSave();
+
+    // Emit Hook for UI updates
+    Hooks.callAll('ase.favoritesChanged' as string as any, { id: item.id, isFavorite: item.favorite });
 
     return item.favorite;
   }
