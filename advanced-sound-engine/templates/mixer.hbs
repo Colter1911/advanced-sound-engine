@@ -26,8 +26,8 @@
             <span>{{name}}</span>
           </div>
           <div class="ase-icons">
-            <i class="ase-icon-add-queue" data-action="add-to-queue-from-favorite" data-favorite-id="{{id}}"
-              data-favorite-type="{{type}}" title="Add to Queue"></i>
+            <i class="ase-icon-add-queue {{#if inQueue}}active{{/if}}" data-action="add-to-queue-from-favorite"
+              data-favorite-id="{{id}}" data-favorite-type="{{type}}" title="Add to Queue"></i>
             <i class="fa-solid fa-play" data-action="play-favorite" data-favorite-id="{{id}}"
               data-favorite-type="{{type}}" title="Play"></i>
             <i class="fa-solid fa-stop" data-action="stop-favorite" data-favorite-id="{{id}}"
@@ -141,6 +141,24 @@
         </center>
       </div>
       {{/if}}
+    </div>
+
+    {{!-- Effects Control Panel --}}
+    <div class="ase-mixer-effects-panel"
+      style="padding: 12px; border-top: 1px solid var(--ase-border-gold); background: rgba(0, 0, 0, 0.3);">
+      <div class="ase-effects-header"
+        style="font-size: 12px; font-weight: 600; color: var(--ase-text-header); margin-bottom: 8px; text-transform: uppercase;">
+        <span>Effects</span>
+      </div>
+      <div class="ase-effects-toggles" style="display: flex; flex-wrap: wrap; gap: 12px;">
+        {{#each effects}}
+        <label class="ase-effect-toggle-item" style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+          <input type="checkbox" {{#if enabled}}checked{{/if}} data-action="toggle-effect" data-effect-id="{{id}}"
+            style="cursor: pointer;">
+          <span style="font-size: 11px; color: var(--ase-text-body);">{{name}}</span>
+        </label>
+        {{/each}}
+      </div>
     </div>
   </main>
 </div>

@@ -45,6 +45,8 @@ export class PlayerAudioEngine {
   private lastSyncState: SyncTrackState[] = [];
   private syncCheckInterval: number | null = null;
   private socketManager: any; // Reference to SocketManager for requesting sync
+  private lastSyncRequestTime: number = 0;
+  private readonly SYNC_REQUEST_COOLDOWN = 10000; // 10 seconds
 
   constructor(socketManager?: any) {
     this.ctx = new AudioContext();
@@ -96,19 +98,31 @@ export class PlayerAudioEngine {
   }
 
   private verifySyncState(): void {
-    // Only check if we have received sync state before
-    if (this.lastSyncState.length === 0) return;
-
     let needsResync = false;
 
+    // CRITICAL FIX: If sync state is empty, we should have no players
+    if (this.lastSyncState.length === 0) {
+      if (this.players.size > 0) {
+        console.warn('[ASE PLAYER] Sync verification: Have', this.players.size, 'players but sync state is empty');
+        needsResync = true;
+      } else {
+        console.log('[ASE PLAYER] Sync verification OK (no tracks)');
+        return;
+      }
+    }
+
+    // Check each expected track
     for (const expectedTrack of this.lastSyncState) {
       const player = this.players.get(expectedTrack.id);
 
-      // Track should exist but doesn't
-      if (!player && expectedTrack.isPlaying) {
-        console.warn('[ASE PLAYER] Sync verification: Track missing', expectedTrack.id);
-        needsResync = true;
-        break;
+      if (!player) {
+        // Missing player
+        if (expectedTrack.isPlaying) {
+          console.warn('[ASE PLAYER] Sync verification: Expected track not found', expectedTrack.id);
+          needsResync = true;
+          break;
+        }
+        continue;
       }
 
       if (player) {
@@ -130,8 +144,28 @@ export class PlayerAudioEngine {
       }
     }
 
+    // CRITICAL FIX: Check for unexpected tracks that aren't in sync state
+    if (!needsResync) {
+      const expectedIds = new Set(this.lastSyncState.map(t => t.id));
+      for (const [id, player] of this.players) {
+        if (!expectedIds.has(id)) {
+          console.warn('[ASE PLAYER] Sync verification: Unexpected track exists:', id, 'state:', player.state);
+          needsResync = true;
+          break;
+        }
+      }
+    }
+
     if (needsResync) {
+      // Cooldown check to prevent infinite loop
+      const now = Date.now();
+      if (now - this.lastSyncRequestTime < this.SYNC_REQUEST_COOLDOWN) {
+        console.warn('[ASE PLAYER] Sync request on cooldown, skipping');
+        return;
+      }
+
       console.log('[ASE PLAYER] Sync verification failed - requesting full sync from GM');
+      this.lastSyncRequestTime = now;
       // Trigger a full state request from GM
       if (this.socketManager) {
         this.socketManager.requestFullSync();
@@ -452,18 +486,30 @@ export class PlayerAudioEngine {
     for (const trackState of tracks) {
       let player = this.players.get(trackState.id);
 
-      if (!player) {
-        player = new StreamingPlayer(
-          trackState.id,
-          this.ctx,
-          this.channelGains[trackState.group],
-          trackState.group
-        );
-
-        await player.load(trackState.url);
-        this.players.set(trackState.id, player);
+      // CRITICAL FIX: Stop tracks that should not be playing
+      if (player && !trackState.isPlaying && player.state === 'playing') {
+        console.log('[ASE PLAYER] Stopping track that should not be playing:', trackState.id);
+        player.stop();
+        continue; // Skip further processing for this track as it's now stopped
       }
 
+      if (!player) {
+        // Create if doesn't exist and should be playing
+        if (trackState.isPlaying) {
+          await this.handlePlay({
+            trackId: trackState.id,
+            url: trackState.url,
+            group: trackState.group,
+            volume: trackState.volume,
+            loop: trackState.loop,
+            offset: trackState.currentTime,
+            startTimestamp: trackState.startTimestamp
+          });
+        }
+        continue; // If player was just created (and played) or doesn't need to be created, move to next track
+      }
+
+      // For existing players (that weren't stopped above)
       player.setVolume(trackState.volume);
       player.setLoop(trackState.loop);
 
@@ -483,18 +529,32 @@ export class PlayerAudioEngine {
   // Sync Off
   // ─────────────────────────────────────────────────────────────
 
+  // Stop all tracks without disposing
   stopAll(): void {
+    console.log('[ASE PLAYER] Stopping all tracks');
     for (const player of this.players.values()) {
-      player.stop();
+      if (player.state === 'playing' || player.state === 'paused') {
+        player.stop();
+      }
     }
+    // CRITICAL FIX: Clear sync state so verification knows nothing should be playing
+    this.lastSyncState = [];
+    console.log('[ASE PLAYER] Cleared lastSyncState after stopAll');
   }
 
+  // Clear all tracks (stop + dispose)
   clearAll(): void {
+    console.log('[ASE PLAYER] Clearing all tracks');
+    // CRITICAL FIX: Stop tracks before disposing
     for (const player of this.players.values()) {
+      player.stop(); // Ensure audio stops immediately
       player.dispose();
     }
     this.players.clear();
+    // CRITICAL FIX: Clear sync state
+    this.lastSyncState = [];
     Logger.info('Player: all tracks cleared');
+    console.log('[ASE PLAYER] Cleared lastSyncState after clearAll');
   }
 
   // ─────────────────────────────────────────────────────────────

@@ -17,6 +17,7 @@ const MODULE_ID = 'advanced-sound-engine';
 interface MixerViewData {
   favorites: FavoriteViewData[];
   queuePlaylists: QueuePlaylistViewData[];
+  effects: EffectViewData[];
 }
 
 interface FavoriteViewData {
@@ -26,6 +27,13 @@ interface FavoriteViewData {
   group?: TrackGroup;
   isPlaying: boolean;
   isPaused: boolean;
+  inQueue: boolean;
+}
+
+interface EffectViewData {
+  id: string;
+  name: string;
+  enabled: boolean;
 }
 
 interface QueuePlaylistViewData {
@@ -109,6 +117,11 @@ export class SoundMixerApp {
     const favorites: FavoriteViewData[] = [];
 
     for (const fav of orderedFavorites) {
+      // Check if item is in queue (same pattern as LocalLibraryApp.ts:153-155)
+      const inQueue = fav.type === 'track'
+        ? (window.ASE?.queue?.hasItem(fav.id) ?? false)
+        : (window.ASE?.queue?.getItems().some((q) => q.playlistId === fav.id) ?? false);
+
       if (fav.type === 'track') {
         const item = this.libraryManager.getItem(fav.id);
         if (item) {
@@ -120,6 +133,7 @@ export class SoundMixerApp {
             group: item.group,
             isPlaying: player?.state === 'playing',
             isPaused: player?.state === 'paused',
+            inQueue,
           });
         }
       } else if (fav.type === 'playlist') {
@@ -132,6 +146,7 @@ export class SoundMixerApp {
             group: undefined,
             isPlaying: false, // Playlists don't have individual play state
             isPaused: false,
+            inQueue,
           });
         }
       }
@@ -141,9 +156,17 @@ export class SoundMixerApp {
     const queueItems = this.queueManager.getItems();
     const queuePlaylists = this.groupQueueByPlaylist(queueItems);
 
+    // Get all effects from engine
+    const effects: EffectViewData[] = this.engine.getAllEffects().map((effect) => ({
+      id: effect.id,
+      name: effect.type,
+      enabled: effect.enabled,
+    }));
+
     return {
       favorites,
       queuePlaylists,
+      effects,
     };
   }
 
@@ -242,6 +265,9 @@ export class SoundMixerApp {
     // Track controls
     html.find('[data-action="seek"]').on('input', (e) => this.onSeek(e));
     html.find('[data-action="volume"]').on('input', (e) => this.onVolumeChange(e));
+
+    // Effects controls
+    html.find('[data-action="toggle-effect"]').on('change', (e) => this.onToggleEffect(e));
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -256,10 +282,45 @@ export class SoundMixerApp {
     const type = $el.data('favorite-type') as 'track' | 'playlist';
 
     if (type === 'track') {
-      await this.playTrack(id);
+      // Add track to queue if not already there
+      const libraryItem = this.libraryManager.getItem(id);
+      if (libraryItem) {
+        const queueItems = this.queueManager.getItems();
+        const existingQueueItem = queueItems.find(
+          (item) => item.libraryItemId === id && !item.playlistId
+        );
+
+        if (!existingQueueItem) {
+          this.queueManager.addItem(id, { group: libraryItem.group });
+        }
+
+        // Play the track
+        await this.playTrack(id);
+      }
     } else {
-      // Play entire playlist
-      await this.playPlaylist(id);
+      // Add entire playlist to queue if not already there
+      const playlist = this.libraryManager.playlists.getPlaylist(id);
+      if (playlist) {
+        const queueItems = this.queueManager.getItems();
+        const existingPlaylistItems = queueItems.filter(
+          (item) => item.playlistId === id
+        );
+
+        if (existingPlaylistItems.length === 0) {
+          const tracks = this.libraryManager.playlists.getPlaylistTracks(id);
+          const playlistItems = tracks.map((t) => {
+            const item = this.libraryManager.getItem(t.libraryItemId);
+            return {
+              libraryItemId: t.libraryItemId,
+              group: item?.group || ('music' as const),
+            };
+          });
+          this.queueManager.addPlaylist(id, playlistItems as any);
+        }
+
+        // Play first track from playlist
+        await this.playPlaylist(id);
+      }
     }
     this.requestRender();
   }
@@ -603,5 +664,14 @@ export class SoundMixerApp {
     if (this.renderParent) {
       this.renderParent();
     }
+  }
+
+  private onToggleEffect(event: JQuery.ChangeEvent): void {
+    const $checkbox = $(event.currentTarget) as JQuery<HTMLInputElement>;
+    const effectId = $checkbox.data('effect-id') as string;
+    const enabled = $checkbox.is(':checked');
+
+    this.engine.setEffectEnabled(effectId, enabled);
+    Logger.info(`Effect ${effectId} ${enabled ? 'enabled' : 'disabled'}`);
   }
 }

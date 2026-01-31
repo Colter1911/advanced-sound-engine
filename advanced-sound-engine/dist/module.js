@@ -1107,7 +1107,7 @@ const _AudioEngine = class _AudioEngine {
 __name(_AudioEngine, "AudioEngine");
 let AudioEngine = _AudioEngine;
 const _PlayerAudioEngine = class _PlayerAudioEngine {
-  // Reference to SocketManager for requesting sync
+  // 10 seconds
   constructor(socketManager2) {
     __publicField(this, "ctx");
     __publicField(this, "masterGain");
@@ -1137,6 +1137,9 @@ const _PlayerAudioEngine = class _PlayerAudioEngine {
     __publicField(this, "lastSyncState", []);
     __publicField(this, "syncCheckInterval", null);
     __publicField(this, "socketManager");
+    // Reference to SocketManager for requesting sync
+    __publicField(this, "lastSyncRequestTime", 0);
+    __publicField(this, "SYNC_REQUEST_COOLDOWN", 1e4);
     this.ctx = new AudioContext();
     this.socketManager = socketManager2;
     this.startSyncVerification();
@@ -1170,14 +1173,25 @@ const _PlayerAudioEngine = class _PlayerAudioEngine {
     }, 5e3);
   }
   verifySyncState() {
-    if (this.lastSyncState.length === 0) return;
     let needsResync = false;
+    if (this.lastSyncState.length === 0) {
+      if (this.players.size > 0) {
+        console.warn("[ASE PLAYER] Sync verification: Have", this.players.size, "players but sync state is empty");
+        needsResync = true;
+      } else {
+        console.log("[ASE PLAYER] Sync verification OK (no tracks)");
+        return;
+      }
+    }
     for (const expectedTrack of this.lastSyncState) {
       const player = this.players.get(expectedTrack.id);
-      if (!player && expectedTrack.isPlaying) {
-        console.warn("[ASE PLAYER] Sync verification: Track missing", expectedTrack.id);
-        needsResync = true;
-        break;
+      if (!player) {
+        if (expectedTrack.isPlaying) {
+          console.warn("[ASE PLAYER] Sync verification: Expected track not found", expectedTrack.id);
+          needsResync = true;
+          break;
+        }
+        continue;
       }
       if (player) {
         const actuallyPlaying = player.state === "playing";
@@ -1193,8 +1207,24 @@ const _PlayerAudioEngine = class _PlayerAudioEngine {
         }
       }
     }
+    if (!needsResync) {
+      const expectedIds = new Set(this.lastSyncState.map((t) => t.id));
+      for (const [id, player] of this.players) {
+        if (!expectedIds.has(id)) {
+          console.warn("[ASE PLAYER] Sync verification: Unexpected track exists:", id, "state:", player.state);
+          needsResync = true;
+          break;
+        }
+      }
+    }
     if (needsResync) {
+      const now = Date.now();
+      if (now - this.lastSyncRequestTime < this.SYNC_REQUEST_COOLDOWN) {
+        console.warn("[ASE PLAYER] Sync request on cooldown, skipping");
+        return;
+      }
       console.log("[ASE PLAYER] Sync verification failed - requesting full sync from GM");
+      this.lastSyncRequestTime = now;
       if (this.socketManager) {
         this.socketManager.requestFullSync();
       } else {
@@ -1435,15 +1465,24 @@ const _PlayerAudioEngine = class _PlayerAudioEngine {
     }
     for (const trackState of tracks) {
       let player = this.players.get(trackState.id);
+      if (player && !trackState.isPlaying && player.state === "playing") {
+        console.log("[ASE PLAYER] Stopping track that should not be playing:", trackState.id);
+        player.stop();
+        continue;
+      }
       if (!player) {
-        player = new StreamingPlayer(
-          trackState.id,
-          this.ctx,
-          this.channelGains[trackState.group],
-          trackState.group
-        );
-        await player.load(trackState.url);
-        this.players.set(trackState.id, player);
+        if (trackState.isPlaying) {
+          await this.handlePlay({
+            trackId: trackState.id,
+            url: trackState.url,
+            group: trackState.group,
+            volume: trackState.volume,
+            loop: trackState.loop,
+            offset: trackState.currentTime,
+            startTimestamp: trackState.startTimestamp
+          });
+        }
+        continue;
       }
       player.setVolume(trackState.volume);
       player.setLoop(trackState.loop);
@@ -1460,17 +1499,28 @@ const _PlayerAudioEngine = class _PlayerAudioEngine {
   // ─────────────────────────────────────────────────────────────
   // Sync Off
   // ─────────────────────────────────────────────────────────────
+  // Stop all tracks without disposing
   stopAll() {
+    console.log("[ASE PLAYER] Stopping all tracks");
+    for (const player of this.players.values()) {
+      if (player.state === "playing" || player.state === "paused") {
+        player.stop();
+      }
+    }
+    this.lastSyncState = [];
+    console.log("[ASE PLAYER] Cleared lastSyncState after stopAll");
+  }
+  // Clear all tracks (stop + dispose)
+  clearAll() {
+    console.log("[ASE PLAYER] Clearing all tracks");
     for (const player of this.players.values()) {
       player.stop();
-    }
-  }
-  clearAll() {
-    for (const player of this.players.values()) {
       player.dispose();
     }
     this.players.clear();
+    this.lastSyncState = [];
     Logger.info("Player: all tracks cleared");
+    console.log("[ASE PLAYER] Cleared lastSyncState after clearAll");
   }
   // ─────────────────────────────────────────────────────────────
   // Audio Context
@@ -4027,9 +4077,11 @@ const _SoundMixerApp = class _SoundMixerApp {
   // Data Provider
   // ─────────────────────────────────────────────────────────────
   getData() {
+    var _a, _b, _c, _d;
     const orderedFavorites = this.libraryManager.getOrderedFavorites();
     const favorites = [];
     for (const fav of orderedFavorites) {
+      const inQueue = fav.type === "track" ? ((_b = (_a = window.ASE) == null ? void 0 : _a.queue) == null ? void 0 : _b.hasItem(fav.id)) ?? false : ((_d = (_c = window.ASE) == null ? void 0 : _c.queue) == null ? void 0 : _d.getItems().some((q) => q.playlistId === fav.id)) ?? false;
       if (fav.type === "track") {
         const item = this.libraryManager.getItem(fav.id);
         if (item) {
@@ -4040,7 +4092,8 @@ const _SoundMixerApp = class _SoundMixerApp {
             type: "track",
             group: item.group,
             isPlaying: (player == null ? void 0 : player.state) === "playing",
-            isPaused: (player == null ? void 0 : player.state) === "paused"
+            isPaused: (player == null ? void 0 : player.state) === "paused",
+            inQueue
           });
         }
       } else if (fav.type === "playlist") {
@@ -4053,16 +4106,23 @@ const _SoundMixerApp = class _SoundMixerApp {
             group: void 0,
             isPlaying: false,
             // Playlists don't have individual play state
-            isPaused: false
+            isPaused: false,
+            inQueue
           });
         }
       }
     }
     const queueItems = this.queueManager.getItems();
     const queuePlaylists = this.groupQueueByPlaylist(queueItems);
+    const effects = this.engine.getAllEffects().map((effect) => ({
+      id: effect.id,
+      name: effect.type,
+      enabled: effect.enabled
+    }));
     return {
       favorites,
-      queuePlaylists
+      queuePlaylists,
+      effects
     };
   }
   groupQueueByPlaylist(queueItems) {
@@ -4137,6 +4197,7 @@ const _SoundMixerApp = class _SoundMixerApp {
     html.find('[data-action="toggle-playlist"]').on("click", (e) => this.onTogglePlaylist(e));
     html.find('[data-action="seek"]').on("input", (e) => this.onSeek(e));
     html.find('[data-action="volume"]').on("input", (e) => this.onVolumeChange(e));
+    html.find('[data-action="toggle-effect"]').on("change", (e) => this.onToggleEffect(e));
   }
   // ─────────────────────────────────────────────────────────────
   // Favorites Handlers
@@ -4148,9 +4209,37 @@ const _SoundMixerApp = class _SoundMixerApp {
     const id = $el.data("favorite-id");
     const type = $el.data("favorite-type");
     if (type === "track") {
-      await this.playTrack(id);
+      const libraryItem = this.libraryManager.getItem(id);
+      if (libraryItem) {
+        const queueItems = this.queueManager.getItems();
+        const existingQueueItem = queueItems.find(
+          (item) => item.libraryItemId === id && !item.playlistId
+        );
+        if (!existingQueueItem) {
+          this.queueManager.addItem(id, { group: libraryItem.group });
+        }
+        await this.playTrack(id);
+      }
     } else {
-      await this.playPlaylist(id);
+      const playlist = this.libraryManager.playlists.getPlaylist(id);
+      if (playlist) {
+        const queueItems = this.queueManager.getItems();
+        const existingPlaylistItems = queueItems.filter(
+          (item) => item.playlistId === id
+        );
+        if (existingPlaylistItems.length === 0) {
+          const tracks = this.libraryManager.playlists.getPlaylistTracks(id);
+          const playlistItems = tracks.map((t) => {
+            const item = this.libraryManager.getItem(t.libraryItemId);
+            return {
+              libraryItemId: t.libraryItemId,
+              group: (item == null ? void 0 : item.group) || "music"
+            };
+          });
+          this.queueManager.addPlaylist(id, playlistItems);
+        }
+        await this.playPlaylist(id);
+      }
     }
     this.requestRender();
   }
@@ -4425,6 +4514,13 @@ const _SoundMixerApp = class _SoundMixerApp {
     if (this.renderParent) {
       this.renderParent();
     }
+  }
+  onToggleEffect(event) {
+    const $checkbox = $(event.currentTarget);
+    const effectId = $checkbox.data("effect-id");
+    const enabled = $checkbox.is(":checked");
+    this.engine.setEffectEnabled(effectId, enabled);
+    Logger.info(`Effect ${effectId} ${enabled ? "enabled" : "disabled"}`);
   }
 };
 __name(_SoundMixerApp, "SoundMixerApp");
@@ -6352,16 +6448,12 @@ function registerSettings() {
   });
   game.settings.register(MODULE_ID, "maxSimultaneousTracks", {
     name: "Maximum Simultaneous Tracks",
-    hint: "Maximum number of tracks that can play simultaneously (1-32)",
+    hint: "Limit the number of tracks that can play at once (1-32)",
     scope: "world",
     config: true,
     type: Number,
-    default: 16,
-    range: {
-      min: 1,
-      max: 32,
-      step: 1
-    }
+    range: { min: 1, max: 32, step: 1 },
+    default: 8
   });
   game.settings.register(MODULE_ID, "libraryState", {
     name: "Library State",

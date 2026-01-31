@@ -335,16 +335,12 @@ function registerSettings(): void {
 
   (game.settings as any).register(MODULE_ID, 'maxSimultaneousTracks', {
     name: 'Maximum Simultaneous Tracks',
-    hint: 'Maximum number of tracks that can play simultaneously (1-32)',
+    hint: 'Limit the number of tracks that can play at once (1-32)',
     scope: 'world',
     config: true,
     type: Number,
-    default: 16,
-    range: {
-      min: 1,
-      max: 32,
-      step: 1
-    }
+    range: { min: 1, max: 32, step: 1 },
+    default: 8
   });
 
   (game.settings as any).register(MODULE_ID, 'libraryState', {
