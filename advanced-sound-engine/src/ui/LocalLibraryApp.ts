@@ -427,6 +427,22 @@ export class LocalLibraryApp extends Application {
     html.find('[data-action="create-playlist"]').on('click', this.onCreatePlaylist.bind(this));
     html.find('[data-action="toggle-playlist-favorite"]').on('click', this.onTogglePlaylistFavorite.bind(this));
     html.find('[data-action="toggle-playlist-queue"]').on('click', this.onTogglePlaylistQueue.bind(this));
+    html.find('[data-action="play-playlist"]').on('click', this.onPlayPlaylist.bind(this)); // New handler
+    // Use event delegation for dynamic mode selectors to ensure reliability
+    console.log('ASE: Binding mode selector events via delegation');
+    html.on('click', '[data-action="playlist-mode-dropdown"]', (e) => {
+      console.log('ASE: Playlist Mode Clicked (Delegated)', e.currentTarget);
+      this.onPlaylistModeClick(e as unknown as JQuery.ClickEvent);
+    });
+    html.on('click', '[data-action="track-mode-dropdown"]', (e) => {
+      console.log('ASE: Track Mode Clicked (Delegated)', e.currentTarget);
+      this.onTrackModeClick(e as unknown as JQuery.ClickEvent);
+    });
+    // CRITICAL: Prevent row drag from swallowing clicks on ANY action button
+    html.on('mousedown', '[data-action]', (e) => {
+      console.log('ASE: Mousedown on action stopped propagation', e.currentTarget);
+      e.stopPropagation();
+    });
     html.find('[data-action="playlist-menu"]').on('click', this.onPlaylistMenu.bind(this));
     html.find('.ase-list-item[data-playlist-id]').on('contextmenu', this.onPlaylistContext.bind(this));
 
@@ -517,6 +533,142 @@ export class LocalLibraryApp extends Application {
       ui.notifications?.error('Failed to update favorite status');
     }
   }
+
+  // ─────────────────────────────────────────────────────────────
+  // Playback Mode Handlers
+  // ─────────────────────────────────────────────────────────────
+
+  private onTrackModeClick(event: JQuery.ClickEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+    console.log('ASE: onTrackModeClick triggered', event.currentTarget);
+
+    const btn = $(event.currentTarget);
+    // Support both direct data on icon (new) and wrapper (legacy fallback)
+    let itemId = btn.data('item-id') as string;
+    if (!itemId) {
+      itemId = btn.closest('[data-item-id]').data('item-id') as string;
+    }
+    console.log('ASE: Resolved Item ID:', itemId);
+
+    const item = this.library.getItem(itemId);
+    if (!item) {
+      console.warn(`ASE: Track Mode Clicked: Item not found for ID ${itemId}`);
+      return;
+    }
+    console.log(`ASE: Found item ${item.name}`);
+
+    const modes: { label: string, value: string, icon: string }[] = [
+      { label: 'Inherit (Default)', value: 'inherit', icon: 'fa-arrow-turn-down' },
+      { label: 'Loop', value: 'loop', icon: 'fa-repeat' },
+      { label: 'Single', value: 'single', icon: 'fa-stop' },
+      { label: 'Linear', value: 'linear', icon: 'fa-arrow-right' },
+      { label: 'Random', value: 'random', icon: 'fa-shuffle' }
+    ];
+
+    this.showModeContextMenu(event, modes, (mode) => {
+      this.library.updateItem(itemId, { playbackMode: mode as any });
+      this.render();
+    });
+  }
+
+  private onPlaylistModeClick(event: JQuery.ClickEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+    Logger.debug('Playlist Mode Clicked'); // Debug
+    const btn = $(event.currentTarget);
+    // Support both direct data on icon (new) and wrapper (legacy fallback)
+    let playlistId = btn.data('playlist-id') as string;
+    if (!playlistId) {
+      playlistId = btn.closest('[data-playlist-id]').data('playlist-id') as string;
+    }
+    const playlist = this.library.playlists.getPlaylist(playlistId);
+    if (!playlist) {
+      Logger.warn(`Playlist Mode Clicked: Playlist not found for ID ${playlistId}`);
+      return;
+    }
+    Logger.debug(`Playlist Mode Clicked: Found playlist ${playlist.name} (${playlist.id})`);
+
+    const modes: { label: string, value: string, icon: string }[] = [
+      { label: 'Loop (Default)', value: 'loop', icon: 'fa-repeat' },
+      { label: 'Linear', value: 'linear', icon: 'fa-arrow-right' },
+      { label: 'Random', value: 'random', icon: 'fa-shuffle' }
+    ];
+
+    this.showModeContextMenu(event, modes, (mode) => {
+      this.library.playlists.updatePlaylist(playlistId, { playbackMode: mode as any });
+      this.render();
+    });
+  }
+
+  private showModeContextMenu(event: JQuery.ClickEvent, modes: any[], callback: (mode: string) => void): void {
+    const menuHtml = `
+        <div id="ase-mode-menu" style="position: fixed; z-index: 10000; background: #110f1c; border: 1px solid #363249; border-radius: 4px; padding: 5px 0; box-shadow: 0 4px 12px rgba(0,0,0,0.5);">
+          ${modes.map(m => `
+            <div class="ase-ctx-item" data-value="${m.value}" style="padding: 8px 15px; cursor: pointer; color: #eee; display: flex; align-items: center; gap: 8px;">
+                <i class="fa-solid ${m.icon}" style="width: 16px; text-align: center; color: #cca477;"></i> 
+                <span>${m.label}</span>
+            </div>
+          `).join('')}
+        </div>
+      `;
+
+    $('#ase-mode-menu').remove();
+    const menu = $(menuHtml);
+    $('body').append(menu);
+
+    menu.css({ top: event.clientY, left: event.clientX });
+
+    menu.find('.ase-ctx-item').hover(
+      function () { $(this).css('background', '#363249'); },
+      function () { $(this).css('background', 'transparent'); }
+    );
+
+    menu.find('.ase-ctx-item').on('click', (e) => {
+      e.stopPropagation(); // prevent body click from firing immediately
+      const val = $(e.currentTarget).data('value');
+      Logger.debug(`Mode Selected: ${val}`);
+      callback(val);
+      menu.remove();
+    });
+
+    // Close on click outside
+    setTimeout(() => {
+      $('body').one('click', () => {
+        Logger.debug('Mode Menu: Closed by outside click');
+        menu.remove();
+      });
+    }, 10);
+  }
+
+
+
+  private async onPlayPlaylist(event: JQuery.ClickEvent): Promise<void> {
+    event.preventDefault();
+    event.stopPropagation();
+    const playlistId = $(event.currentTarget).closest('[data-playlist-id]').data('playlist-id') as string;
+    const playlist = this.library.playlists.getPlaylist(playlistId);
+
+    if (playlist && playlist.items.length > 0) {
+
+      let trackToPlay = playlist.items[0];
+      if (playlist.playbackMode === 'random' && playlist.items.length > 1) {
+        const randomIndex = Math.floor(Math.random() * playlist.items.length);
+        trackToPlay = playlist.items[randomIndex];
+      }
+
+      const libItem = this.library.getItem(trackToPlay.libraryItemId);
+      if (libItem) {
+        await (window.ASE.engine as any).playTrack(libItem.id, 0, { type: 'playlist', id: playlistId });
+        ui.notifications?.info(`Playing playlist: ${playlist.name}`);
+        this.render();
+      }
+    } else {
+      ui.notifications?.warn('Playlist is empty');
+    }
+  }
+
+
 
 
   // ─────────────────────────────────────────────────────────────
@@ -842,7 +994,16 @@ export class LocalLibraryApp extends Application {
     event.stopPropagation();
     const itemId = $(event.currentTarget).data('item-id') as string;
 
-    Logger.debug('Play track:', itemId);
+    // Determine context based on current view
+    let context: any = { type: 'track' };
+    if (this.filterState.selectedPlaylistId) {
+      context = { type: 'playlist', id: this.filterState.selectedPlaylistId };
+    }
+
+    // Pass 'track' context
+    // Using cast for engine to support optional context arg until types catch up if needed
+    await (window.ASE.engine as any).playTrack(itemId, 0, context);
+    this.render();
 
     const item = this.library.getItem(itemId);
     if (!item) {
@@ -1154,10 +1315,11 @@ export class LocalLibraryApp extends Application {
     const channels = ['music', 'ambience', 'sfx'];
 
     // Create dropdown menu
+    // Using .ase-dropdown-menu class defined in SCSS
     const menu = $(`
-      <div class="ase-dropdown-menu" style="position: fixed; z-index: 9999; background: #1e283d; border: 1px solid #334155; border-radius: 4px; min-width: 100px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+      <div class="ase-dropdown-menu">
         ${channels.map(ch => `
-          <div class="ase-dropdown-item" data-channel="${ch}" style="padding: 8px 12px; cursor: pointer; color: ${ch === currentGroup ? 'var(--accent-cyan)' : '#94a3b8'}; font-size: 12px;">
+          <div class="ase-dropdown-item ${ch === currentGroup ? 'active' : ''}" data-channel="${ch}">
             ${ch.charAt(0).toUpperCase() + ch.slice(1)}
           </div>
         `).join('')}
@@ -1255,28 +1417,28 @@ export class LocalLibraryApp extends Application {
     const deleteLabel = 'Delete Track';
 
     let menuHtml = `
-      <div class="ase-context-menu" style="position: fixed; z-index: 9999; background: #1e283d; border: 1px solid #334155; border-radius: 4px; min-width: 150px; box-shadow: 0 4px 12px rgba(0,0,0,0.4);">
-        <div class="ase-menu-item" data-action="rename" style="padding: 8px 12px; cursor: pointer; color: #e5e5e5; font-size: 12px;">
-          <i class="fa-solid fa-pen" style="width: 16px;"></i> Rename
+      <div class="ase-context-menu">
+        <div class="ase-menu-item" data-action="rename">
+          <i class="fa-solid fa-pen"></i> Rename
         </div>
-        <div class="ase-menu-item" data-action="add-to-playlist" style="padding: 8px 12px; cursor: pointer; color: #e5e5e5; font-size: 12px;">
-          <i class="fa-solid fa-list" style="width: 16px;"></i> Add to Playlist
+        <div class="ase-menu-item" data-action="add-to-playlist">
+          <i class="fa-solid fa-list"></i> Add to Playlist
         </div>`;
 
     if (isInPlaylist) {
       menuHtml += `
-        <div class="ase-menu-item" data-action="remove-from-playlist" style="padding: 8px 12px; cursor: pointer; color: #e5e5e5; font-size: 12px;">
-          <i class="fa-solid fa-minus-circle" style="width: 16px;"></i> Remove from Playlist
+        <div class="ase-menu-item" data-action="remove-from-playlist">
+          <i class="fa-solid fa-minus-circle"></i> Remove from Playlist
         </div>`;
     }
 
     menuHtml += `
-        <div class="ase-menu-item" data-action="edit-tags" style="padding: 8px 12px; cursor: pointer; color: #e5e5e5; font-size: 12px;">
-          <i class="fa-solid fa-tags" style="width: 16px;"></i> Edit Tags
+        <div class="ase-menu-item" data-action="edit-tags">
+          <i class="fa-solid fa-tags"></i> Edit Tags
         </div>
-        <div style="border-top: 1px solid #334155; margin: 4px 0;"></div>
-        <div class="ase-menu-item" data-action="delete" style="padding: 8px 12px; cursor: pointer; color: #f87171; font-size: 12px;">
-          <i class="fa-solid fa-trash" style="width: 16px;"></i> ${deleteLabel}
+        <div class="ase-menu-separator"></div>
+        <div class="ase-menu-item" data-action="delete">
+          <i class="fa-solid fa-trash"></i> ${deleteLabel}
         </div>
       </div>
     `;
@@ -1285,9 +1447,6 @@ export class LocalLibraryApp extends Application {
 
     menu.css({ top: event.clientY, left: event.clientX });
     $('body').append(menu);
-
-    menu.find('.ase-menu-item').on('mouseenter', (e) => $(e.currentTarget).css('background', '#2d3a52'));
-    menu.find('.ase-menu-item').on('mouseleave', (e) => $(e.currentTarget).css('background', 'transparent'));
 
     menu.find('[data-action="rename"]').on('click', async () => {
       menu.remove();
@@ -2875,4 +3034,6 @@ export class LocalLibraryApp extends Application {
       ui.notifications?.error(`Failed to add to playlist: ${errorMessage}`);
     }
   }
+
+
 }

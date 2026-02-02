@@ -8,7 +8,7 @@ import { PlaylistManager } from './PlaylistManager';
 import { GlobalStorage } from '@storage/GlobalStorage';
 
 const MODULE_ID = 'advanced-sound-engine';
-const LIBRARY_VERSION = 1;
+const LIBRARY_VERSION = 2;
 
 export class LibraryManager {
   private items: Map<string, LibraryItem> = new Map();
@@ -70,6 +70,7 @@ export class LibraryManager {
       group: group,
       duration: 0,
       favorite: false,
+      playbackMode: 'inherit',
       addedAt: now,
       updatedAt: now
     };
@@ -564,6 +565,10 @@ export class LibraryManager {
       if (state.items) {
         Object.values(state.items).forEach((item) => {
           if (this.isValidLibraryItem(item)) {
+            // Migration: Ensure playbackMode exists
+            if (!item.playbackMode) {
+              item.playbackMode = 'inherit';
+            }
             this.items.set(item.id, item);
           }
         });

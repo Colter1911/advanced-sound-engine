@@ -14,8 +14,18 @@
           data-action="select-playlist" draggable="true">
           <span>{{this.name}} ({{this.trackCount}})</span>
           <div class="ase-icons">
-            <i class="ase-icon-add-queue {{#if this.inQueue}}active{{/if}}" data-action="toggle-playlist-queue"
-              data-playlist-id="{{this.id}}" title="Add to Queue"></i>
+            <span class="ase-play-btn" data-action="play-playlist" data-playlist-id="{{this.id}}" title="Play Playlist">
+              <i class="fa-solid fa-play"></i>
+            </span>
+            <span class="ase-queue-btn {{#if this.inQueue}}active{{/if}}" data-action="toggle-playlist-queue"
+              data-playlist-id="{{this.id}}" title="Add to Queue">
+              <i class="ase-icon-add-queue"></i>
+            </span>
+            <!-- Playlist Mode Selector -->
+            <i class="fa-solid ase-mode-icon
+                {{#if (eq this.playbackMode 'loop')}}fa-repeat{{else if (eq this.playbackMode 'linear')}}fa-arrow-right{{else if (eq this.playbackMode 'random')}}fa-shuffle{{else}}fa-repeat{{/if}}"
+              title="Playback Mode: {{this.playbackMode}}" data-action="playlist-mode-dropdown"
+              data-playlist-id="{{this.id}}"></i>
             <i class="fa-solid fa-star {{#if this.favorite}}active{{/if}}"
               style="{{#if this.favorite}}color: var(--accent-cyan);{{/if}}" data-action="toggle-playlist-favorite"
               data-playlist-id="{{this.id}}" title="Favorite"></i>
@@ -49,8 +59,10 @@
             <span>{{this.name}}</span>
           </div>
           <div class="ase-icons">
-            <i class="ase-icon-add-queue {{#if this.inQueue}}active{{/if}}" data-action="toggle-favorite-queue"
-              data-favorite-id="{{this.id}}" data-favorite-type="{{this.type}}" title="Add to Queue"></i>
+            <span class="ase-queue-btn {{#if this.inQueue}}active{{/if}}" data-action="toggle-favorite-queue"
+              data-favorite-id="{{this.id}}" data-favorite-type="{{this.type}}" title="Add to Queue">
+              <i class="ase-icon-add-queue"></i>
+            </span>
             <i class="fa-solid fa-star active" style="color: var(--accent-cyan);" data-action="remove-from-favorites"
               data-favorite-id="{{this.id}}" data-favorite-type="{{this.type}}" title="Remove from Favorites"></i>
           </div>
@@ -146,14 +158,31 @@
           <div class="ase-track-controls">
             <!-- Play/Pause/Stop -->
             <div class="ase-playback-controls">
-              <i class="fa-solid fa-play" data-action="play-track" data-item-id="{{this.id}}" title="Play"></i>
+              {{#if this.isPlaying}}
               <i class="fa-solid fa-pause" data-action="pause-track" data-item-id="{{this.id}}" title="Pause"></i>
+              {{else}}
+              <i class="fa-solid fa-play" data-action="play-track" data-item-id="{{this.id}}" title="Play"></i>
+              {{/if}}
               <i class="fa-solid fa-stop" data-action="stop-track" data-item-id="{{this.id}}" title="Stop"></i>
             </div>
 
             <!-- Add to Queue -->
-            <i class="ase-icon-add-queue {{#if this.inQueue}}active{{/if}}" data-action="add-to-queue"
-              data-item-id="{{this.id}}" title="Add to Queue"></i>
+            <span class="ase-queue-btn {{#if this.inQueue}}active{{/if}}" data-action="add-to-queue"
+              data-item-id="{{this.id}}" title="Add to Queue">
+              <i class="ase-icon-add-queue"></i>
+            </span>
+
+            <!-- Add to Playlist removed -->
+
+            <!-- Track Mode Selector -->
+            <i class="fa-solid ase-mode-icon
+                {{#if (eq this.playbackMode 'single')}}fa-stop
+                {{else if (eq this.playbackMode 'linear')}}fa-arrow-right
+                {{else if (eq this.playbackMode 'loop')}}fa-repeat
+                {{else if (eq this.playbackMode 'random')}}fa-shuffle
+                {{else if (eq this.playbackMode 'inherit')}}fa-arrow-turn-down
+                {{else}}fa-arrow-turn-down{{/if}}" title="Playback Mode: {{this.playbackMode}}"
+              data-action="track-mode-dropdown" data-item-id="{{this.id}}"></i>
 
             <!-- Favorite -->
             <i class="fa-solid fa-star {{#if this.favorite}}active{{/if}}"
@@ -177,7 +206,7 @@
           <!-- Tags -->
           <div class="ase-track-tags" style="margin-top: 0;">
             {{#each this.tags}}
-            <span class="ase-tag" data-tag="{{this}}" data-item-id="{{../id}}">#{{this}}</span>
+            <span class="ase-tag" data-tag="{{this}}" data-item-id="{{../id}}" data-action="toggle-tag">#{{this}}</span>
             {{/each}}
             <i class="fa-solid fa-plus ase-add-tag-btn" data-action="add-tag-to-track" data-item-id="{{this.id}}"></i>
           </div>

@@ -5,6 +5,8 @@ import { Logger } from '@utils/logger';
 import { getServerTime } from '@utils/time';
 import { generateUUID } from '@utils/uuid';
 import { validateAudioFile } from '@utils/audio-validation';
+// import { EventEmitter } from '@pixi/utils'; // REMOVED: Using global PIXI.utils.EventEmitter to fix build
+import type { PlaybackContext } from './PlaybackScheduler';
 
 // Effects
 import { AudioEffect } from './effects/AudioEffect';
@@ -20,11 +22,68 @@ function getMaxSimultaneous(): number {
   return ((game.settings as any).get(MODULE_ID, 'maxSimultaneousTracks') as number) || 8;
 }
 
-export class AudioEngine {
+// Robust EventEmitter shim to avoid build/runtime dependency issues
+class SimpleEventEmitter {
+  private listeners: Record<string, Function[]> = {};
+
+  on(event: string, fn: Function) {
+    (this.listeners[event] = this.listeners[event] || []).push(fn);
+    return this;
+  }
+
+  addListener(event: string, fn: Function) {
+    return this.on(event, fn);
+  }
+
+  once(event: string, fn: Function) {
+    const onceWrapper = (...args: any[]) => {
+      this.off(event, onceWrapper);
+      fn.apply(this, args);
+    };
+    // Store original fn to allow removal before triggering
+    (onceWrapper as any)._original = fn;
+    return this.on(event, onceWrapper);
+  }
+
+  emit(event: string, ...args: any[]) {
+    if (this.listeners[event]) {
+      // Clone to allow removal during emission
+      [...this.listeners[event]].forEach(fn => fn.apply(this, args));
+      return true;
+    }
+    return false;
+  }
+
+  off(event: string, fn: Function) {
+    if (this.listeners[event]) {
+      this.listeners[event] = this.listeners[event].filter(l =>
+        l !== fn && (l as any)._original !== fn
+      );
+    }
+    return this;
+  }
+
+  removeListener(event: string, fn: Function) {
+    return this.off(event, fn);
+  }
+
+  removeAllListeners(event?: string) {
+    if (event) {
+      delete this.listeners[event];
+    } else {
+      this.listeners = {};
+    }
+    return this;
+  }
+}
+
+export class AudioEngine extends SimpleEventEmitter {
   private ctx: AudioContext;
   private masterGain: GainNode;
+  private localGain: GainNode; // Controls GM's local monitoring level
   private channelGains: Record<TrackGroup, GainNode>;
   private players: Map<string, StreamingPlayer> = new Map();
+  private _activeContext: PlaybackContext | null = null;
 
   // Effects System
   // Effects System
@@ -48,10 +107,18 @@ export class AudioEngine {
   private saveTimeout: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
+    super(); // Init EventEmitter
     this.ctx = new AudioContext();
 
     this.masterGain = this.ctx.createGain();
-    this.masterGain.connect(this.ctx.destination);
+
+    // Create Local Gain (GM only)
+    this.localGain = this.ctx.createGain();
+    this.localGain.gain.value = 1; // Default to full volume
+
+    // Master -> Local -> Destination
+    this.masterGain.connect(this.localGain);
+    this.localGain.connect(this.ctx.destination);
 
     this.channelGains = {
       music: this.ctx.createGain(),
@@ -198,6 +265,13 @@ export class AudioEngine {
     await player.load(config.url);
 
     this.players.set(trackId, player);
+
+    // Wire up events
+    player.onEnded = () => {
+      this.emit('trackEnded', trackId);
+      // Also remove from active players map if needed, but StreamingPlayer handles state.
+    };
+
     this.scheduleSave();
 
     Logger.info(`Track created: ${trackId} (${validation.extension})`);
@@ -240,7 +314,7 @@ export class AudioEngine {
   // Playback Control
   // ─────────────────────────────────────────────────────────────
 
-  async playTrack(id: string, offset: number = 0): Promise<void> {
+  async playTrack(id: string, offset: number = 0, context?: PlaybackContext): Promise<void> {
     const player = this.players.get(id);
     if (!player) {
       Logger.warn(`Track not found: ${id}`);
@@ -257,6 +331,10 @@ export class AudioEngine {
       return;
     }
 
+    if (context) {
+      this._activeContext = context;
+      this.emit('contextChanged', context);
+    }
     await player.play(offset);
   }
 
@@ -316,6 +394,19 @@ export class AudioEngine {
 
   getChannelVolume(channel: TrackGroup): number {
     return this._volumes[channel];
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // Local Volume (GM Monitor)
+  // ─────────────────────────────────────────────────────────────
+
+  setLocalVolume(value: number): void {
+    const val = Math.max(0, Math.min(1, value));
+    this.localGain.gain.linearRampToValueAtTime(val, this.ctx.currentTime + 0.05);
+  }
+
+  get localVolume(): number {
+    return this.localGain.gain.value;
   }
 
   // ─────────────────────────────────────────────────────────────

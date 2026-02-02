@@ -90,6 +90,12 @@ export class AdvancedSoundEngineApp extends HandlebarsApplicationMixin(Applicati
                 this.render({ parts: ['main'] });
             }
         });
+
+        // Restore Local Volume (UI Preference)
+        const savedLocalVol = localStorage.getItem('ase-gm-local-volume');
+        if (savedLocalVol !== null) {
+            this.engine.setLocalVolume(parseFloat(savedLocalVol));
+        }
     }
 
     /**
@@ -116,7 +122,7 @@ export class AdvancedSoundEngineApp extends HandlebarsApplicationMixin(Applicati
         };
 
         // Get content for the active tab manually (legacy support for sub-apps returning data)
-        const renderTemplate = foundry.applications.handlebars.renderTemplate; // V13 Compatibility
+        const renderTemplate = globalThis.renderTemplate; // V13 Compatibility
 
         let tabContent = '';
         if (this.state.activeTab === 'library') {
@@ -139,7 +145,8 @@ export class AdvancedSoundEngineApp extends HandlebarsApplicationMixin(Applicati
                 master: Math.round(volumes.master * 100),
                 music: Math.round(volumes.music * 100),
                 ambience: Math.round(volumes.ambience * 100),
-                sfx: Math.round(volumes.sfx * 100)
+                sfx: Math.round(volumes.sfx * 100),
+                local: Math.round(this.engine.localVolume * 100)
             },
             syncEnabled: this.socket.syncEnabled,
             // Pass state for Handlebars if needed
@@ -318,17 +325,25 @@ export class AdvancedSoundEngineApp extends HandlebarsApplicationMixin(Applicati
     private onVolumeInput(event: JQuery.TriggeredEvent): void {
         const input = event.currentTarget as HTMLInputElement;
         const value = parseFloat(input.value) / 100;
-        const channel = $(input).data('channel') as 'music' | 'ambience' | 'sfx' | undefined;
+        const $input = $(input);
+        const channel = $input.data('channel') as 'music' | 'ambience' | 'sfx' | undefined;
+        const type = $input.data('type') as 'master' | 'local' | undefined;
 
         if (channel) {
             this.engine.setChannelVolume(channel, value);
             this.socket.broadcastChannelVolume(channel, value);
+            $input.siblings('.ase-percentage').text(`${Math.round(value * 100)}%`);
+        } else if (type === 'local') {
+            this.engine.setLocalVolume(value);
+            // Local volume is NOT broadcast
+            // Save to localStorage for persistence
+            localStorage.setItem('ase-gm-local-volume', value.toString());
+            $input.siblings('.ase-local-perc').text(`${Math.round(value * 100)}%`);
         } else {
+            // Master
             this.engine.setMasterVolume(value);
             this.socket.broadcastChannelVolume('master', value);
+            $input.siblings('.ase-master-perc').text(`${Math.round(value * 100)}%`);
         }
-
-        $(input).siblings('.ase-percentage').text(`${Math.round(value * 100)}%`);
-        $(input).siblings('.ase-master-perc').text(`${Math.round(value * 100)}%`);
     }
 }

@@ -42,7 +42,8 @@ export class PlaylistManager {
       items: [],
       createdAt: now,
       updatedAt: now,
-      favorite: false
+      favorite: false,
+      playbackMode: 'loop'
     };
 
     this.playlists.set(playlist.id, playlist);
@@ -55,7 +56,7 @@ export class PlaylistManager {
   /**
    * Update playlist metadata
    */
-  updatePlaylist(id: string, updates: Partial<Pick<Playlist, 'name' | 'description' | 'favorite'>>): Playlist {
+  updatePlaylist(id: string, updates: Partial<Pick<Playlist, 'name' | 'description' | 'favorite' | 'playbackMode'>>): Playlist {
     const playlist = this.playlists.get(id);
     if (!playlist) {
       throw new Error(`Playlist not found: ${id}`);
@@ -381,6 +382,10 @@ export class PlaylistManager {
     Object.values(playlistsData).forEach(playlist => {
       // Ensure items are properly ordered
       playlist.items.sort((a, b) => a.order - b.order);
+      // Migration: Ensure playbackMode exists
+      if (!playlist.playbackMode) {
+        playlist.playbackMode = 'loop';
+      }
       this.playlists.set(playlist.id, playlist);
     });
 

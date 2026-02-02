@@ -9,6 +9,11 @@
   - Values: `'music' | 'ambience' | 'sfx'`.
 - **QueueItem** (`src/types/queue.ts`): Item in the active playback queue.
   - Key fields: `id`, `libraryItemId`, `state` (playing/paused/stopped), `volume`, `loop`.
+- **PlaybackMode**: `'single' | 'linear' | 'loop' | 'random' | 'inherit'`.
+  - **Context Rules**:
+    - **Playlist Context**: Enforces playlist mode (Loop/Linear/Random).
+    - **Track Context**: Enforces track mode.
+    - **Inherit**: Track uses playlist mode if active, else Loop.
 
 ## 2. Shared Utilities & Helpers
 - **Logger** (`src/utils/logger.ts`):

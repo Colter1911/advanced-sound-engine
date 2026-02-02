@@ -1,6 +1,11 @@
 import type { TrackGroup } from './audio';
 
 /**
+ * Режимы воспроизведения
+ */
+export type PlaybackMode = 'single' | 'linear' | 'loop' | 'random' | 'inherit';
+
+/**
  * Library Item - звук в библиотеке
  */
 export interface LibraryItem {
@@ -11,6 +16,7 @@ export interface LibraryItem {
   group: TrackGroup;             // Канал звука: music/ambience/sfx
   duration: number;              // Длительность в секундах
   favorite: boolean;             // Помечен как избранный
+  playbackMode: PlaybackMode;    // Режим воспроизведения
   addedAt: number;               // Timestamp добавления
   updatedAt: number;             // Timestamp последнего изменения
   metadata?: LibraryItemMetadata; // Опциональные метаданные
@@ -40,6 +46,7 @@ export interface Playlist {
   createdAt: number;             // Timestamp создания
   updatedAt: number;             // Timestamp последнего изменения
   favorite: boolean;             // Помечен как избранный
+  playbackMode: Exclude<PlaybackMode, 'single' | 'inherit'>; // Режим воспроизведения
 }
 
 /**

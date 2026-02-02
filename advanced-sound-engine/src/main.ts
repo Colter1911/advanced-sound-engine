@@ -10,6 +10,7 @@ import { AdvancedSoundEngineApp } from '@ui/AdvancedSoundEngineApp';
 import { LibraryManager } from '@lib/LibraryManager';
 import { PlaybackQueueManager } from './queue/PlaybackQueueManager';
 import { Logger } from '@utils/logger';
+import { PlaybackScheduler } from '@core/PlaybackScheduler';
 
 const MODULE_ID = 'advanced-sound-engine';
 
@@ -18,6 +19,7 @@ let gmEngine: AudioEngine | null = null;
 let mainApp: AdvancedSoundEngineApp | null = null;
 let libraryManager: LibraryManager | null = null;
 let queueManager: PlaybackQueueManager | null = null;
+let playbackScheduler: PlaybackScheduler | null = null;
 
 // Player
 let playerEngine: PlayerAudioEngine | null = null;
@@ -249,6 +251,10 @@ async function initializeGM(): Promise<void> {
   socketManager!.initializeAsGM(gmEngine);
 
   await gmEngine.loadSavedState();
+
+  // Initialize Scheduler
+  playbackScheduler = new PlaybackScheduler(gmEngine, libraryManager);
+  Logger.info('PlaybackScheduler initialized');
 }
 
 async function initializePlayer(): Promise<void> {

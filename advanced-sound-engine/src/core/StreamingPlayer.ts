@@ -17,6 +17,8 @@ export class StreamingPlayer {
   private _loop: boolean = false;
   private _ready: boolean = false;
 
+  public onEnded?: () => void;
+
   constructor(
     id: string,
     ctx: AudioContext,
@@ -50,9 +52,11 @@ export class StreamingPlayer {
     });
 
     this.audio.addEventListener('ended', () => {
+      // Loop is handled by Audio element 'loop' property mostly, but if manual handling needed:
       if (!this._loop) {
         this._state = 'stopped';
         Logger.debug(`Track ${this.id} ended`);
+        this.onEnded?.();
       }
     });
 

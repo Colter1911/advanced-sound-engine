@@ -82,12 +82,22 @@
             </div>
         </div>
 
-        <!-- Master Group -->
         <div class="ase-master-group">
-            <div class="ase-master-label"><i class="fa-solid fa-volume-high"></i> MASTER</div>
-            <input type="range" class="ase-volume-slider ase-master-slider" min="0" max="100"
-                value="{{volumes.master}}">
-            <div class="ase-percentage ase-master-perc">{{volumes.master}}%</div>
+            <!-- Master Row -->
+            <div class="ase-master-row">
+                <div class="ase-master-label"><i class="fa-solid fa-volume-high"></i> MASTER</div>
+                <input type="range" class="ase-volume-slider ase-master-slider" data-type="master" min="0" max="100"
+                    value="{{volumes.master}}">
+                <div class="ase-percentage ase-master-perc">{{volumes.master}}%</div>
+            </div>
+
+            <!-- Local Row -->
+            <div class="ase-master-row local-row">
+                <div class="ase-master-label"><i class="fa-solid fa-headphones"></i> LOCAL</div>
+                <input type="range" class="ase-volume-slider ase-master-slider" data-type="local" min="0" max="100"
+                    value="{{volumes.local}}">
+                <div class="ase-percentage ase-local-perc ase-master-perc">{{volumes.local}}%</div>
+            </div>
         </div>
 
         <!-- Global Controls -->

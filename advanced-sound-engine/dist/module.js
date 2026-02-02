@@ -34,6 +34,7 @@ const _StreamingPlayer = class _StreamingPlayer {
     __publicField(this, "_volume", 1);
     __publicField(this, "_loop", false);
     __publicField(this, "_ready", false);
+    __publicField(this, "onEnded");
     this.id = id;
     this.ctx = ctx;
     this._group = group;
@@ -55,9 +56,11 @@ const _StreamingPlayer = class _StreamingPlayer {
       Logger.debug(`Track ${this.id} ready to play`);
     });
     this.audio.addEventListener("ended", () => {
+      var _a;
       if (!this._loop) {
         this._state = "stopped";
         Logger.debug(`Track ${this.id} ended`);
+        (_a = this.onEnded) == null ? void 0 : _a.call(this);
       }
     });
     this.audio.addEventListener("error", (e) => {
@@ -706,12 +709,64 @@ function getMaxSimultaneous() {
   return game.settings.get(MODULE_ID$5, "maxSimultaneousTracks") || 8;
 }
 __name(getMaxSimultaneous, "getMaxSimultaneous");
-const _AudioEngine = class _AudioEngine {
+const _SimpleEventEmitter = class _SimpleEventEmitter {
   constructor() {
+    __publicField(this, "listeners", {});
+  }
+  on(event, fn) {
+    (this.listeners[event] = this.listeners[event] || []).push(fn);
+    return this;
+  }
+  addListener(event, fn) {
+    return this.on(event, fn);
+  }
+  once(event, fn) {
+    const onceWrapper = /* @__PURE__ */ __name((...args) => {
+      this.off(event, onceWrapper);
+      fn.apply(this, args);
+    }, "onceWrapper");
+    onceWrapper._original = fn;
+    return this.on(event, onceWrapper);
+  }
+  emit(event, ...args) {
+    if (this.listeners[event]) {
+      [...this.listeners[event]].forEach((fn) => fn.apply(this, args));
+      return true;
+    }
+    return false;
+  }
+  off(event, fn) {
+    if (this.listeners[event]) {
+      this.listeners[event] = this.listeners[event].filter(
+        (l) => l !== fn && l._original !== fn
+      );
+    }
+    return this;
+  }
+  removeListener(event, fn) {
+    return this.off(event, fn);
+  }
+  removeAllListeners(event) {
+    if (event) {
+      delete this.listeners[event];
+    } else {
+      this.listeners = {};
+    }
+    return this;
+  }
+};
+__name(_SimpleEventEmitter, "SimpleEventEmitter");
+let SimpleEventEmitter = _SimpleEventEmitter;
+const _AudioEngine = class _AudioEngine extends SimpleEventEmitter {
+  constructor() {
+    super();
     __publicField(this, "ctx");
     __publicField(this, "masterGain");
+    __publicField(this, "localGain");
+    // Controls GM's local monitoring level
     __publicField(this, "channelGains");
     __publicField(this, "players", /* @__PURE__ */ new Map());
+    __publicField(this, "_activeContext", null);
     // Effects System
     // Effects System
     __publicField(this, "effects", /* @__PURE__ */ new Map());
@@ -732,7 +787,10 @@ const _AudioEngine = class _AudioEngine {
     __publicField(this, "saveTimeout", null);
     this.ctx = new AudioContext();
     this.masterGain = this.ctx.createGain();
-    this.masterGain.connect(this.ctx.destination);
+    this.localGain = this.ctx.createGain();
+    this.localGain.gain.value = 1;
+    this.masterGain.connect(this.localGain);
+    this.localGain.connect(this.ctx.destination);
     this.channelGains = {
       music: this.ctx.createGain(),
       ambience: this.ctx.createGain(),
@@ -839,6 +897,9 @@ const _AudioEngine = class _AudioEngine {
     }
     await player.load(config.url);
     this.players.set(trackId, player);
+    player.onEnded = () => {
+      this.emit("trackEnded", trackId);
+    };
     this.scheduleSave();
     Logger.info(`Track created: ${trackId} (${validation.extension})`);
     return player;
@@ -870,7 +931,7 @@ const _AudioEngine = class _AudioEngine {
   // ─────────────────────────────────────────────────────────────
   // Playback Control
   // ─────────────────────────────────────────────────────────────
-  async playTrack(id, offset = 0) {
+  async playTrack(id, offset = 0, context) {
     var _a;
     const player = this.players.get(id);
     if (!player) {
@@ -884,6 +945,10 @@ const _AudioEngine = class _AudioEngine {
       Logger.warn(`Maximum simultaneous tracks (${maxSimultaneous}) reached`);
       (_a = ui.notifications) == null ? void 0 : _a.warn(`Cannot play more than ${maxSimultaneous} tracks simultaneously`);
       return;
+    }
+    if (context) {
+      this._activeContext = context;
+      this.emit("contextChanged", context);
     }
     await player.play(offset);
   }
@@ -938,6 +1003,16 @@ const _AudioEngine = class _AudioEngine {
   }
   getChannelVolume(channel) {
     return this._volumes[channel];
+  }
+  // ─────────────────────────────────────────────────────────────
+  // Local Volume (GM Monitor)
+  // ─────────────────────────────────────────────────────────────
+  setLocalVolume(value) {
+    const val = Math.max(0, Math.min(1, value));
+    this.localGain.gain.linearRampToValueAtTime(val, this.ctx.currentTime + 0.05);
+  }
+  get localVolume() {
+    return this.localGain.gain.value;
   }
   // ─────────────────────────────────────────────────────────────
   // Effects Management
@@ -2123,6 +2198,20 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     html.find('[data-action="create-playlist"]').on("click", this.onCreatePlaylist.bind(this));
     html.find('[data-action="toggle-playlist-favorite"]').on("click", this.onTogglePlaylistFavorite.bind(this));
     html.find('[data-action="toggle-playlist-queue"]').on("click", this.onTogglePlaylistQueue.bind(this));
+    html.find('[data-action="play-playlist"]').on("click", this.onPlayPlaylist.bind(this));
+    console.log("ASE: Binding mode selector events via delegation");
+    html.on("click", '[data-action="playlist-mode-dropdown"]', (e) => {
+      console.log("ASE: Playlist Mode Clicked (Delegated)", e.currentTarget);
+      this.onPlaylistModeClick(e);
+    });
+    html.on("click", '[data-action="track-mode-dropdown"]', (e) => {
+      console.log("ASE: Track Mode Clicked (Delegated)", e.currentTarget);
+      this.onTrackModeClick(e);
+    });
+    html.on("mousedown", "[data-action]", (e) => {
+      console.log("ASE: Mousedown on action stopped propagation", e.currentTarget);
+      e.stopPropagation();
+    });
     html.find('[data-action="playlist-menu"]').on("click", this.onPlaylistMenu.bind(this));
     html.find(".ase-list-item[data-playlist-id]").on("contextmenu", this.onPlaylistContext.bind(this));
     html.find('[data-action="remove-from-favorites"]').on("click", this.onRemoveFromFavorites.bind(this));
@@ -2190,6 +2279,121 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     } catch (error) {
       Logger.error("Failed to toggle favorite:", error);
       (_b = ui.notifications) == null ? void 0 : _b.error("Failed to update favorite status");
+    }
+  }
+  // ─────────────────────────────────────────────────────────────
+  // Playback Mode Handlers
+  // ─────────────────────────────────────────────────────────────
+  onTrackModeClick(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    console.log("ASE: onTrackModeClick triggered", event.currentTarget);
+    const btn = $(event.currentTarget);
+    let itemId = btn.data("item-id");
+    if (!itemId) {
+      itemId = btn.closest("[data-item-id]").data("item-id");
+    }
+    console.log("ASE: Resolved Item ID:", itemId);
+    const item = this.library.getItem(itemId);
+    if (!item) {
+      console.warn(`ASE: Track Mode Clicked: Item not found for ID ${itemId}`);
+      return;
+    }
+    console.log(`ASE: Found item ${item.name}`);
+    const modes = [
+      { label: "Inherit (Default)", value: "inherit", icon: "fa-arrow-turn-down" },
+      { label: "Loop", value: "loop", icon: "fa-repeat" },
+      { label: "Single", value: "single", icon: "fa-stop" },
+      { label: "Linear", value: "linear", icon: "fa-arrow-right" },
+      { label: "Random", value: "random", icon: "fa-shuffle" }
+    ];
+    this.showModeContextMenu(event, modes, (mode) => {
+      this.library.updateItem(itemId, { playbackMode: mode });
+      this.render();
+    });
+  }
+  onPlaylistModeClick(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    Logger.debug("Playlist Mode Clicked");
+    const btn = $(event.currentTarget);
+    let playlistId = btn.data("playlist-id");
+    if (!playlistId) {
+      playlistId = btn.closest("[data-playlist-id]").data("playlist-id");
+    }
+    const playlist = this.library.playlists.getPlaylist(playlistId);
+    if (!playlist) {
+      Logger.warn(`Playlist Mode Clicked: Playlist not found for ID ${playlistId}`);
+      return;
+    }
+    Logger.debug(`Playlist Mode Clicked: Found playlist ${playlist.name} (${playlist.id})`);
+    const modes = [
+      { label: "Loop (Default)", value: "loop", icon: "fa-repeat" },
+      { label: "Linear", value: "linear", icon: "fa-arrow-right" },
+      { label: "Random", value: "random", icon: "fa-shuffle" }
+    ];
+    this.showModeContextMenu(event, modes, (mode) => {
+      this.library.playlists.updatePlaylist(playlistId, { playbackMode: mode });
+      this.render();
+    });
+  }
+  showModeContextMenu(event, modes, callback) {
+    const menuHtml = `
+        <div id="ase-mode-menu" style="position: fixed; z-index: 10000; background: #110f1c; border: 1px solid #363249; border-radius: 4px; padding: 5px 0; box-shadow: 0 4px 12px rgba(0,0,0,0.5);">
+          ${modes.map((m) => `
+            <div class="ase-ctx-item" data-value="${m.value}" style="padding: 8px 15px; cursor: pointer; color: #eee; display: flex; align-items: center; gap: 8px;">
+                <i class="fa-solid ${m.icon}" style="width: 16px; text-align: center; color: #cca477;"></i> 
+                <span>${m.label}</span>
+            </div>
+          `).join("")}
+        </div>
+      `;
+    $("#ase-mode-menu").remove();
+    const menu = $(menuHtml);
+    $("body").append(menu);
+    menu.css({ top: event.clientY, left: event.clientX });
+    menu.find(".ase-ctx-item").hover(
+      function() {
+        $(this).css("background", "#363249");
+      },
+      function() {
+        $(this).css("background", "transparent");
+      }
+    );
+    menu.find(".ase-ctx-item").on("click", (e) => {
+      e.stopPropagation();
+      const val = $(e.currentTarget).data("value");
+      Logger.debug(`Mode Selected: ${val}`);
+      callback(val);
+      menu.remove();
+    });
+    setTimeout(() => {
+      $("body").one("click", () => {
+        Logger.debug("Mode Menu: Closed by outside click");
+        menu.remove();
+      });
+    }, 10);
+  }
+  async onPlayPlaylist(event) {
+    var _a, _b;
+    event.preventDefault();
+    event.stopPropagation();
+    const playlistId = $(event.currentTarget).closest("[data-playlist-id]").data("playlist-id");
+    const playlist = this.library.playlists.getPlaylist(playlistId);
+    if (playlist && playlist.items.length > 0) {
+      let trackToPlay = playlist.items[0];
+      if (playlist.playbackMode === "random" && playlist.items.length > 1) {
+        const randomIndex = Math.floor(Math.random() * playlist.items.length);
+        trackToPlay = playlist.items[randomIndex];
+      }
+      const libItem = this.library.getItem(trackToPlay.libraryItemId);
+      if (libItem) {
+        await window.ASE.engine.playTrack(libItem.id, 0, { type: "playlist", id: playlistId });
+        (_a = ui.notifications) == null ? void 0 : _a.info(`Playing playlist: ${playlist.name}`);
+        this.render();
+      }
+    } else {
+      (_b = ui.notifications) == null ? void 0 : _b.warn("Playlist is empty");
     }
   }
   // ─────────────────────────────────────────────────────────────
@@ -2430,7 +2634,12 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     event.preventDefault();
     event.stopPropagation();
     const itemId = $(event.currentTarget).data("item-id");
-    Logger.debug("Play track:", itemId);
+    let context = { type: "track" };
+    if (this.filterState.selectedPlaylistId) {
+      context = { type: "playlist", id: this.filterState.selectedPlaylistId };
+    }
+    await window.ASE.engine.playTrack(itemId, 0, context);
+    this.render();
     const item = this.library.getItem(itemId);
     if (!item) {
       Logger.warn("Track not found:", itemId);
@@ -2675,9 +2884,9 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     const currentGroup = item.group || "music";
     const channels = ["music", "ambience", "sfx"];
     const menu = $(`
-      <div class="ase-dropdown-menu" style="position: fixed; z-index: 9999; background: #1e283d; border: 1px solid #334155; border-radius: 4px; min-width: 100px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+      <div class="ase-dropdown-menu">
         ${channels.map((ch) => `
-          <div class="ase-dropdown-item" data-channel="${ch}" style="padding: 8px 12px; cursor: pointer; color: ${ch === currentGroup ? "var(--accent-cyan)" : "#94a3b8"}; font-size: 12px;">
+          <div class="ase-dropdown-item ${ch === currentGroup ? "active" : ""}" data-channel="${ch}">
             ${ch.charAt(0).toUpperCase() + ch.slice(1)}
           </div>
         `).join("")}
@@ -2755,34 +2964,32 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     const isInPlaylist = !!this.filterState.selectedPlaylistId;
     const deleteLabel = "Delete Track";
     let menuHtml = `
-      <div class="ase-context-menu" style="position: fixed; z-index: 9999; background: #1e283d; border: 1px solid #334155; border-radius: 4px; min-width: 150px; box-shadow: 0 4px 12px rgba(0,0,0,0.4);">
-        <div class="ase-menu-item" data-action="rename" style="padding: 8px 12px; cursor: pointer; color: #e5e5e5; font-size: 12px;">
-          <i class="fa-solid fa-pen" style="width: 16px;"></i> Rename
+      <div class="ase-context-menu">
+        <div class="ase-menu-item" data-action="rename">
+          <i class="fa-solid fa-pen"></i> Rename
         </div>
-        <div class="ase-menu-item" data-action="add-to-playlist" style="padding: 8px 12px; cursor: pointer; color: #e5e5e5; font-size: 12px;">
-          <i class="fa-solid fa-list" style="width: 16px;"></i> Add to Playlist
+        <div class="ase-menu-item" data-action="add-to-playlist">
+          <i class="fa-solid fa-list"></i> Add to Playlist
         </div>`;
     if (isInPlaylist) {
       menuHtml += `
-        <div class="ase-menu-item" data-action="remove-from-playlist" style="padding: 8px 12px; cursor: pointer; color: #e5e5e5; font-size: 12px;">
-          <i class="fa-solid fa-minus-circle" style="width: 16px;"></i> Remove from Playlist
+        <div class="ase-menu-item" data-action="remove-from-playlist">
+          <i class="fa-solid fa-minus-circle"></i> Remove from Playlist
         </div>`;
     }
     menuHtml += `
-        <div class="ase-menu-item" data-action="edit-tags" style="padding: 8px 12px; cursor: pointer; color: #e5e5e5; font-size: 12px;">
-          <i class="fa-solid fa-tags" style="width: 16px;"></i> Edit Tags
+        <div class="ase-menu-item" data-action="edit-tags">
+          <i class="fa-solid fa-tags"></i> Edit Tags
         </div>
-        <div style="border-top: 1px solid #334155; margin: 4px 0;"></div>
-        <div class="ase-menu-item" data-action="delete" style="padding: 8px 12px; cursor: pointer; color: #f87171; font-size: 12px;">
-          <i class="fa-solid fa-trash" style="width: 16px;"></i> ${deleteLabel}
+        <div class="ase-menu-separator"></div>
+        <div class="ase-menu-item" data-action="delete">
+          <i class="fa-solid fa-trash"></i> ${deleteLabel}
         </div>
       </div>
     `;
     const menu = $(menuHtml);
     menu.css({ top: event.clientY, left: event.clientX });
     $("body").append(menu);
-    menu.find(".ase-menu-item").on("mouseenter", (e) => $(e.currentTarget).css("background", "#2d3a52"));
-    menu.find(".ase-menu-item").on("mouseleave", (e) => $(e.currentTarget).css("background", "transparent"));
     menu.find('[data-action="rename"]').on("click", async () => {
       menu.remove();
       await this.renameTrack(itemId);
@@ -4974,6 +5181,10 @@ const _AdvancedSoundEngineApp = class _AdvancedSoundEngineApp extends Handlebars
         this.render({ parts: ["main"] });
       }
     });
+    const savedLocalVol = localStorage.getItem("ase-gm-local-volume");
+    if (savedLocalVol !== null) {
+      this.engine.setLocalVolume(parseFloat(savedLocalVol));
+    }
   }
   /**
    * V2 Context Preparation (replaces getData)
@@ -4992,7 +5203,7 @@ const _AdvancedSoundEngineApp = class _AdvancedSoundEngineApp extends Handlebars
       ambience: getChannelStatus("ambience"),
       sfx: getChannelStatus("sfx")
     };
-    const renderTemplate = foundry.applications.handlebars.renderTemplate;
+    const renderTemplate = globalThis.renderTemplate;
     let tabContent = "";
     if (this.state.activeTab === "library") {
       const libData = await this.libraryApp.getData();
@@ -5013,7 +5224,8 @@ const _AdvancedSoundEngineApp = class _AdvancedSoundEngineApp extends Handlebars
         master: Math.round(volumes.master * 100),
         music: Math.round(volumes.music * 100),
         ambience: Math.round(volumes.ambience * 100),
-        sfx: Math.round(volumes.sfx * 100)
+        sfx: Math.round(volumes.sfx * 100),
+        local: Math.round(this.engine.localVolume * 100)
       },
       syncEnabled: this.socket.syncEnabled,
       // Pass state for Handlebars if needed
@@ -5150,16 +5362,22 @@ const _AdvancedSoundEngineApp = class _AdvancedSoundEngineApp extends Handlebars
   onVolumeInput(event) {
     const input = event.currentTarget;
     const value = parseFloat(input.value) / 100;
-    const channel = $(input).data("channel");
+    const $input = $(input);
+    const channel = $input.data("channel");
+    const type = $input.data("type");
     if (channel) {
       this.engine.setChannelVolume(channel, value);
       this.socket.broadcastChannelVolume(channel, value);
+      $input.siblings(".ase-percentage").text(`${Math.round(value * 100)}%`);
+    } else if (type === "local") {
+      this.engine.setLocalVolume(value);
+      localStorage.setItem("ase-gm-local-volume", value.toString());
+      $input.siblings(".ase-local-perc").text(`${Math.round(value * 100)}%`);
     } else {
       this.engine.setMasterVolume(value);
       this.socket.broadcastChannelVolume("master", value);
+      $input.siblings(".ase-master-perc").text(`${Math.round(value * 100)}%`);
     }
-    $(input).siblings(".ase-percentage").text(`${Math.round(value * 100)}%`);
-    $(input).siblings(".ase-master-perc").text(`${Math.round(value * 100)}%`);
   }
 };
 __name(_AdvancedSoundEngineApp, "AdvancedSoundEngineApp");
@@ -5234,7 +5452,8 @@ const _PlaylistManager = class _PlaylistManager {
       items: [],
       createdAt: now,
       updatedAt: now,
-      favorite: false
+      favorite: false,
+      playbackMode: "loop"
     };
     this.playlists.set(playlist.id, playlist);
     this.notifyChange();
@@ -5491,6 +5710,9 @@ const _PlaylistManager = class _PlaylistManager {
     this.playlists.clear();
     Object.values(playlistsData).forEach((playlist) => {
       playlist.items.sort((a, b) => a.order - b.order);
+      if (!playlist.playbackMode) {
+        playlist.playbackMode = "loop";
+      }
       this.playlists.set(playlist.id, playlist);
     });
     Logger.info(`PlaylistManager loaded: ${this.playlists.size} playlists`);
@@ -5534,7 +5756,7 @@ const _PlaylistManager = class _PlaylistManager {
 };
 __name(_PlaylistManager, "PlaylistManager");
 let PlaylistManager = _PlaylistManager;
-const LIBRARY_VERSION = 1;
+const LIBRARY_VERSION = 2;
 const _LibraryManager = class _LibraryManager {
   constructor() {
     __publicField(this, "items", /* @__PURE__ */ new Map());
@@ -5581,6 +5803,7 @@ const _LibraryManager = class _LibraryManager {
       group,
       duration: 0,
       favorite: false,
+      playbackMode: "inherit",
       addedAt: now,
       updatedAt: now
     };
@@ -5976,6 +6199,9 @@ const _LibraryManager = class _LibraryManager {
       if (state.items) {
         Object.values(state.items).forEach((item) => {
           if (this.isValidLibraryItem(item)) {
+            if (!item.playbackMode) {
+              item.playbackMode = "inherit";
+            }
             this.items.set(item.id, item);
           }
         });
@@ -6223,6 +6449,120 @@ const _PlaybackQueueManager = class _PlaybackQueueManager {
 };
 __name(_PlaybackQueueManager, "PlaybackQueueManager");
 let PlaybackQueueManager = _PlaybackQueueManager;
+const _PlaybackScheduler = class _PlaybackScheduler {
+  constructor(engine, library) {
+    __publicField(this, "engine");
+    __publicField(this, "library");
+    __publicField(this, "currentContext", null);
+    this.engine = engine;
+    this.library = library;
+    this.setupListeners();
+  }
+  setupListeners() {
+    this.engine.on("trackEnded", (trackId) => {
+      this.handleTrackEnded(trackId);
+    });
+    this.engine.on("contextChanged", (context) => {
+      this.setContext(context);
+    });
+  }
+  /**
+   * Set the current playback context (e.g., user clicked "Play" on a playlist)
+   */
+  setContext(context) {
+    this.currentContext = context;
+    Logger.debug("Playback Context set:", context);
+  }
+  /**
+   * Handle track ending
+   */
+  async handleTrackEnded(trackId) {
+    Logger.debug(`Track ${trackId} ended. Deciding next move...`);
+    if (!this.currentContext) {
+      Logger.debug("No playback context. Stopping.");
+      return;
+    }
+    const { type, id } = this.currentContext;
+    if (type === "playlist" && id) {
+      await this.handlePlaylistContext(id, trackId);
+    } else if (type === "track") {
+      await this.handleTrackContext(trackId);
+    }
+  }
+  async handlePlaylistContext(playlistId, endedTrackId) {
+    const playlist = this.library.playlists.getPlaylist(playlistId);
+    if (!playlist) return;
+    const tracks = [...playlist.items].sort((a, b) => a.order - b.order);
+    if (tracks.length === 0) return;
+    const currentIndex = tracks.findIndex((t) => t.libraryItemId === endedTrackId);
+    if (currentIndex === -1) {
+      Logger.warn(`Ended track ${endedTrackId} not found in playlist ${playlist.name}`);
+      return;
+    }
+    const mode = playlist.playbackMode || "loop";
+    switch (mode) {
+      case "linear":
+        if (currentIndex < tracks.length - 1) {
+          const nextItem = tracks[currentIndex + 1];
+          await this.playPlaylistItem(nextItem, { type: "playlist", id: playlistId });
+        } else {
+          Logger.debug("Playlist linear playback finished.");
+        }
+        break;
+      case "loop":
+        let nextIndex = currentIndex + 1;
+        if (nextIndex >= tracks.length) {
+          nextIndex = 0;
+        }
+        await this.playPlaylistItem(tracks[nextIndex], { type: "playlist", id: playlistId });
+        break;
+      case "random":
+        if (tracks.length > 1) {
+          let randomIndex;
+          do {
+            randomIndex = Math.floor(Math.random() * tracks.length);
+          } while (randomIndex === currentIndex && tracks.length > 1);
+          await this.playPlaylistItem(tracks[randomIndex], { type: "playlist", id: playlistId });
+        } else {
+          await this.playPlaylistItem(tracks[0], { type: "playlist", id: playlistId });
+        }
+        break;
+    }
+  }
+  async playPlaylistItem(item, context) {
+    const track = this.library.getItem(item.libraryItemId);
+    if (track) {
+      await this.engine.playTrack(track.url, 0, context);
+      if (item.volume !== void 0) {
+        this.engine.setTrackVolume(track.id, item.volume);
+      }
+    }
+  }
+  async handleTrackContext(trackId) {
+    const track = this.library.getItem(trackId);
+    if (!track) return;
+    let mode = track.playbackMode;
+    if (mode === "inherit") {
+      mode = "loop";
+    }
+    switch (mode) {
+      case "loop":
+        await this.engine.playTrack(trackId, 0, { type: "track" });
+        break;
+      case "random":
+        const groupTracks = this.library.getAllItems().filter((t) => t.group === track.group);
+        if (groupTracks.length > 1) {
+          let randomTrack;
+          do {
+            randomTrack = groupTracks[Math.floor(Math.random() * groupTracks.length)];
+          } while (randomTrack.id === trackId);
+        }
+        break;
+    }
+  }
+};
+__name(_PlaybackScheduler, "PlaybackScheduler");
+let PlaybackScheduler = _PlaybackScheduler;
 console.log("ADVANCED SOUND ENGINE: Entry point loaded");
 const MODULE_ID = "advanced-sound-engine";
 let gmEngine = null;
@@ -6389,6 +6729,8 @@ async function initializeGM() {
   gmEngine = new AudioEngine();
   socketManager.initializeAsGM(gmEngine);
   await gmEngine.loadSavedState();
+  new PlaybackScheduler(gmEngine, libraryManager);
+  Logger.info("PlaybackScheduler initialized");
 }
 __name(initializeGM, "initializeGM");
 async function initializePlayer() {
