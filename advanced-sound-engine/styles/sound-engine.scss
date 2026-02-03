@@ -67,48 +67,8 @@
 }
 
 /* Force Context Menu to be above everything and match V13 Theme */
-#context-menu {
-  z-index: 9999 !important;
-  background: rgba(0, 0, 0, 0.95) !important;
-  border: 1px solid var(--ase-border-gold) !important;
-  box-shadow: 0 0 20px rgba(0, 0, 0, 0.8), 0 0 10px rgba(189, 142, 52, 0.3) !important;
-  color: var(--ase-text-body) !important;
-  font-family: var(--ase-font-body) !important;
-  border-radius: 4px !important;
-  padding: 4px 0 !important;
+// (Removed global #context-menu override)
 
-  .context-items {
-    padding: 0;
-  }
-
-  .context-item {
-    padding: 8px 16px !important;
-    transition: all 0.15s !important;
-    display: flex !important;
-    align-items: center !important;
-    gap: 10px !important;
-    font-size: 12px !important;
-    border-left: 3px solid transparent !important;
-
-    &:hover {
-      background: var(--ase-border-accent) !important;
-      color: #000 !important;
-      text-shadow: none !important;
-      border-left-color: var(--ase-border-gold) !important;
-    }
-
-    i {
-      margin-right: 4px;
-      width: 16px;
-      text-align: center;
-      color: var(--ase-border-gold);
-    }
-
-    &:hover i {
-      color: #000;
-    }
-  }
-}
 
 // ... (Layout Reset) ...
 
@@ -1565,8 +1525,7 @@
 }
 
 /* --- Dropdown Styling (V13 Match) --- */
-.ase-channel-select,
-select {
+.ase-channel-select {
   background: var(--ase-bg-input);
   color: var(--ase-text-body);
   border: 1px solid var(--ase-border-gold);
@@ -2640,5 +2599,66 @@ select {
     /* White text for value */
     text-shadow: 2px 2px 0px #000;
     /* Strong shadow */
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CONTEXT MENUS & DROPDOWNS (Restored)
+// ═══════════════════════════════════════════════════════════════
+
+.ase-context-menu,
+.ase-dropdown-menu {
+  background: #110f1c;
+  /* Dark background matching theme */
+  border: 1px solid var(--ase-border-gold);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.8) !important;
+  color: var(--ase-text-body);
+  font-family: var(--ase-font-body);
+  border-radius: 4px;
+  padding: 4px 0;
+  position: fixed;
+  /* JS handles positioning */
+  z-index: 9999 !important;
+  /* Always on top */
+  min-width: 150px;
+  display: flex;
+  flex-direction: column;
+
+  .ase-menu-item,
+  .ase-dropdown-item {
+    padding: 8px 12px;
+    cursor: pointer;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: background 0.1s;
+
+    i {
+      width: 16px;
+      text-align: center;
+      color: var(--ase-text-muted);
+    }
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: #fff;
+
+      i {
+        color: var(--ase-border-gold);
+      }
+    }
+
+    &.active {
+      color: var(--ase-border-gold);
+      background: rgba(204, 164, 119, 0.1);
+      font-weight: bold;
+    }
+  }
+
+  .ase-menu-separator {
+    height: 1px;
+    background: var(--ase-border-dark);
+    margin: 4px 0;
   }
 }

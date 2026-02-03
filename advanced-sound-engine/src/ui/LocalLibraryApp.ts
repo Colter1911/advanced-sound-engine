@@ -55,6 +55,7 @@ interface LibraryItemViewData {
   inQueue: boolean;
   isPlaying: boolean;
   isPaused: boolean;
+  playbackMode?: string;
 }
 
 interface PlaylistViewData {
@@ -270,7 +271,8 @@ export class LocalLibraryApp extends Application {
       group: item.group || 'music',
       inQueue,
       isPlaying,
-      isPaused
+      isPaused,
+      playbackMode: item.playbackMode
     };
   }
 

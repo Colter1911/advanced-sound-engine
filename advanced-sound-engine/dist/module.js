@@ -2088,7 +2088,8 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
       group: item.group || "music",
       inQueue,
       isPlaying,
-      isPaused
+      isPaused,
+      playbackMode: item.playbackMode
     };
   }
   inferGroupFromTags(tags) {
