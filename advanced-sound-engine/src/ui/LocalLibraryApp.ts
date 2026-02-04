@@ -638,7 +638,7 @@ export class LocalLibraryApp extends Application {
     const modes: { label: string, value: string, icon: string }[] = [
       { label: 'Inherit (Default)', value: 'inherit', icon: 'fa-arrow-turn-down' },
       { label: 'Loop', value: 'loop', icon: 'fa-repeat' },
-      { label: 'Single', value: 'single', icon: 'fa-stop' },
+      { label: 'Single', value: 'single', icon: 'fa-arrow-right-to-line' },
       { label: 'Linear', value: 'linear', icon: 'fa-arrow-right' },
       { label: 'Random', value: 'random', icon: 'fa-shuffle' }
     ];
@@ -1121,8 +1121,7 @@ export class LocalLibraryApp extends Application {
     if (queue && !queue.hasItem(itemId)) {
       queue.addItem(itemId, {
         group: item.group,
-        volume: 1,
-        loop: false
+        volume: 1
       });
     }
 
@@ -1133,8 +1132,7 @@ export class LocalLibraryApp extends Application {
         id: itemId,
         url: item.url,
         group: item.group,
-        volume: 1,
-        loop: false
+        volume: 1
       });
     }
 
@@ -1234,8 +1232,7 @@ export class LocalLibraryApp extends Application {
     } else {
       window.ASE.queue.addItem(itemId, {
         group: item.group || 'music',
-        volume: 1,
-        loop: false
+        volume: 1
       });
       Logger.debug('Added to queue:', itemId);
       ui.notifications?.info(`"${item.name}" added to queue`);
@@ -1365,8 +1362,7 @@ export class LocalLibraryApp extends Application {
         const playlistItems = playlist.items.map(pItem => ({
           libraryItemId: pItem.libraryItemId,
           group: pItem.group || 'music' as const,
-          volume: pItem.volume,
-          loop: pItem.loop
+          volume: pItem.volume
         }));
         window.ASE.queue.addPlaylist(favoriteId, playlistItems);
         ui.notifications?.info(`Added "${playlist.name}" to queue`);
@@ -1385,8 +1381,7 @@ export class LocalLibraryApp extends Application {
       } else {
         window.ASE.queue.addItem(favoriteId, {
           group: this.inferGroupFromTags(item.tags) as any,
-          volume: 1,
-          loop: false
+          volume: 1
         });
         ui.notifications?.info(`Added "${item.name}" to queue`);
       }
@@ -1804,8 +1799,7 @@ export class LocalLibraryApp extends Application {
         return {
           libraryItemId: pItem.libraryItemId,
           group: pItem.group || 'music' as const,
-          volume: pItem.volume,
-          loop: pItem.loop
+          volume: pItem.volume
         };
       }).filter(item => item.libraryItemId);
 

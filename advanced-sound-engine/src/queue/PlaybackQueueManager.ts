@@ -87,7 +87,6 @@ export class PlaybackQueueManager {
             addedAt: Date.now(),
             state: 'stopped',
             volume: options?.volume ?? 1,
-            loop: options?.loop ?? false,
             playlistId: options?.playlistId,
         };
 
@@ -111,7 +110,7 @@ export class PlaybackQueueManager {
                 playlistId,
                 group: pItem.group,
                 volume: pItem.volume,
-                loop: pItem.loop,
+                // Loop is removed
             });
             added.push(queueItem);
         }

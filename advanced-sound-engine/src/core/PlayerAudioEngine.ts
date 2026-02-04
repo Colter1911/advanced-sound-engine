@@ -387,7 +387,6 @@ export class PlayerAudioEngine {
     }
 
     player.setVolume(payload.volume);
-    player.setLoop(payload.loop);
 
     // Calculate offset based on time elapsed since GM started
     const elapsed = (getServerTime() - payload.startTimestamp) / 1000;
@@ -423,11 +422,7 @@ export class PlayerAudioEngine {
     this.players.get(trackId)?.setVolume(volume);
   }
 
-  handleTrackLoop(trackId: string, loop: boolean): void {
-    this.players.get(trackId)?.setLoop(loop);
-  }
 
-  // ─────────────────────────────────────────────────────────────
   // Sync State (full state from GM)
   // ─────────────────────────────────────────────────────────────
 
@@ -501,7 +496,6 @@ export class PlayerAudioEngine {
             url: trackState.url,
             group: trackState.group,
             volume: trackState.volume,
-            loop: trackState.loop,
             offset: trackState.currentTime,
             startTimestamp: trackState.startTimestamp
           });
@@ -511,7 +505,6 @@ export class PlayerAudioEngine {
 
       // For existing players (that weren't stopped above)
       player.setVolume(trackState.volume);
-      player.setLoop(trackState.loop);
 
       if (trackState.isPlaying) {
         const elapsed = (getServerTime() - trackState.startTimestamp) / 1000;

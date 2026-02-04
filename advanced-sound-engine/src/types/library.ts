@@ -57,7 +57,7 @@ export interface PlaylistItem {
   libraryItemId: string;         // UUID ссылка на LibraryItem
   group: TrackGroup;             // music/ambience/sfx
   volume: number;                // Громкость трека (0-1)
-  loop: boolean;                 // Зациклить трек
+
   order: number;                 // Порядок в плейлисте (0-based)
   fadeIn?: number;               // Fade in время в секундах
   fadeOut?: number;              // Fade out время в секундах

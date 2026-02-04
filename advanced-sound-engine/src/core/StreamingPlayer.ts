@@ -14,7 +14,6 @@ export class StreamingPlayer {
 
   private _state: PlaybackState = 'stopped';
   private _volume: number = 1;
-  private _loop: boolean = false;
   private _ready: boolean = false;
 
   public onEnded?: () => void;
@@ -52,12 +51,10 @@ export class StreamingPlayer {
     });
 
     this.audio.addEventListener('ended', () => {
-      // Loop is handled by Audio element 'loop' property mostly, but if manual handling needed:
-      if (!this._loop) {
-        this._state = 'stopped';
-        Logger.debug(`Track ${this.id} ended`);
-        this.onEnded?.();
-      }
+      // PlaybackScheduler handles track progression based on playbackMode
+      this._state = 'stopped';
+      Logger.debug(`Track ${this.id} ended`);
+      this.onEnded?.();
     });
 
     this.audio.addEventListener('error', (e) => {
@@ -83,10 +80,6 @@ export class StreamingPlayer {
 
   get volume(): number {
     return this._volume;
-  }
-
-  get loop(): boolean {
-    return this._loop;
   }
 
   get ready(): boolean {
@@ -138,7 +131,8 @@ export class StreamingPlayer {
 
     try {
       this.audio.currentTime = Math.max(0, Math.min(offset, this.audio.duration || 0));
-      this.audio.loop = this._loop;
+      // Loop is disabled - PlaybackScheduler handles progression
+      this.audio.loop = false;
       await this.audio.play();
       this._state = 'playing';
       Logger.debug(`Track ${this.id} playing from ${offset.toFixed(2)}s`);
@@ -172,10 +166,6 @@ export class StreamingPlayer {
     this.gainNode.gain.setValueAtTime(this._volume, this.ctx.currentTime);
   }
 
-  setLoop(value: boolean): void {
-    this._loop = value;
-    this.audio.loop = value;
-  }
 
   setChannel(newGroup: TrackGroup, newOutput: GainNode): void {
     this._group = newGroup;
@@ -198,7 +188,6 @@ export class StreamingPlayer {
       group: this._group,
       playbackState: this._state,
       volume: this._volume,
-      loop: this._loop,
       currentTime: this.getCurrentTime(),
       duration: this.getDuration()
     };

@@ -8,7 +8,6 @@ import type {
   TrackStopPayload,
   TrackSeekPayload,
   TrackVolumePayload,
-  TrackLoopPayload,
   ChannelVolumePayload,
   TrackGroup,
   ChannelVolumes,
@@ -157,10 +156,7 @@ export class SocketManager {
         this.playerEngine.handleTrackVolume(volPayload.trackId, volPayload.volume);
         break;
 
-      case 'track-loop':
-        const loopPayload = message.payload as TrackLoopPayload;
-        this.playerEngine.handleTrackLoop(loopPayload.trackId, loopPayload.loop);
-        break;
+
 
       case 'channel-volume':
         const chVolPayload = message.payload as ChannelVolumePayload;
@@ -226,7 +222,6 @@ export class SocketManager {
         url: state.url,
         group: state.group,
         volume: state.volume,
-        loop: state.loop,
         isPlaying: state.playbackState === 'playing',
         currentTime: player.getCurrentTime(),
         startTimestamp: now
@@ -274,7 +269,6 @@ export class SocketManager {
       url: player.url,
       group: player.group,
       volume: player.volume,
-      loop: player.loop,
       offset,
       startTimestamp: getServerTime()
     };
@@ -315,12 +309,7 @@ export class SocketManager {
     this.send('track-volume', payload);
   }
 
-  broadcastTrackLoop(trackId: string, loop: boolean): void {
-    if (!this._syncEnabled) return;
 
-    const payload: TrackLoopPayload = { trackId, loop };
-    this.send('track-loop', payload);
-  }
 
   broadcastChannelVolume(channel: TrackGroup | 'master', volume: number): void {
     if (!this._syncEnabled) return;

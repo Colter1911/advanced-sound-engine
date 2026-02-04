@@ -258,9 +258,6 @@ export class AudioEngine extends SimpleEventEmitter {
     if (config.volume !== undefined) {
       player.setVolume(config.volume);
     }
-    if (config.loop !== undefined) {
-      player.setLoop(config.loop);
-    }
 
     await player.load(config.url);
 
@@ -355,10 +352,6 @@ export class AudioEngine extends SimpleEventEmitter {
     this.scheduleSave();
   }
 
-  setTrackLoop(id: string, loop: boolean): void {
-    this.players.get(id)?.setLoop(loop);
-    this.scheduleSave();
-  }
 
   stopAll(): void {
     for (const player of this.players.values()) {
@@ -575,8 +568,7 @@ export class AudioEngine extends SimpleEventEmitter {
             id: trackState.id,
             url: trackState.url,
             group: trackState.group,
-            volume: trackState.volume,
-            loop: trackState.loop
+            volume: trackState.volume
           });
         } catch (error) {
           Logger.error(`Failed to restore track ${trackState.id}:`, error);

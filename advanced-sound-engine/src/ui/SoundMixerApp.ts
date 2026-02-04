@@ -56,7 +56,7 @@ interface QueueTrackViewData {
   isLoading: boolean;
   volume: number;
   volumePercent: number;
-  loop: boolean; // Legacy, will be removed
+
   playbackMode: string; // New playback mode system
   currentTime: number;
   currentTimeFormatted: string;
@@ -217,7 +217,6 @@ export class SoundMixerApp {
 
     // Get volume and loop from player if available (persisted state), fallback to queueItem
     const volume = player?.volume ?? queueItem.volume;
-    const loop = player?.loop ?? queueItem.loop;
 
     return {
       queueId: queueItem.id,
@@ -231,7 +230,6 @@ export class SoundMixerApp {
       isLoading: player?.state === 'loading',
       volume,
       volumePercent: Math.round(volume * 100),
-      loop,
       playbackMode: libraryItem?.playbackMode || 'inherit', // Add playbackMode
       currentTime,
       currentTimeFormatted: formatTime(currentTime),
@@ -370,19 +368,24 @@ export class SoundMixerApp {
     event.preventDefault();
     event.stopPropagation();
     const $track = $(event.currentTarget).closest('.ase-queue-track');
+    const queueId = $track.data('queue-id') as string;
     const itemId = $track.data('item-id') as string;
-    const playlistId = $track.closest('.ase-queue-playlist').data('playlist-id') as string | undefined;
 
-    // Определить контекст из данных очереди
-    const queueItem = this.queueManager.getItems().find(q => q.libraryItemId === itemId);
-    let context: PlaybackContext | undefined;
+    // Find specific queue item by unique ID
+    const queueItem = this.queueManager.getItems().find(q => q.id === queueId);
+    if (!queueItem) {
+      Logger.warn(`Queue item not found for ID: ${queueId}`);
+      return;
+    }
 
-    if (playlistId && queueItem?.playlistId === playlistId) {
+    let context: PlaybackContext;
+
+    if (queueItem.playlistId) {
       // Трек из плейлиста
-      const playlist = this.libraryManager.playlists.getPlaylist(playlistId);
+      const playlist = this.libraryManager.playlists.getPlaylist(queueItem.playlistId);
       context = {
         type: 'playlist',
-        id: playlistId,
+        id: queueItem.playlistId,
         playbackMode: playlist?.playbackMode || 'loop'
       };
     } else {
@@ -680,7 +683,6 @@ export class SoundMixerApp {
         url: libraryItem.url,
         group: libraryItem.group,
         volume: 1,
-        loop: false,
       });
     }
 

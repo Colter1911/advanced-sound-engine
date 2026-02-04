@@ -11,7 +11,6 @@ export interface QueueItem {
     addedAt: number;               // Timestamp when added
     state: PlaybackState;          // stopped/playing/paused/loading
     volume: number;                // 0-1 (can override library default)
-    loop: boolean;                 // Override loop setting
 }
 
 /**

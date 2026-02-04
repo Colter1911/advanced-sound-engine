@@ -346,7 +346,7 @@
     overflow-y: auto;
     overflow-x: hidden;
     padding: 4px 8px;
-    max-height: 55px;
+    max-height: 115px;
 
     background: rgba(0, 0, 0, 0.3);
     border: 1px solid var(--ase-border-dark);
@@ -499,6 +499,7 @@
 
     i {
       color: var(--ase-border-gold);
+      font-size: 14px;
     }
   }
 }
@@ -547,6 +548,7 @@
   width: 16px;
   height: 16px;
   display: inline-block;
+  vertical-align: -2px;
   background-color: var(--ase-text-muted);
   mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M15 6H3v2h12V6zm0 4H3v2h12v-2zM3 16h8v-2H3v2zM17 6v8.18c-.31-.11-.65-.18-1-.18-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3V8h3V6h-5z'/%3E%3C/svg%3E");
   mask-size: contain;
@@ -612,26 +614,50 @@
     color: var(--ase-text-highlight);
   }
 
+  // Ensure Playlist Mode icon matches Play icon color explicitly
+  i.ase-mode-icon {
+    color: var(--ase-text-muted); // Default match for play button
+    font-size: 13px;
+
+    &:hover {
+      color: var(--ase-text-highlight);
+    }
+  }
+
   // Favorite star always glows when active
   i.fa-star.active,
   i.fa-star[style*="color: var(--accent-cyan)"] {
-    color: var(--accent-cyan, #22d3ee) !important;
-    filter: drop-shadow(0 0 4px rgba(34, 211, 238, 0.8));
-    animation: pulse-glow 2s ease-in-out infinite;
+    color: var(--ase-text-cyan, #22d3ee) !important;
+    text-shadow: 0 0 5px rgba(34, 211, 238, 0.8), 0 0 10px rgba(34, 211, 238, 0.5); // Use text-shadow for font icons
+    animation: pulse-glow-text 2s ease-in-out infinite;
+    filter: none; // Remove drop-shadow filter which might conflict
   }
 }
 
-@keyframes pulse-glow {
+// Add same glow for track controls (different structure)
+.ase-track-controls {
+
+  i.fa-star.active,
+  i.fa-star[style*="color: var(--accent-cyan)"] {
+    color: var(--ase-text-cyan, #22d3ee) !important;
+    text-shadow: 0 0 5px rgba(22, 211, 238, 0.8), 0 0 10px rgba(34, 211, 238, 0.5);
+    animation: pulse-glow-text 2s ease-in-out infinite;
+    filter: none;
+  }
+}
+
+@keyframes pulse-glow-text {
 
   0%,
   100% {
-    filter: drop-shadow(0 0 4px rgba(34, 211, 238, 0.6));
+    text-shadow: 0 0 4px rgba(34, 211, 238, 0.6);
   }
 
   50% {
-    filter: drop-shadow(0 0 8px rgba(34, 211, 238, 1));
+    text-shadow: 0 0 8px rgba(34, 211, 238, 1);
   }
 }
+
 
 .ase-list-item .ase-icons i {
   cursor: pointer;

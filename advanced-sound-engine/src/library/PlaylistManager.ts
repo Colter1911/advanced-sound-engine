@@ -199,7 +199,6 @@ export class PlaylistManager {
       libraryItemId,
       group,
       volume: options?.volume ?? 1.0,
-      loop: options?.loop ?? false,
       order: playlist.items.length,
       fadeIn: options?.fadeIn,
       fadeOut: options?.fadeOut

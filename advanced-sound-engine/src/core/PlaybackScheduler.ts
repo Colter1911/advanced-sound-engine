@@ -158,8 +158,7 @@ export class PlaybackScheduler {
                 id: track.id,
                 url: track.url,
                 group: track.group,
-                volume: item.volume !== undefined ? item.volume : 1,
-                loop: false // Playlist handles looping, not individual track
+                volume: item.volume !== undefined ? item.volume : 1
             });
         }
 
@@ -187,10 +186,10 @@ export class PlaybackScheduler {
 
         let mode = track.playbackMode as PlaybackMode;
 
-        // Если режим inherit, используем loop как fallback
+        // Если режим inherit, используем single как fallback (для одиночных треков)
         if (mode === 'inherit') {
-            Logger.debug(`Track ${track.name} has inherit mode, using loop as fallback`);
-            mode = 'loop';
+            Logger.debug(`Track ${track.name} has inherit mode, using single as fallback`);
+            mode = 'single';
         }
 
         Logger.debug(`Track ${track.name} playback mode: ${mode}`);
@@ -296,8 +295,7 @@ export class PlaybackScheduler {
                 id: libraryItem.id,
                 url: libraryItem.url,
                 group: libraryItem.group,
-                volume: 1,
-                loop: false
+                volume: 1
             });
         }
 

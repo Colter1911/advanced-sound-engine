@@ -32,7 +32,6 @@ const _StreamingPlayer = class _StreamingPlayer {
     __publicField(this, "outputNode");
     __publicField(this, "_state", "stopped");
     __publicField(this, "_volume", 1);
-    __publicField(this, "_loop", false);
     __publicField(this, "_ready", false);
     __publicField(this, "onEnded");
     this.id = id;
@@ -57,11 +56,9 @@ const _StreamingPlayer = class _StreamingPlayer {
     });
     this.audio.addEventListener("ended", () => {
       var _a;
-      if (!this._loop) {
-        this._state = "stopped";
-        Logger.debug(`Track ${this.id} ended`);
-        (_a = this.onEnded) == null ? void 0 : _a.call(this);
-      }
+      this._state = "stopped";
+      Logger.debug(`Track ${this.id} ended`);
+      (_a = this.onEnded) == null ? void 0 : _a.call(this);
     });
     this.audio.addEventListener("error", (e) => {
       if (this.audio.getAttribute("src") === "" || !this.audio.src) return;
@@ -80,9 +77,6 @@ const _StreamingPlayer = class _StreamingPlayer {
   }
   get volume() {
     return this._volume;
-  }
-  get loop() {
-    return this._loop;
   }
   get ready() {
     return this._ready;
@@ -123,7 +117,7 @@ const _StreamingPlayer = class _StreamingPlayer {
     }
     try {
       this.audio.currentTime = Math.max(0, Math.min(offset, this.audio.duration || 0));
-      this.audio.loop = this._loop;
+      this.audio.loop = false;
       await this.audio.play();
       this._state = "playing";
       Logger.debug(`Track ${this.id} playing from ${offset.toFixed(2)}s`);
@@ -151,10 +145,6 @@ const _StreamingPlayer = class _StreamingPlayer {
     this._volume = Math.max(0, Math.min(1, value));
     this.gainNode.gain.setValueAtTime(this._volume, this.ctx.currentTime);
   }
-  setLoop(value) {
-    this._loop = value;
-    this.audio.loop = value;
-  }
   setChannel(newGroup, newOutput) {
     this._group = newGroup;
     this.outputNode.disconnect();
@@ -173,7 +163,6 @@ const _StreamingPlayer = class _StreamingPlayer {
       group: this._group,
       playbackState: this._state,
       volume: this._volume,
-      loop: this._loop,
       currentTime: this.getCurrentTime(),
       duration: this.getDuration()
     };
@@ -892,9 +881,6 @@ const _AudioEngine = class _AudioEngine extends SimpleEventEmitter {
     if (config.volume !== void 0) {
       player.setVolume(config.volume);
     }
-    if (config.loop !== void 0) {
-      player.setLoop(config.loop);
-    }
     await player.load(config.url);
     this.players.set(trackId, player);
     player.onEnded = () => {
@@ -967,11 +953,6 @@ const _AudioEngine = class _AudioEngine extends SimpleEventEmitter {
   setTrackVolume(id, volume) {
     var _a;
     (_a = this.players.get(id)) == null ? void 0 : _a.setVolume(volume);
-    this.scheduleSave();
-  }
-  setTrackLoop(id, loop) {
-    var _a;
-    (_a = this.players.get(id)) == null ? void 0 : _a.setLoop(loop);
     this.scheduleSave();
   }
   stopAll() {
@@ -1133,8 +1114,7 @@ const _AudioEngine = class _AudioEngine extends SimpleEventEmitter {
             id: trackState.id,
             url: trackState.url,
             group: trackState.group,
-            volume: trackState.volume,
-            loop: trackState.loop
+            volume: trackState.volume
           });
         } catch (error) {
           Logger.error(`Failed to restore track ${trackState.id}:`, error);
@@ -1471,7 +1451,6 @@ const _PlayerAudioEngine = class _PlayerAudioEngine {
       this.players.set(payload.trackId, player);
     }
     player.setVolume(payload.volume);
-    player.setLoop(payload.loop);
     const elapsed = (getServerTime() - payload.startTimestamp) / 1e3;
     const adjustedOffset = Math.max(0, payload.offset + elapsed);
     Logger.debug(`Player: Handling Play. TrackId=${payload.trackId}, Vol=${payload.volume}, Offset=${adjustedOffset}s`);
@@ -1500,11 +1479,6 @@ const _PlayerAudioEngine = class _PlayerAudioEngine {
     var _a;
     (_a = this.players.get(trackId)) == null ? void 0 : _a.setVolume(volume);
   }
-  handleTrackLoop(trackId, loop) {
-    var _a;
-    (_a = this.players.get(trackId)) == null ? void 0 : _a.setLoop(loop);
-  }
-  // ─────────────────────────────────────────────────────────────
   // Sync State (full state from GM)
   // ─────────────────────────────────────────────────────────────
   async syncState(tracks, volumes, effectsState = []) {
@@ -1552,7 +1526,6 @@ const _PlayerAudioEngine = class _PlayerAudioEngine {
             url: trackState.url,
             group: trackState.group,
             volume: trackState.volume,
-            loop: trackState.loop,
             offset: trackState.currentTime,
             startTimestamp: trackState.startTimestamp
           });
@@ -1560,7 +1533,6 @@ const _PlayerAudioEngine = class _PlayerAudioEngine {
         continue;
       }
       player.setVolume(trackState.volume);
-      player.setLoop(trackState.loop);
       if (trackState.isPlaying) {
         const elapsed = (getServerTime() - trackState.startTimestamp) / 1e3;
         const adjustedTime = trackState.currentTime + elapsed;
@@ -1717,10 +1689,6 @@ const _SocketManager = class _SocketManager {
         const volPayload = message.payload;
         this.playerEngine.handleTrackVolume(volPayload.trackId, volPayload.volume);
         break;
-      case "track-loop":
-        const loopPayload = message.payload;
-        this.playerEngine.handleTrackLoop(loopPayload.trackId, loopPayload.loop);
-        break;
       case "channel-volume":
         const chVolPayload = message.payload;
         this.playerEngine.setGMVolume(chVolPayload.channel, chVolPayload.volume);
@@ -1774,7 +1742,6 @@ const _SocketManager = class _SocketManager {
         url: state.url,
         group: state.group,
         volume: state.volume,
-        loop: state.loop,
         isPlaying: state.playbackState === "playing",
         currentTime: player.getCurrentTime(),
         startTimestamp: now
@@ -1813,7 +1780,6 @@ const _SocketManager = class _SocketManager {
       url: player.url,
       group: player.group,
       volume: player.volume,
-      loop: player.loop,
       offset,
       startTimestamp: getServerTime()
     };
@@ -1843,11 +1809,6 @@ const _SocketManager = class _SocketManager {
     if (!this._syncEnabled) return;
     const payload = { trackId, volume };
     this.send("track-volume", payload);
-  }
-  broadcastTrackLoop(trackId, loop) {
-    if (!this._syncEnabled) return;
-    const payload = { trackId, loop };
-    this.send("track-loop", payload);
   }
   broadcastChannelVolume(channel, volume) {
     if (!this._syncEnabled) return;
@@ -2351,7 +2312,7 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     const modes = [
       { label: "Inherit (Default)", value: "inherit", icon: "fa-arrow-turn-down" },
       { label: "Loop", value: "loop", icon: "fa-repeat" },
-      { label: "Single", value: "single", icon: "fa-stop" },
+      { label: "Single", value: "single", icon: "fa-arrow-right-to-line" },
       { label: "Linear", value: "linear", icon: "fa-arrow-right" },
       { label: "Random", value: "random", icon: "fa-shuffle" }
     ];
@@ -2715,8 +2676,7 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     if (queue && !queue.hasItem(itemId)) {
       queue.addItem(itemId, {
         group: item.group,
-        volume: 1,
-        loop: false
+        volume: 1
       });
     }
     let player = (_c = engine.getTrack) == null ? void 0 : _c.call(engine, itemId);
@@ -2725,8 +2685,7 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
         id: itemId,
         url: item.url,
         group: item.group,
-        volume: 1,
-        loop: false
+        volume: 1
       }));
     }
     let offset = 0;
@@ -2800,8 +2759,7 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     } else {
       window.ASE.queue.addItem(itemId, {
         group: item.group || "music",
-        volume: 1,
-        loop: false
+        volume: 1
       });
       Logger.debug("Added to queue:", itemId);
       (_c = ui.notifications) == null ? void 0 : _c.info(`"${item.name}" added to queue`);
@@ -2907,8 +2865,7 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
         const playlistItems = playlist.items.map((pItem) => ({
           libraryItemId: pItem.libraryItemId,
           group: pItem.group || "music",
-          volume: pItem.volume,
-          loop: pItem.loop
+          volume: pItem.volume
         }));
         window.ASE.queue.addPlaylist(favoriteId, playlistItems);
         (_c = ui.notifications) == null ? void 0 : _c.info(`Added "${playlist.name}" to queue`);
@@ -2924,8 +2881,7 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
       } else {
         window.ASE.queue.addItem(favoriteId, {
           group: this.inferGroupFromTags(item.tags),
-          volume: 1,
-          loop: false
+          volume: 1
         });
         (_e = ui.notifications) == null ? void 0 : _e.info(`Added "${item.name}" to queue`);
       }
@@ -3273,8 +3229,7 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
         return {
           libraryItemId: pItem.libraryItemId,
           group: pItem.group || "music",
-          volume: pItem.volume,
-          loop: pItem.loop
+          volume: pItem.volume
         };
       }).filter((item) => item.libraryItemId);
       window.ASE.queue.addPlaylist(playlistId, playlistItems);
@@ -4425,7 +4380,6 @@ const _SoundMixerApp = class _SoundMixerApp {
     const duration = (libraryItem == null ? void 0 : libraryItem.duration) ?? (player == null ? void 0 : player.getDuration()) ?? 0;
     const progress = duration > 0 ? currentTime / duration * 100 : 0;
     const volume = (player == null ? void 0 : player.volume) ?? queueItem.volume;
-    const loop = (player == null ? void 0 : player.loop) ?? queueItem.loop;
     return {
       queueId: queueItem.id,
       libraryItemId: queueItem.libraryItemId,
@@ -4438,7 +4392,6 @@ const _SoundMixerApp = class _SoundMixerApp {
       isLoading: (player == null ? void 0 : player.state) === "loading",
       volume,
       volumePercent: Math.round(volume * 100),
-      loop,
       playbackMode: (libraryItem == null ? void 0 : libraryItem.playbackMode) || "inherit",
       // Add playbackMode
       currentTime,
@@ -4547,15 +4500,19 @@ const _SoundMixerApp = class _SoundMixerApp {
     event.preventDefault();
     event.stopPropagation();
     const $track = $(event.currentTarget).closest(".ase-queue-track");
+    const queueId = $track.data("queue-id");
     const itemId = $track.data("item-id");
-    const playlistId = $track.closest(".ase-queue-playlist").data("playlist-id");
-    const queueItem = this.queueManager.getItems().find((q) => q.libraryItemId === itemId);
+    const queueItem = this.queueManager.getItems().find((q) => q.id === queueId);
+    if (!queueItem) {
+      Logger.warn(`Queue item not found for ID: ${queueId}`);
+      return;
+    }
     let context;
-    if (playlistId && (queueItem == null ? void 0 : queueItem.playlistId) === playlistId) {
-      const playlist = this.libraryManager.playlists.getPlaylist(playlistId);
+    if (queueItem.playlistId) {
+      const playlist = this.libraryManager.playlists.getPlaylist(queueItem.playlistId);
       context = {
         type: "playlist",
-        id: playlistId,
+        id: queueItem.playlistId,
         playbackMode: (playlist == null ? void 0 : playlist.playbackMode) || "loop"
       };
     } else {
@@ -4799,8 +4756,7 @@ const _SoundMixerApp = class _SoundMixerApp {
         id: itemId,
         url: libraryItem.url,
         group: libraryItem.group,
-        volume: 1,
-        loop: false
+        volume: 1
       });
     }
     const playbackContext = context || {
@@ -5748,7 +5704,6 @@ const _PlaylistManager = class _PlaylistManager {
       libraryItemId,
       group,
       volume: (options == null ? void 0 : options.volume) ?? 1,
-      loop: (options == null ? void 0 : options.loop) ?? false,
       order: playlist.items.length,
       fadeIn: options == null ? void 0 : options.fadeIn,
       fadeOut: options == null ? void 0 : options.fadeOut
@@ -6515,7 +6470,6 @@ const _PlaybackQueueManager = class _PlaybackQueueManager {
       addedAt: Date.now(),
       state: "stopped",
       volume: (options == null ? void 0 : options.volume) ?? 1,
-      loop: (options == null ? void 0 : options.loop) ?? false,
       playlistId: options == null ? void 0 : options.playlistId
     };
     this.items.push(item);
@@ -6534,8 +6488,8 @@ const _PlaybackQueueManager = class _PlaybackQueueManager {
       const queueItem = this.addItem(pItem.libraryItemId, {
         playlistId,
         group: pItem.group,
-        volume: pItem.volume,
-        loop: pItem.loop
+        volume: pItem.volume
+        // Loop is removed
       });
       added.push(queueItem);
     }
@@ -6788,9 +6742,7 @@ const _PlaybackScheduler = class _PlaybackScheduler {
         id: track.id,
         url: track.url,
         group: track.group,
-        volume: item.volume !== void 0 ? item.volume : 1,
-        loop: false
-        // Playlist handles looping, not individual track
+        volume: item.volume !== void 0 ? item.volume : 1
       });
     }
     const context = {
@@ -6812,8 +6764,8 @@ const _PlaybackScheduler = class _PlaybackScheduler {
     }
     let mode = track.playbackMode;
     if (mode === "inherit") {
-      Logger.debug(`Track ${track.name} has inherit mode, using loop as fallback`);
-      mode = "loop";
+      Logger.debug(`Track ${track.name} has inherit mode, using single as fallback`);
+      mode = "single";
     }
     Logger.debug(`Track ${track.name} playback mode: ${mode}`);
     switch (mode) {
@@ -6893,8 +6845,7 @@ const _PlaybackScheduler = class _PlaybackScheduler {
         id: libraryItem.id,
         url: libraryItem.url,
         group: libraryItem.group,
-        volume: 1,
-        loop: false
+        volume: 1
       });
     }
     const context = {

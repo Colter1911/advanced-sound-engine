@@ -8,7 +8,6 @@ export interface TrackConfig {
   url: string;
   group: TrackGroup;
   volume?: number;
-  loop?: boolean;
   libraryItemId?: string;        // UUID ссылка на LibraryItem (для будущего использования)
 }
 
@@ -18,7 +17,6 @@ export interface TrackState {
   group: TrackGroup;
   playbackState: PlaybackState;
   volume: number;
-  loop: boolean;
   currentTime: number;
   duration: number;
 }
@@ -51,7 +49,6 @@ export type SocketMessageType =
   | 'track-stop'
   | 'track-volume'
   | 'track-seek'
-  | 'track-loop'
   | 'master-volume'
   | 'channel-volume'
   | 'stop-all'
@@ -77,7 +74,6 @@ export interface SyncTrackState {
   url: string;
   group: TrackGroup;
   volume: number;
-  loop: boolean;
   isPlaying: boolean;
   currentTime: number;
   startTimestamp: number;
@@ -88,7 +84,6 @@ export interface TrackPlayPayload {
   url: string;
   group: TrackGroup;
   volume: number;
-  loop: boolean;
   offset: number;
   startTimestamp: number;
 }
@@ -112,11 +107,6 @@ export interface TrackSeekPayload {
 export interface TrackVolumePayload {
   trackId: string;
   volume: number;
-}
-
-export interface TrackLoopPayload {
-  trackId: string;
-  loop: boolean;
 }
 
 export interface EffectParamPayload {
