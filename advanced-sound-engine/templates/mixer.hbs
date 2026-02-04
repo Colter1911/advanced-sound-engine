@@ -141,28 +141,25 @@
       {{/each}}
       {{else}}
       <div class="ase-empty-list-area">
-        <center style="opacity: 0.5;">
-          <i class="fa-solid fa-list" style="font-size: 48px; margin-bottom: 20px;"></i>
+        <div class="ase-empty-state-container">
+          <i class="fa-solid fa-list ase-empty-state-icon"></i>
           <p>Queue is empty</p>
-          <p style="font-size: 11px;">Add tracks from Favorites or Library</p>
-        </center>
+          <p class="ase-hint">Add tracks from Favorites or Library</p>
+        </div>
       </div>
       {{/if}}
     </div>
 
     {{!-- Effects Control Panel --}}
-    <div class="ase-mixer-effects-panel"
-      style="padding: 12px; border-top: 1px solid var(--ase-border-gold); background: rgba(0, 0, 0, 0.3);">
-      <div class="ase-effects-header"
-        style="font-size: 12px; font-weight: 600; color: var(--ase-text-header); margin-bottom: 8px; text-transform: uppercase;">
+    <div class="ase-mixer-effects-panel">
+      <div class="ase-effects-header">
         <span>Effects</span>
       </div>
-      <div class="ase-effects-toggles" style="display: flex; flex-wrap: wrap; gap: 12px;">
+      <div class="ase-effects-toggles">
         {{#each effects}}
-        <label class="ase-effect-toggle-item" style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
-          <input type="checkbox" {{#if enabled}}checked{{/if}} data-action="toggle-effect" data-effect-id="{{id}}"
-            style="cursor: pointer;">
-          <span style="font-size: 11px; color: var(--ase-text-body);">{{name}}</span>
+        <label class="ase-effect-toggle-item">
+          <input type="checkbox" {{#if enabled}}checked{{/if}} data-action="toggle-effect" data-effect-id="{{id}}">
+          <span>{{name}}</span>
         </label>
         {{/each}}
       </div>

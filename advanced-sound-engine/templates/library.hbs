@@ -26,8 +26,7 @@
               data-playlist-id="{{this.id}}" title="Add to Queue">
               <i class="ase-icon-add-queue"></i>
             </span>
-            <i class="fa-solid fa-star {{#if this.favorite}}active{{/if}}"
-              style="{{#if this.favorite}}color: var(--accent-cyan);{{/if}}" data-action="toggle-playlist-favorite"
+            <i class="fa-solid fa-star {{#if this.favorite}}active{{/if}}" data-action="toggle-playlist-favorite"
               data-playlist-id="{{this.id}}" title="Favorite"></i>
           </div>
         </li>
@@ -63,8 +62,8 @@
               data-favorite-id="{{this.id}}" data-favorite-type="{{this.type}}" title="Add to Queue">
               <i class="ase-icon-add-queue"></i>
             </span>
-            <i class="fa-solid fa-star active" style="color: var(--accent-cyan);" data-action="remove-from-favorites"
-              data-favorite-id="{{this.id}}" data-favorite-type="{{this.type}}" title="Remove from Favorites"></i>
+            <i class="fa-solid fa-star active" data-action="remove-from-favorites" data-favorite-id="{{this.id}}"
+              data-favorite-type="{{this.type}}" title="Remove from Favorites"></i>
           </div>
         </li>
         {{/each}}
@@ -116,7 +115,7 @@
 
       <!-- Sorting -->
       <div class="ase-sort-dropdown">
-        <span style="color: #666; font-size: 11px;">Sorting...</span>
+        <span class="ase-text-label-sm">Sorting...</span>
         <select class="ase-sort-select" data-action="sort-change">
           <option value="playable" {{#if (eq sortBy 'playable' )}}selected{{/if}}>Playable</option>
           <option value="date-desc" {{#if (eq sortBy 'date-desc' )}}selected{{/if}}>Date Added (Newest)</option>
@@ -130,7 +129,7 @@
     </div>
 
     <!-- Maximum Height Track List Container -->
-    <div class="ase-track-player-list" style="flex: 1; overflow-y: auto;">
+    <div class="ase-track-player-list">
       {{#if items.length}}
       {{#each items}}
       <div class="ase-track-player-item {{#if this.isPlaying}}is-playing{{else if this.isPaused}}is-paused{{/if}}"
@@ -183,8 +182,7 @@
             </span>
 
             <!-- Favorite -->
-            <i class="fa-solid fa-star {{#if this.favorite}}active{{/if}}"
-              style="{{#if this.favorite}}color: var(--accent-cyan);{{/if}}" data-action="toggle-favorite"
+            <i class="fa-solid fa-star {{#if this.favorite}}active{{/if}}" data-action="toggle-favorite"
               data-item-id="{{this.id}}" title="Favorite"></i>
 
             <!-- Delete -->
@@ -202,7 +200,7 @@
           </div>
 
           <!-- Tags -->
-          <div class="ase-track-tags" style="margin-top: 0;">
+          <div class="ase-track-tags ase-mt-0">
             {{#each this.tags}}
             <span class="ase-tag" data-tag="{{this}}" data-item-id="{{../id}}" data-action="toggle-tag">#{{this}}</span>
             {{/each}}
@@ -213,10 +211,10 @@
       {{/each}}
       {{else}}
       <div class="ase-empty-list-area">
-        <center style="opacity: 0.5;">
-          <i class="fas fa-music" style="font-size: 48px; margin-bottom: 20px;"></i>
+        <div class="ase-empty-state-container">
+          <i class="fas fa-music ase-empty-state-icon"></i>
           <p>No tracks found</p>
-        </center>
+        </div>
       </div>
       {{/if}}
     </div>

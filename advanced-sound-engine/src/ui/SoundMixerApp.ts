@@ -472,10 +472,10 @@ export class SoundMixerApp {
    */
   private showModeContextMenu(event: JQuery.ClickEvent, modes: any[], callback: (mode: string) => void): void {
     const menuHtml = `
-      <div id="ase-mode-menu" style="position: fixed; z-index: 10000; background: #110f1c; border: 1px solid #363249; border-radius: 4px; padding: 5px 0; box-shadow: 0 4px 12px rgba(0,0,0,0.5);">
+      <div id="ase-mode-menu" class="ase-context-menu">
         ${modes.map(m => `
-          <div class="ase-ctx-item" data-value="${m.value}" style="padding: 8px 15px; cursor: pointer; color: #eee; display: flex; align-items: center; gap: 8px;">
-              <i class="fa-solid ${m.icon}" style="width: 16px; text-align: center; color: #cca477;"></i> 
+          <div class="ase-ctx-item" data-value="${m.value}">
+              <i class="fa-solid ${m.icon}"></i> 
               <span>${m.label}</span>
           </div>
         `).join('')}
@@ -487,11 +487,6 @@ export class SoundMixerApp {
     $('body').append(menu);
 
     menu.css({ top: event.clientY, left: event.clientX });
-
-    menu.find('.ase-ctx-item').hover(
-      function () { $(this).css('background', '#363249'); },
-      function () { $(this).css('background', 'transparent'); }
-    );
 
     menu.find('.ase-ctx-item').on('click', (e) => {
       e.stopPropagation();

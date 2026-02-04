@@ -22,7 +22,7 @@
   --ase-border-dark: #000000;
   --ase-border-gold: #9f9275;
   /* Muted Gold */
-  --ase-border-accent: #ff6400;
+  --ase-border-accent: var(--ase-accent-main);
   /* Foundry Orange/Red Accent */
 
   /* Text */
@@ -32,7 +32,7 @@
   /* Parchment text */
   --ase-text-muted: #7a7971;
   --ase-text-highlight: #ffffff;
-  --ase-text-link: #ff6400;
+  --ase-text-link: var(--ase-accent-main);
 
   /* Fonts */
   --ase-font-header: "Modesto Condensed", "Signika", sans-serif;
@@ -50,6 +50,19 @@
   /* Shadows */
   --ase-shadow-panel: 0 0 10px #000;
   --ase-glow-gold: 0 0 5px rgba(255, 165, 0, 0.5);
+
+  /* --- Z-Index Layers --- */
+  --z-index-base: 1;
+  --z-index-panel: 10;
+  --z-index-nav: 50;
+  --z-index-modal: 100;
+  --z-index-tooltip: 1000;
+  --z-index-context-menu: 10000;
+
+  /* --- Consolidated Tokens --- */
+  --ase-accent-main: #ff6400;
+  --ase-accent-cyan: #22d3ee;
+  --ase-bg-deep: #050505;
 }
 
 // Global Reset for the Module Window
@@ -66,6 +79,40 @@
   font-family: var(--ase-font-body);
 }
 
+/* --- Utilities --- */
+.ase-disabled {
+  opacity: 0.5;
+  cursor: default !important;
+  pointer-events: none;
+}
+
+.ase-ml-sm {
+  margin-left: 10px;
+}
+
+.ase-ml-auto {
+  margin-left: auto;
+}
+
+.ase-mt-0 {
+  margin-top: 0 !important;
+}
+
+.ase-text-label-sm {
+  color: var(--ase-text-muted);
+  font-size: 11px;
+}
+
+.ase-empty-state-container {
+  opacity: 0.5;
+  text-align: center;
+}
+
+.ase-empty-state-icon {
+  font-size: 48px;
+  margin-bottom: 20px;
+}
+
 /* Force Context Menu to be above everything and match V13 Theme */
 // (Removed global #context-menu override)
 
@@ -74,9 +121,9 @@
 
 /* --- Sync Button Active State (Explicit Orange) --- */
 .ase-sync-light.active {
-  background-color: #ff6400 !important;
+  background-color: var(--ase-accent-main) !important;
   /* Explicit Orange */
-  box-shadow: 0 0 15px #ff6400, inset 0 2px 5px rgba(0, 0, 0, 0.4) !important;
+  box-shadow: 0 0 15px var(--ase-accent-main), inset 0 2px 5px rgba(0, 0, 0, 0.4) !important;
   border-color: #ffb86c !important;
 }
 
@@ -129,7 +176,7 @@
     flex-direction: column;
     height: 100%;
     /* Gradient Background to mimic Foundry's dark parchment/metal look */
-    background: linear-gradient(to bottom, var(--ase-bg-base), #050505);
+    background: linear-gradient(to bottom, var(--ase-bg-base), var(--ase-bg-deep));
     color: var(--ase-text-body);
     font-size: 14px;
     width: 100%;
@@ -424,7 +471,7 @@
 /* --- Workspace (Sidebar + Main) --- */
 .ase-workspace {
   position: relative;
-  z-index: 1;
+  z-index: var(--z-index-base);
   display: flex;
   flex: 1;
   overflow: hidden;
@@ -627,7 +674,7 @@
   // Favorite star always glows when active
   i.fa-star.active,
   i.fa-star[style*="color: var(--accent-cyan)"] {
-    color: var(--ase-text-cyan, #22d3ee) !important;
+    color: var(--ase-text-cyan, var(--ase-accent-cyan)) !important;
     text-shadow: 0 0 5px rgba(34, 211, 238, 0.8), 0 0 10px rgba(34, 211, 238, 0.5); // Use text-shadow for font icons
     animation: pulse-glow-text 2s ease-in-out infinite;
     filter: none; // Remove drop-shadow filter which might conflict
@@ -639,7 +686,7 @@
 
   i.fa-star.active,
   i.fa-star[style*="color: var(--accent-cyan)"] {
-    color: var(--ase-text-cyan, #22d3ee) !important;
+    color: var(--ase-text-cyan, var(--ase-accent-cyan)) !important;
     text-shadow: 0 0 5px rgba(22, 211, 238, 0.8), 0 0 10px rgba(34, 211, 238, 0.5);
     animation: pulse-glow-text 2s ease-in-out infinite;
     filter: none;
@@ -962,7 +1009,7 @@
   }
 
   &.active {
-    color: var(--accent-cyan, #22d3ee);
+    color: var(--accent-cyan, var(--ase-accent-cyan));
   }
 }
 
@@ -1792,6 +1839,45 @@
   }
 }
 
+
+
+/* --- Mixer Effects Panel (Moved from Inline) --- */
+.ase-mixer-effects-panel {
+  padding: 12px;
+  border-top: 1px solid var(--ase-border-gold);
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.ase-effects-header {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ase-text-header);
+  margin-bottom: 8px;
+  text-transform: uppercase;
+}
+
+.ase-effects-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.ase-effect-toggle-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+
+  input {
+    cursor: pointer;
+  }
+
+  span {
+    font-size: 11px;
+    color: var(--ase-text-body);
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════
 // MIXER SPECIFIC STYLES
 // ═══════════════════════════════════════════════════════════════
@@ -2013,7 +2099,7 @@
   transition: border-color 0.3s, box-shadow 0.3s;
 
   &.enabled {
-    border-color: #ff6400;
+    border-color: var(--ase-accent-main);
     box-shadow: 0 0 20px rgba(255, 100, 0, 0.4);
   }
 }
@@ -2066,7 +2152,7 @@
     transform-origin: center 50px;
     width: 3px;
     height: 40px;
-    background: #ff6400;
+    background: var(--ase-accent-main);
     border-radius: 2px;
   }
 }
@@ -2109,7 +2195,7 @@
       appearance: none;
       width: 12px;
       height: 12px;
-      background: #ff6400;
+      background: var(--ase-accent-main);
       border-radius: 50%;
       cursor: pointer;
     }
@@ -2117,7 +2203,7 @@
     &::-moz-range-thumb {
       width: 12px;
       height: 12px;
-      background: #ff6400;
+      background: var(--ase-accent-main);
       border-radius: 50%;
       border: none;
       cursor: pointer;
@@ -2168,8 +2254,8 @@
 
   &.active {
     background: rgba(255, 100, 0, 0.2);
-    border-color: #ff6400;
-    color: #ff6400;
+    border-color: var(--ase-accent-main);
+    color: var(--ase-accent-main);
     box-shadow: 0 0 8px rgba(255, 100, 0, 0.3);
   }
 }
@@ -2202,9 +2288,9 @@
 
 .ase-effect-card.enabled .ase-effect-toggle {
   opacity: 1;
-  color: #ff6400;
+  color: var(--ase-accent-main);
   /* Orange glow */
-  border-color: #ff6400;
+  border-color: var(--ase-accent-main);
   box-shadow: 0 0 10px rgba(255, 100, 0, 0.3);
 }
 
@@ -2694,7 +2780,7 @@
 // Ensure mode icons are always clickable and visible
 .ase-mode-icon {
   position: relative;
-  z-index: 10;
+  z-index: var(--z-index-context-menu);
   cursor: pointer;
   pointer-events: auto;
   transition: transform 0.2s, color 0.2s;
@@ -2703,5 +2789,37 @@
     transform: scale(1.1);
     color: var(--ase-text-highlight);
     text-shadow: 0 0 5px rgba(255, 100, 0, 0.5);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CONTEXT MENU STYLES
+// ═══════════════════════════════════════════════════════════════
+.ase-context-menu {
+  position: fixed;
+  z-index: var(--z-index-context-menu);
+  background: var(--ase-bg-base);
+  border: 1px solid var(--ase-border-light);
+  border-radius: 4px;
+  padding: 5px 0;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+.ase-ctx-item {
+  padding: 8px 15px;
+  cursor: pointer;
+  color: var(--ase-text-body);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  i {
+    width: 16px;
+    text-align: center;
+    color: var(--ase-border-gold);
+  }
+
+  &:hover {
+    background: var(--ase-bg-hover);
   }
 }
