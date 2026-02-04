@@ -7,6 +7,7 @@ import { LibraryManager } from '@lib/LibraryManager';
 import { PlaybackQueueManager } from '@queue/PlaybackQueueManager';
 import { Logger } from '@utils/logger';
 import { formatTime } from '@utils/time';
+import type { PlaybackContext } from '@core/PlaybackScheduler';
 
 const MODULE_ID = 'advanced-sound-engine';
 
@@ -55,7 +56,8 @@ interface QueueTrackViewData {
   isLoading: boolean;
   volume: number;
   volumePercent: number;
-  loop: boolean;
+  loop: boolean; // Legacy, will be removed
+  playbackMode: string; // New playback mode system
   currentTime: number;
   currentTimeFormatted: string;
   duration: number;
@@ -230,6 +232,7 @@ export class SoundMixerApp {
       volume,
       volumePercent: Math.round(volume * 100),
       loop,
+      playbackMode: libraryItem?.playbackMode || 'inherit', // Add playbackMode
       currentTime,
       currentTimeFormatted: formatTime(currentTime),
       duration,
@@ -257,7 +260,8 @@ export class SoundMixerApp {
     html.find('[data-action="pause-queue"]').on('click', (e) => this.onPauseQueueItem(e));
     html.find('[data-action="stop-queue"]').on('click', (e) => this.onStopQueueItem(e));
     html.find('[data-action="remove-queue"]').on('click', (e) => this.onRemoveQueueItem(e));
-    html.find('[data-action="loop-queue"]').on('click', (e) => this.onLoopQueueItem(e));
+    // Removed old loop button handler
+    html.find('[data-action="track-mode-dropdown"]').on('click', (e) => this.onTrackModeClick(e));
 
     // Playlist collapse/expand
     html.find('[data-action="toggle-playlist"]').on('click', (e) => this.onTogglePlaylist(e));
@@ -294,8 +298,12 @@ export class SoundMixerApp {
           this.queueManager.addItem(id, { group: libraryItem.group });
         }
 
-        // Play the track
-        await this.playTrack(id);
+        // Play the track with single track context
+        const context: PlaybackContext = {
+          type: 'track',
+          playbackMode: libraryItem.playbackMode
+        };
+        await this.playTrack(id, context);
       }
     } else {
       // Add entire playlist to queue if not already there
@@ -363,7 +371,30 @@ export class SoundMixerApp {
     event.stopPropagation();
     const $track = $(event.currentTarget).closest('.ase-queue-track');
     const itemId = $track.data('item-id') as string;
-    await this.playTrack(itemId);
+    const playlistId = $track.closest('.ase-queue-playlist').data('playlist-id') as string | undefined;
+
+    // Определить контекст из данных очереди
+    const queueItem = this.queueManager.getItems().find(q => q.libraryItemId === itemId);
+    let context: PlaybackContext | undefined;
+
+    if (playlistId && queueItem?.playlistId === playlistId) {
+      // Трек из плейлиста
+      const playlist = this.libraryManager.playlists.getPlaylist(playlistId);
+      context = {
+        type: 'playlist',
+        id: playlistId,
+        playbackMode: playlist?.playbackMode || 'loop'
+      };
+    } else {
+      // Отдельный трек
+      const libraryItem = this.libraryManager.getItem(itemId);
+      context = {
+        type: 'track',
+        playbackMode: libraryItem?.playbackMode || 'inherit'
+      };
+    }
+
+    await this.playTrack(itemId, context);
     this.requestRender();
   }
 
@@ -399,26 +430,80 @@ export class SoundMixerApp {
     this.requestRender();
   }
 
-  private onLoopQueueItem(event: JQuery.ClickEvent): void {
+  /**
+   * Handle playback mode dropdown click
+   */
+  private onTrackModeClick(event: JQuery.ClickEvent): void {
     event.preventDefault();
     event.stopPropagation();
-    const $track = $(event.currentTarget).closest('.ase-queue-track');
-    const itemId = $track.data('item-id') as string;
-    const $icon = $(event.currentTarget);
 
-    const currentLoop = $icon.hasClass('active');
-    const newLoop = !currentLoop;
-
-    this.engine.setTrackLoop(itemId, newLoop);
-
-    // Trigger save to persist loop state
-    (this.engine as any).scheduleSave?.();
-
-    if (newLoop) {
-      $icon.addClass('active').css('color', 'var(--accent-cyan)');
-    } else {
-      $icon.removeClass('active').css('color', '');
+    const btn = $(event.currentTarget);
+    // Support both direct data on icon
+    let itemId = btn.data('item-id') as string;
+    if (!itemId) {
+      itemId = btn.closest('[data-item-id]').data('item-id') as string;
     }
+
+    const item = this.libraryManager.getItem(itemId);
+    if (!item) {
+      Logger.warn(`Track Mode Clicked: Item not found for ID ${itemId}`);
+      return;
+    }
+
+    const modes: { label: string, value: string, icon: string }[] = [
+      { label: 'Inherit (Default)', value: 'inherit', icon: 'fa-arrow-turn-down' },
+      { label: 'Loop', value: 'loop', icon: 'fa-repeat' },
+      { label: 'Single', value: 'single', icon: 'fa-stop' },
+      { label: 'Linear', value: 'linear', icon: 'fa-arrow-right' },
+      { label: 'Random', value: 'random', icon: 'fa-shuffle' }
+    ];
+
+    this.showModeContextMenu(event, modes, (mode) => {
+      this.libraryManager.updateItem(itemId, { playbackMode: mode as any });
+      this.requestRender();
+    });
+  }
+
+  /**
+   * Show context menu for mode selection
+   */
+  private showModeContextMenu(event: JQuery.ClickEvent, modes: any[], callback: (mode: string) => void): void {
+    const menuHtml = `
+      <div id="ase-mode-menu" style="position: fixed; z-index: 10000; background: #110f1c; border: 1px solid #363249; border-radius: 4px; padding: 5px 0; box-shadow: 0 4px 12px rgba(0,0,0,0.5);">
+        ${modes.map(m => `
+          <div class="ase-ctx-item" data-value="${m.value}" style="padding: 8px 15px; cursor: pointer; color: #eee; display: flex; align-items: center; gap: 8px;">
+              <i class="fa-solid ${m.icon}" style="width: 16px; text-align: center; color: #cca477;"></i> 
+              <span>${m.label}</span>
+          </div>
+        `).join('')}
+      </div>
+    `;
+
+    $('#ase-mode-menu').remove();
+    const menu = $(menuHtml);
+    $('body').append(menu);
+
+    menu.css({ top: event.clientY, left: event.clientX });
+
+    menu.find('.ase-ctx-item').hover(
+      function () { $(this).css('background', '#363249'); },
+      function () { $(this).css('background', 'transparent'); }
+    );
+
+    menu.find('.ase-ctx-item').on('click', (e) => {
+      e.stopPropagation();
+      const val = $(e.currentTarget).data('value');
+      Logger.debug(`Mode Selected: ${val}`);
+      callback(val);
+      menu.remove();
+    });
+
+    // Close on click outside
+    setTimeout(() => {
+      $('body').one('click', () => {
+        menu.remove();
+      });
+    }, 10);
   }
 
   private async onAddToQueueFromFavorite(event: JQuery.ClickEvent): Promise<void> {
@@ -430,15 +515,37 @@ export class SoundMixerApp {
 
     if (type === 'track') {
       const libraryItem = this.libraryManager.getItem(id);
-      if (libraryItem) {
+      if (!libraryItem) return;
+
+      // Toggle: if already in queue, remove it
+      if (this.queueManager.hasItem(id)) {
+        this.queueManager.removeByLibraryItemId(id);
+        Logger.info('Removed track from queue:', libraryItem.name);
+        ui.notifications?.info(`Removed from queue: ${libraryItem.name}`);
+      } else {
         this.queueManager.addItem(id, { group: libraryItem.group });
         Logger.info('Added track to queue:', libraryItem.name);
+        ui.notifications?.info(`Added to queue: ${libraryItem.name}`);
       }
     } else {
       // Add entire playlist to queue
       const playlist = this.libraryManager.playlists.getPlaylist(id);
-      if (playlist) {
-        const tracks = this.libraryManager.playlists.getPlaylistTracks(id);
+      if (!playlist) return;
+
+      const tracks = this.libraryManager.playlists.getPlaylistTracks(id);
+
+      // Check if ALL tracks from playlist are in queue
+      const allInQueue = tracks.every(t => this.queueManager.hasItem(t.libraryItemId));
+
+      if (allInQueue) {
+        // Remove all tracks from this playlist
+        for (const track of tracks) {
+          this.queueManager.removeByLibraryItemId(track.libraryItemId);
+        }
+        Logger.info('Removed playlist from queue:', playlist.name);
+        ui.notifications?.info(`Removed from queue: ${playlist.name}`);
+      } else {
+        // Add playlist tracks
         const playlistItems = tracks.map(t => {
           const item = this.libraryManager.getItem(t.libraryItemId);
           return {
@@ -448,6 +555,7 @@ export class SoundMixerApp {
         });
         this.queueManager.addPlaylist(id, playlistItems as any);
         Logger.info('Added playlist to queue:', playlist.name);
+        ui.notifications?.info(`Added to queue: ${playlist.name}`);
       }
     }
     this.requestRender();
@@ -540,7 +648,12 @@ export class SoundMixerApp {
   // Playback Core Methods
   // ─────────────────────────────────────────────────────────────
 
-  private async playTrack(itemId: string): Promise<void> {
+  /**
+   * Воспроизвести трек с опциональным контекстом
+   * @param itemId - ID трека из библиотеки
+   * @param context - Контекст воспроизведения (playlist, track, queue)
+   */
+  private async playTrack(itemId: string, context?: PlaybackContext): Promise<void> {
     const libraryItem = this.libraryManager.getItem(itemId);
     if (!libraryItem) {
       Logger.warn('Track not found in library:', itemId);
@@ -552,7 +665,7 @@ export class SoundMixerApp {
     // If player exists and is paused, resume from current position
     if (player && player.state === 'paused') {
       const offset = player.getCurrentTime();
-      await this.engine.playTrack(itemId, offset);
+      await this.engine.playTrack(itemId, offset, context);
 
       if (this.socket.syncEnabled) {
         this.socket.broadcastTrackPlay(itemId, offset);
@@ -571,7 +684,13 @@ export class SoundMixerApp {
       });
     }
 
-    await this.engine.playTrack(itemId);
+    // Создать контекст, если не передан
+    const playbackContext: PlaybackContext = context || {
+      type: 'track',
+      playbackMode: libraryItem.playbackMode
+    };
+
+    await this.engine.playTrack(itemId, 0, playbackContext);
 
     // Sync if enabled
     if (this.socket.syncEnabled) {
@@ -596,13 +715,33 @@ export class SoundMixerApp {
     }
   }
 
+  /**
+   * Воспроизвести плейлист (запускает первый трек с контекстом плейлиста)
+   * @param playlistId - ID плейлиста
+   */
   private async playPlaylist(playlistId: string): Promise<void> {
-    const tracks = this.libraryManager.playlists.getPlaylistTracks(playlistId);
-    if (!tracks.length) return;
+    const playlist = this.libraryManager.playlists.getPlaylist(playlistId);
+    if (!playlist) {
+      Logger.warn('Playlist not found:', playlistId);
+      return;
+    }
 
-    // Play first track
+    const tracks = this.libraryManager.playlists.getPlaylistTracks(playlistId);
+    if (!tracks.length) {
+      Logger.warn('Playlist is empty:', playlist.name);
+      return;
+    }
+
+    // Создать контекст плейлиста
+    const context: PlaybackContext = {
+      type: 'playlist',
+      id: playlistId,
+      playbackMode: playlist.playbackMode
+    };
+
+    // Play first track with playlist context
     const firstTrack = tracks[0];
-    await this.playTrack(firstTrack.libraryItemId);
+    await this.playTrack(firstTrack.libraryItemId, context);
   }
 
   private stopPlaylist(playlistId: string): void {

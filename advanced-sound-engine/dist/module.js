@@ -704,9 +704,9 @@ const _DistortionEffect = class _DistortionEffect extends AudioEffect {
 };
 __name(_DistortionEffect, "DistortionEffect");
 let DistortionEffect = _DistortionEffect;
-const MODULE_ID$5 = "advanced-sound-engine";
+const MODULE_ID$6 = "advanced-sound-engine";
 function getMaxSimultaneous() {
-  return game.settings.get(MODULE_ID$5, "maxSimultaneousTracks") || 8;
+  return game.settings.get(MODULE_ID$6, "maxSimultaneousTracks") || 8;
 }
 __name(getMaxSimultaneous, "getMaxSimultaneous");
 const _SimpleEventEmitter = class _SimpleEventEmitter {
@@ -850,7 +850,7 @@ const _AudioEngine = class _AudioEngine extends SimpleEventEmitter {
     if (!game.ready || !((_a = game.user) == null ? void 0 : _a.isGM)) return;
     const state = this.getState();
     try {
-      await game.settings.set(MODULE_ID$5, "mixerState", JSON.stringify(state));
+      await game.settings.set(MODULE_ID$6, "mixerState", JSON.stringify(state));
       Logger.debug("Mixer state saved");
     } catch (error) {
       Logger.error("Failed to save mixer state:", error);
@@ -859,7 +859,7 @@ const _AudioEngine = class _AudioEngine extends SimpleEventEmitter {
   async loadSavedState() {
     if (!game.ready) return;
     try {
-      const savedJson = game.settings.get(MODULE_ID$5, "mixerState");
+      const savedJson = game.settings.get(MODULE_ID$6, "mixerState");
       if (!savedJson) return;
       const state = JSON.parse(savedJson);
       await this.restoreState(state);
@@ -1609,8 +1609,8 @@ const _PlayerAudioEngine = class _PlayerAudioEngine {
 };
 __name(_PlayerAudioEngine, "PlayerAudioEngine");
 let PlayerAudioEngine = _PlayerAudioEngine;
-const MODULE_ID$4 = "advanced-sound-engine";
-const SOCKET_NAME = `module.${MODULE_ID$4}`;
+const MODULE_ID$5 = "advanced-sound-engine";
+const SOCKET_NAME = `module.${MODULE_ID$5}`;
 const _SocketManager = class _SocketManager {
   constructor() {
     __publicField(this, "gmEngine", null);
@@ -1888,7 +1888,7 @@ const _SocketManager = class _SocketManager {
 };
 __name(_SocketManager, "SocketManager");
 let SocketManager = _SocketManager;
-const MODULE_ID$3 = "advanced-sound-engine";
+const MODULE_ID$4 = "advanced-sound-engine";
 const _PlayerVolumePanel = class _PlayerVolumePanel extends Application {
   constructor(engine, options) {
     super(options);
@@ -1899,7 +1899,7 @@ const _PlayerVolumePanel = class _PlayerVolumePanel extends Application {
     return foundry.utils.mergeObject(super.defaultOptions, {
       id: "ase-player-volume",
       title: "Sound Volume",
-      template: `modules/${MODULE_ID$3}/templates/player-volume.hbs`,
+      template: `modules/${MODULE_ID$4}/templates/player-volume.hbs`,
       classes: ["ase-player-panel"],
       width: 200,
       height: "auto",
@@ -1923,22 +1923,27 @@ const _PlayerVolumePanel = class _PlayerVolumePanel extends Application {
     });
   }
   saveVolume(value) {
-    localStorage.setItem(`${MODULE_ID$3}-player-volume`, String(value));
+    localStorage.setItem(`${MODULE_ID$4}-player-volume`, String(value));
   }
   static loadSavedVolume() {
-    const saved = localStorage.getItem(`${MODULE_ID$3}-player-volume`);
+    const saved = localStorage.getItem(`${MODULE_ID$4}-player-volume`);
     return saved ? parseFloat(saved) : 1;
   }
 };
 __name(_PlayerVolumePanel, "PlayerVolumePanel");
 let PlayerVolumePanel = _PlayerVolumePanel;
 const _LocalLibraryApp = class _LocalLibraryApp extends Application {
-  // Using any to avoid circular import issues for now, or use interface
+  // Debounce timer for renders
   constructor(library, parentApp, options = {}) {
     super(options);
     __publicField(this, "library");
     __publicField(this, "filterState");
     __publicField(this, "parentApp");
+    // Using any to avoid circular import issues for now, or use interface
+    __publicField(this, "_queueListener", null);
+    __publicField(this, "_listenersInitialized", false);
+    // Track if we've initialized delegated listeners
+    __publicField(this, "_renderDebounceTimer", null);
     this.library = library;
     this.parentApp = parentApp;
     this.filterState = {
@@ -1971,11 +1976,32 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
   // Override render to delegate to main app
   render(force, options) {
     var _a;
+    if ((options == null ? void 0 : options.renderContext) === "queue-update") {
+      if (this.parentApp && typeof this.parentApp.render === "function") {
+        return this.parentApp.render({ parts: ["main"] });
+      }
+    }
     if ((_a = window.ASE) == null ? void 0 : _a.openPanel) {
       window.ASE.openPanel("library", true);
       return;
     }
     return super.render(force, options);
+  }
+  async close(options) {
+    var _a;
+    if (this._queueListener && ((_a = window.ASE) == null ? void 0 : _a.queue)) {
+      window.ASE.queue.off("change", this._queueListener);
+      this._queueListener = null;
+    }
+    if (this._renderDebounceTimer) {
+      clearTimeout(this._renderDebounceTimer);
+      this._renderDebounceTimer = null;
+    }
+    if (this._listenersInitialized) {
+      $(document).off("mousedown.ase-lib-global");
+      this._listenersInitialized = false;
+    }
+    return super.close(options);
   }
   getData() {
     let items = this.library.getAllItems();
@@ -2029,9 +2055,10 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
       selected: p.id === this.filterState.selectedPlaylistId
     }));
     const allChannelsSelected = this.filterState.selectedChannels.size === 3;
-    const hasActiveFilters = !!(this.filterState.searchQuery || !allChannelsSelected || this.filterState.selectedPlaylistId || this.filterState.selectedTags.size > 0);
+    const hasActiveFilters = !!(!allChannelsSelected || this.filterState.selectedPlaylistId || this.filterState.selectedTags.size > 0);
+    const itemsViewData = items.map((item) => this.getItemViewData(item));
     return {
-      items: items.map((item) => this.getItemViewData(item)),
+      items: itemsViewData,
       playlists: playlistsViewData,
       favorites,
       tags,
@@ -2041,7 +2068,6 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
         playlists: stats.totalPlaylists,
         tagCount: stats.tagCount
       },
-      // Filter state for UI
       searchQuery: this.filterState.searchQuery,
       filters: {
         music: this.filterState.selectedChannels.has("music"),
@@ -2050,7 +2076,15 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
       },
       selectedPlaylistId: this.filterState.selectedPlaylistId,
       sortBy: this.filterState.sortBy,
-      hasActiveFilters
+      hasActiveFilters,
+      sortOptions: [
+        { value: "date-desc", label: "Date Added (Newest)" },
+        { value: "date-asc", label: "Date Added (Oldest)" },
+        { value: "name-asc", label: "Name (A-Z)" },
+        { value: "name-desc", label: "Name (Z-A)" },
+        { value: "duration-asc", label: "Duration (Shortest)" },
+        { value: "duration-desc", label: "Duration (Longest)" }
+      ]
     };
   }
   getPlaylistViewData(playlist) {
@@ -2058,6 +2092,7 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     const inQueue = ((_b = (_a = window.ASE) == null ? void 0 : _a.queue) == null ? void 0 : _b.getItems().some(
       (item) => item.playlistId === playlist.id
     )) ?? false;
+    console.log("ASE Debug: Playlist View Data:", { id: playlist.id, name: playlist.name, inQueue });
     return {
       id: playlist.id,
       name: playlist.name,
@@ -2066,7 +2101,8 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
       // Alias for template
       favorite: playlist.favorite,
       inQueue,
-      selected: false
+      selected: false,
+      playbackMode: playlist.playbackMode
     };
   }
   getItemViewData(item) {
@@ -2173,62 +2209,73 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     return sorted;
   }
   activateListeners(html) {
+    var _a;
     super.activateListeners(html);
-    html.find('[data-action="add-track"]').on("click", this.onAddTrack.bind(this));
-    html.find(".ase-search-input").on("keydown", this.onSearchKeydown.bind(this));
-    html.find(".ase-search-input").on("input", this.onSearchInput.bind(this));
-    html.find(".ase-search-clear").on("click", this.onClearSearch.bind(this));
-    html.find('[data-action="filter-channel"]').on("click", this._onFilterChannel.bind(this));
-    html.find('[data-action="sort-change"]').on("change", this.onChangeSort.bind(this));
-    html.find('[data-action="clear-filters"]').on("click", this.onClearFilters.bind(this));
-    html.find('[data-action="toggle-tag"]').on("click", this.onToggleTag.bind(this));
-    html.find('[data-action="add-tag"]').on("click", this.onAddTag.bind(this));
-    html.find('[data-action="play-track"]').on("click", this.onPlayTrack.bind(this));
-    html.find('[data-action="pause-track"]').on("click", this.onPauseTrack.bind(this));
-    html.find('[data-action="stop-track"]').on("click", this.onStopTrack.bind(this));
-    html.find('[data-action="add-to-queue"]').on("click", this.onAddToQueue.bind(this));
-    html.find('[data-action="toggle-favorite"]').on("click", this.onToggleFavorite.bind(this));
-    html.find('[data-action="add-to-playlist"]').on("click", this.onAddToPlaylist.bind(this));
-    html.find('[data-action="track-menu"]').on("click", this.onTrackMenu.bind(this));
-    html.find('[data-action="add-tag-to-track"]').on("click", this.onAddTagToTrack.bind(this));
-    html.find('[data-action="channel-dropdown"]').on("click", this.onChannelDropdown.bind(this));
-    html.find('[data-action="delete-track"]').on("click", this.onDeleteTrack.bind(this));
-    html.find(".ase-track-player-item").on("contextmenu", this.onTrackContext.bind(this));
-    html.find(".ase-track-tags .ase-tag").on("contextmenu", this.onTrackTagContext.bind(this));
-    html.find('[data-action="select-playlist"]').on("click", this.onSelectPlaylist.bind(this));
-    html.find('[data-action="create-playlist"]').on("click", this.onCreatePlaylist.bind(this));
-    html.find('[data-action="toggle-playlist-favorite"]').on("click", this.onTogglePlaylistFavorite.bind(this));
-    html.find('[data-action="toggle-playlist-queue"]').on("click", this.onTogglePlaylistQueue.bind(this));
-    html.find('[data-action="play-playlist"]').on("click", this.onPlayPlaylist.bind(this));
-    console.log("ASE: Binding mode selector events via delegation");
-    html.on("click", '[data-action="playlist-mode-dropdown"]', (e) => {
-      console.log("ASE: Playlist Mode Clicked (Delegated)", e.currentTarget);
-      this.onPlaylistModeClick(e);
-    });
-    html.on("click", '[data-action="track-mode-dropdown"]', (e) => {
-      console.log("ASE: Track Mode Clicked (Delegated)", e.currentTarget);
-      this.onTrackModeClick(e);
-    });
-    html.on("mousedown", "[data-action]", (e) => {
-      console.log("ASE: Mousedown on action stopped propagation", e.currentTarget);
-      e.stopPropagation();
-    });
-    html.find('[data-action="playlist-menu"]').on("click", this.onPlaylistMenu.bind(this));
-    html.find(".ase-list-item[data-playlist-id]").on("contextmenu", this.onPlaylistContext.bind(this));
-    html.find('[data-action="remove-from-favorites"]').on("click", this.onRemoveFromFavorites.bind(this));
-    html.find('[data-action="toggle-favorite-queue"]').on("click", this.onToggleFavoriteQueue.bind(this));
+    html.off(".ase-library");
+    if (!this._queueListener && ((_a = window.ASE) == null ? void 0 : _a.queue)) {
+      this._queueListener = () => {
+        if (this._renderDebounceTimer) {
+          clearTimeout(this._renderDebounceTimer);
+        }
+        this._renderDebounceTimer = window.setTimeout(() => {
+          this._renderDebounceTimer = null;
+          this.render(false, { renderContext: "queue-update" });
+        }, 50);
+      };
+      window.ASE.queue.on("change", this._queueListener);
+    }
+    if (!this._listenersInitialized) {
+      $(document).off("mousedown.ase-lib-global");
+      $(document).on("mousedown.ase-lib-global", "#local-library [data-action]", (e) => {
+        console.log("ASE: Mousedown on action stopped propagation", e.currentTarget);
+        e.stopPropagation();
+      });
+      this._listenersInitialized = true;
+    }
+    html.find('[data-action="add-track"]').on("click.ase-library", this.onAddTrack.bind(this));
+    html.find(".ase-search-input").on("keydown.ase-library", this.onSearchKeydown.bind(this));
+    html.find(".ase-search-input").on("input.ase-library", this.onSearchInput.bind(this));
+    html.find(".ase-search-clear").on("click.ase-library", this.onClearSearch.bind(this));
+    html.find('[data-action="filter-channel"]').on("click.ase-library", this._onFilterChannel.bind(this));
+    html.find('[data-action="sort-change"]').on("change.ase-library", this.onChangeSort.bind(this));
+    html.find('[data-action="clear-filters"]').on("click.ase-library", this.onClearFilters.bind(this));
+    html.find('[data-action="toggle-tag"]').on("click.ase-library", this.onToggleTag.bind(this));
+    html.find('[data-action="add-tag"]').on("click.ase-library", this.onAddTag.bind(this));
+    html.find('[data-action="play-track"]').on("click.ase-library", this.onPlayTrack.bind(this));
+    html.find('[data-action="pause-track"]').on("click.ase-library", this.onPauseTrack.bind(this));
+    html.find('[data-action="stop-track"]').on("click.ase-library", this.onStopTrack.bind(this));
+    html.find('[data-action="add-to-queue"]').on("click.ase-library", this.onAddToQueue.bind(this));
+    html.find('[data-action="toggle-favorite"]').on("click.ase-library", this.onToggleFavorite.bind(this));
+    html.find('[data-action="add-to-playlist"]').on("click.ase-library", this.onAddToPlaylist.bind(this));
+    html.find('[data-action="track-menu"]').on("click.ase-library", this.onTrackMenu.bind(this));
+    html.find('[data-action="add-tag-to-track"]').on("click.ase-library", this.onAddTagToTrack.bind(this));
+    html.find('[data-action="channel-dropdown"]').on("click.ase-library", this.onChannelDropdown.bind(this));
+    html.find('[data-action="delete-track"]').on("click.ase-library", this.onDeleteTrack.bind(this));
+    html.find(".ase-track-player-item").on("contextmenu.ase-library", this.onTrackContext.bind(this));
+    html.find(".ase-track-tags .ase-tag").on("contextmenu.ase-library", this.onTrackTagContext.bind(this));
+    html.find('[data-action="select-playlist"]').on("click.ase-library", this.onSelectPlaylist.bind(this));
+    html.find('[data-action="create-playlist"]').on("click.ase-library", this.onCreatePlaylist.bind(this));
+    html.find('[data-action="toggle-playlist-favorite"]').on("click.ase-library", this.onTogglePlaylistFavorite.bind(this));
+    html.find('[data-action="toggle-playlist-queue"]').on("click.ase-library", this.onTogglePlaylistQueue.bind(this));
+    html.find('[data-action="play-playlist"]').on("click.ase-library", this.onPlayPlaylist.bind(this));
+    html.find('[data-action="playlist-mode-dropdown"]').on("click.ase-library", this.onPlaylistModeClick.bind(this));
+    html.find('[data-action="track-mode-dropdown"]').on("click.ase-library", this.onTrackModeClick.bind(this));
+    html.find('[data-action="playlist-menu"]').on("click.ase-library", this.onPlaylistMenu.bind(this));
+    html.find(".ase-list-item[data-playlist-id]").on("contextmenu.ase-library", this.onPlaylistContext.bind(this));
+    html.find('[data-action="remove-from-favorites"]').on("click.ase-library", this.onRemoveFromFavorites.bind(this));
+    html.find('[data-action="toggle-favorite-queue"]').on("click.ase-library", this.onToggleFavoriteQueue.bind(this));
     this.setupDragAndDrop(html);
     this.setupFoundryDragDrop(html);
-    html.find(".ase-track-player-item").on("mouseenter", (event) => {
+    html.find(".ase-track-player-item").on("mouseenter.ase-library", (event) => {
       const trackId = $(event.currentTarget).data("item-id");
       if (trackId) {
         this.highlightPlaylistsContainingTrack(trackId);
       }
     });
-    html.find(".ase-track-player-item").on("mouseleave", () => {
+    html.find(".ase-track-player-item").on("mouseleave.ase-library", () => {
       this.clearPlaylistHighlights();
     });
-    html.find(".ase-tags-inline .ase-tag").on("contextmenu", this.onTagContext.bind(this));
+    html.find(".ase-tags-inline .ase-tag").on("contextmenu.ase-library", this.onTagContext.bind(this));
     Logger.debug("LocalLibraryApp listeners activated");
   }
   // ─────────────────────────────────────────────────────────────
@@ -2376,25 +2423,38 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     }, 10);
   }
   async onPlayPlaylist(event) {
-    var _a, _b;
+    var _a, _b, _c;
     event.preventDefault();
     event.stopPropagation();
     const playlistId = $(event.currentTarget).closest("[data-playlist-id]").data("playlist-id");
     const playlist = this.library.playlists.getPlaylist(playlistId);
     if (playlist && playlist.items.length > 0) {
-      let trackToPlay = playlist.items[0];
-      if (playlist.playbackMode === "random" && playlist.items.length > 1) {
-        const randomIndex = Math.floor(Math.random() * playlist.items.length);
-        trackToPlay = playlist.items[randomIndex];
-      }
-      const libItem = this.library.getItem(trackToPlay.libraryItemId);
-      if (libItem) {
-        await window.ASE.engine.playTrack(libItem.id, 0, { type: "playlist", id: playlistId });
-        (_a = ui.notifications) == null ? void 0 : _a.info(`Playing playlist: ${playlist.name}`);
+      const queue = (_a = window.ASE) == null ? void 0 : _a.queue;
+      if (queue) {
+        const addedItems = queue.addPlaylist(playlistId, playlist.items);
+        if (addedItems.length > 0) {
+          let startItem = addedItems[0];
+          if (playlist.playbackMode === "random" && addedItems.length > 1) {
+            const randomIndex = Math.floor(Math.random() * addedItems.length);
+            startItem = addedItems[randomIndex];
+          }
+          const libItem = this.library.getItem(startItem.libraryItemId);
+          if (libItem) {
+            await window.ASE.engine.playTrack(libItem.id, 0, { type: "playlist", id: playlistId });
+          }
+        }
+        (_b = ui.notifications) == null ? void 0 : _b.info(`Playing playlist: ${playlist.name}`);
         this.render();
+      } else {
+        console.warn("ASE: Queue Manager not available");
+        let trackToPlay = playlist.items[0];
+        const libItem = this.library.getItem(trackToPlay.libraryItemId);
+        if (libItem) {
+          await window.ASE.engine.playTrack(libItem.id, 0, { type: "playlist", id: playlistId });
+        }
       }
     } else {
-      (_b = ui.notifications) == null ? void 0 : _b.warn("Playlist is empty");
+      (_c = ui.notifications) == null ? void 0 : _c.warn("Playlist is empty");
     }
   }
   // ─────────────────────────────────────────────────────────────
@@ -3196,7 +3256,7 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     var _a, _b, _c;
     event.preventDefault();
     event.stopPropagation();
-    const playlistId = String($(event.currentTarget).data("playlist-id"));
+    const playlistId = $(event.currentTarget).closest("[data-playlist-id]").data("playlist-id");
     const playlist = this.library.playlists.getPlaylist(playlistId);
     if (!playlist || !((_a = window.ASE) == null ? void 0 : _a.queue)) {
       Logger.warn("Cannot toggle playlist queue: playlist or queue not available");
@@ -3220,7 +3280,6 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
       window.ASE.queue.addPlaylist(playlistId, playlistItems);
       (_c = ui.notifications) == null ? void 0 : _c.info(`Added "${playlist.name}" (${playlist.items.length} tracks) to queue`);
     }
-    this.render();
   }
   onPlaylistContext(event) {
     event.preventDefault();
@@ -4380,6 +4439,8 @@ const _SoundMixerApp = class _SoundMixerApp {
       volume,
       volumePercent: Math.round(volume * 100),
       loop,
+      playbackMode: (libraryItem == null ? void 0 : libraryItem.playbackMode) || "inherit",
+      // Add playbackMode
       currentTime,
       currentTimeFormatted: formatTime(currentTime),
       duration,
@@ -4401,7 +4462,7 @@ const _SoundMixerApp = class _SoundMixerApp {
     html.find('[data-action="pause-queue"]').on("click", (e) => this.onPauseQueueItem(e));
     html.find('[data-action="stop-queue"]').on("click", (e) => this.onStopQueueItem(e));
     html.find('[data-action="remove-queue"]').on("click", (e) => this.onRemoveQueueItem(e));
-    html.find('[data-action="loop-queue"]').on("click", (e) => this.onLoopQueueItem(e));
+    html.find('[data-action="track-mode-dropdown"]').on("click", (e) => this.onTrackModeClick(e));
     html.find('[data-action="toggle-playlist"]').on("click", (e) => this.onTogglePlaylist(e));
     html.find('[data-action="seek"]').on("input", (e) => this.onSeek(e));
     html.find('[data-action="volume"]').on("input", (e) => this.onVolumeChange(e));
@@ -4426,7 +4487,11 @@ const _SoundMixerApp = class _SoundMixerApp {
         if (!existingQueueItem) {
           this.queueManager.addItem(id, { group: libraryItem.group });
         }
-        await this.playTrack(id);
+        const context = {
+          type: "track",
+          playbackMode: libraryItem.playbackMode
+        };
+        await this.playTrack(id, context);
       }
     } else {
       const playlist = this.libraryManager.playlists.getPlaylist(id);
@@ -4483,7 +4548,24 @@ const _SoundMixerApp = class _SoundMixerApp {
     event.stopPropagation();
     const $track = $(event.currentTarget).closest(".ase-queue-track");
     const itemId = $track.data("item-id");
-    await this.playTrack(itemId);
+    const playlistId = $track.closest(".ase-queue-playlist").data("playlist-id");
+    const queueItem = this.queueManager.getItems().find((q) => q.libraryItemId === itemId);
+    let context;
+    if (playlistId && (queueItem == null ? void 0 : queueItem.playlistId) === playlistId) {
+      const playlist = this.libraryManager.playlists.getPlaylist(playlistId);
+      context = {
+        type: "playlist",
+        id: playlistId,
+        playbackMode: (playlist == null ? void 0 : playlist.playbackMode) || "loop"
+      };
+    } else {
+      const libraryItem = this.libraryManager.getItem(itemId);
+      context = {
+        type: "track",
+        playbackMode: (libraryItem == null ? void 0 : libraryItem.playbackMode) || "inherit"
+      };
+    }
+    await this.playTrack(itemId, context);
     this.requestRender();
   }
   onPauseQueueItem(event) {
@@ -4512,24 +4594,75 @@ const _SoundMixerApp = class _SoundMixerApp {
     this.queueManager.removeItem(queueId);
     this.requestRender();
   }
-  onLoopQueueItem(event) {
-    var _a, _b;
+  /**
+   * Handle playback mode dropdown click
+   */
+  onTrackModeClick(event) {
     event.preventDefault();
     event.stopPropagation();
-    const $track = $(event.currentTarget).closest(".ase-queue-track");
-    const itemId = $track.data("item-id");
-    const $icon = $(event.currentTarget);
-    const currentLoop = $icon.hasClass("active");
-    const newLoop = !currentLoop;
-    this.engine.setTrackLoop(itemId, newLoop);
-    (_b = (_a = this.engine).scheduleSave) == null ? void 0 : _b.call(_a);
-    if (newLoop) {
-      $icon.addClass("active").css("color", "var(--accent-cyan)");
-    } else {
-      $icon.removeClass("active").css("color", "");
+    const btn = $(event.currentTarget);
+    let itemId = btn.data("item-id");
+    if (!itemId) {
+      itemId = btn.closest("[data-item-id]").data("item-id");
     }
+    const item = this.libraryManager.getItem(itemId);
+    if (!item) {
+      Logger.warn(`Track Mode Clicked: Item not found for ID ${itemId}`);
+      return;
+    }
+    const modes = [
+      { label: "Inherit (Default)", value: "inherit", icon: "fa-arrow-turn-down" },
+      { label: "Loop", value: "loop", icon: "fa-repeat" },
+      { label: "Single", value: "single", icon: "fa-stop" },
+      { label: "Linear", value: "linear", icon: "fa-arrow-right" },
+      { label: "Random", value: "random", icon: "fa-shuffle" }
+    ];
+    this.showModeContextMenu(event, modes, (mode) => {
+      this.libraryManager.updateItem(itemId, { playbackMode: mode });
+      this.requestRender();
+    });
+  }
+  /**
+   * Show context menu for mode selection
+   */
+  showModeContextMenu(event, modes, callback) {
+    const menuHtml = `
+      <div id="ase-mode-menu" style="position: fixed; z-index: 10000; background: #110f1c; border: 1px solid #363249; border-radius: 4px; padding: 5px 0; box-shadow: 0 4px 12px rgba(0,0,0,0.5);">
+        ${modes.map((m) => `
+          <div class="ase-ctx-item" data-value="${m.value}" style="padding: 8px 15px; cursor: pointer; color: #eee; display: flex; align-items: center; gap: 8px;">
+              <i class="fa-solid ${m.icon}" style="width: 16px; text-align: center; color: #cca477;"></i> 
+              <span>${m.label}</span>
+          </div>
+        `).join("")}
+      </div>
+    `;
+    $("#ase-mode-menu").remove();
+    const menu = $(menuHtml);
+    $("body").append(menu);
+    menu.css({ top: event.clientY, left: event.clientX });
+    menu.find(".ase-ctx-item").hover(
+      function() {
+        $(this).css("background", "#363249");
+      },
+      function() {
+        $(this).css("background", "transparent");
+      }
+    );
+    menu.find(".ase-ctx-item").on("click", (e) => {
+      e.stopPropagation();
+      const val = $(e.currentTarget).data("value");
+      Logger.debug(`Mode Selected: ${val}`);
+      callback(val);
+      menu.remove();
+    });
+    setTimeout(() => {
+      $("body").one("click", () => {
+        menu.remove();
+      });
+    }, 10);
   }
   async onAddToQueueFromFavorite(event) {
+    var _a, _b, _c, _d;
     event.preventDefault();
     event.stopPropagation();
     const $el = $(event.currentTarget);
@@ -4537,14 +4670,28 @@ const _SoundMixerApp = class _SoundMixerApp {
     const type = $el.data("favorite-type");
     if (type === "track") {
       const libraryItem = this.libraryManager.getItem(id);
-      if (libraryItem) {
+      if (!libraryItem) return;
+      if (this.queueManager.hasItem(id)) {
+        this.queueManager.removeByLibraryItemId(id);
+        Logger.info("Removed track from queue:", libraryItem.name);
+        (_a = ui.notifications) == null ? void 0 : _a.info(`Removed from queue: ${libraryItem.name}`);
+      } else {
         this.queueManager.addItem(id, { group: libraryItem.group });
         Logger.info("Added track to queue:", libraryItem.name);
+        (_b = ui.notifications) == null ? void 0 : _b.info(`Added to queue: ${libraryItem.name}`);
       }
     } else {
       const playlist = this.libraryManager.playlists.getPlaylist(id);
-      if (playlist) {
-        const tracks = this.libraryManager.playlists.getPlaylistTracks(id);
+      if (!playlist) return;
+      const tracks = this.libraryManager.playlists.getPlaylistTracks(id);
+      const allInQueue = tracks.every((t) => this.queueManager.hasItem(t.libraryItemId));
+      if (allInQueue) {
+        for (const track of tracks) {
+          this.queueManager.removeByLibraryItemId(track.libraryItemId);
+        }
+        Logger.info("Removed playlist from queue:", playlist.name);
+        (_c = ui.notifications) == null ? void 0 : _c.info(`Removed from queue: ${playlist.name}`);
+      } else {
         const playlistItems = tracks.map((t) => {
           const item = this.libraryManager.getItem(t.libraryItemId);
           return {
@@ -4554,6 +4701,7 @@ const _SoundMixerApp = class _SoundMixerApp {
         });
         this.queueManager.addPlaylist(id, playlistItems);
         Logger.info("Added playlist to queue:", playlist.name);
+        (_d = ui.notifications) == null ? void 0 : _d.info(`Added to queue: ${playlist.name}`);
       }
     }
     this.requestRender();
@@ -4626,7 +4774,12 @@ const _SoundMixerApp = class _SoundMixerApp {
   // ─────────────────────────────────────────────────────────────
   // Playback Core Methods
   // ─────────────────────────────────────────────────────────────
-  async playTrack(itemId) {
+  /**
+   * Воспроизвести трек с опциональным контекстом
+   * @param itemId - ID трека из библиотеки
+   * @param context - Контекст воспроизведения (playlist, track, queue)
+   */
+  async playTrack(itemId, context) {
     const libraryItem = this.libraryManager.getItem(itemId);
     if (!libraryItem) {
       Logger.warn("Track not found in library:", itemId);
@@ -4635,7 +4788,7 @@ const _SoundMixerApp = class _SoundMixerApp {
     let player = this.engine.getTrack(itemId);
     if (player && player.state === "paused") {
       const offset = player.getCurrentTime();
-      await this.engine.playTrack(itemId, offset);
+      await this.engine.playTrack(itemId, offset, context);
       if (this.socket.syncEnabled) {
         this.socket.broadcastTrackPlay(itemId, offset);
       }
@@ -4650,7 +4803,11 @@ const _SoundMixerApp = class _SoundMixerApp {
         loop: false
       });
     }
-    await this.engine.playTrack(itemId);
+    const playbackContext = context || {
+      type: "track",
+      playbackMode: libraryItem.playbackMode
+    };
+    await this.engine.playTrack(itemId, 0, playbackContext);
     if (this.socket.syncEnabled) {
       this.socket.broadcastTrackPlay(itemId, 0);
     }
@@ -4668,11 +4825,28 @@ const _SoundMixerApp = class _SoundMixerApp {
       this.socket.broadcastTrackStop(itemId);
     }
   }
+  /**
+   * Воспроизвести плейлист (запускает первый трек с контекстом плейлиста)
+   * @param playlistId - ID плейлиста
+   */
   async playPlaylist(playlistId) {
+    const playlist = this.libraryManager.playlists.getPlaylist(playlistId);
+    if (!playlist) {
+      Logger.warn("Playlist not found:", playlistId);
+      return;
+    }
     const tracks = this.libraryManager.playlists.getPlaylistTracks(playlistId);
-    if (!tracks.length) return;
+    if (!tracks.length) {
+      Logger.warn("Playlist is empty:", playlist.name);
+      return;
+    }
+    const context = {
+      type: "playlist",
+      id: playlistId,
+      playbackMode: playlist.playbackMode
+    };
     const firstTrack = tracks[0];
-    await this.playTrack(firstTrack.libraryItemId);
+    await this.playTrack(firstTrack.libraryItemId, context);
   }
   stopPlaylist(playlistId) {
     const tracks = this.libraryManager.playlists.getPlaylistTracks(playlistId);
@@ -4734,7 +4908,7 @@ const _SoundMixerApp = class _SoundMixerApp {
 __name(_SoundMixerApp, "SoundMixerApp");
 __publicField(_SoundMixerApp, "THROTTLE_MS", 200);
 let SoundMixerApp = _SoundMixerApp;
-const MODULE_ID$2 = "advanced-sound-engine";
+const MODULE_ID$3 = "advanced-sound-engine";
 const _GlobalStorage = class _GlobalStorage {
   /**
    * Load presets from global JSON file
@@ -4858,7 +5032,7 @@ const _GlobalStorage = class _GlobalStorage {
         Logger.info("Global storage already populated, skipping migration");
         return false;
       }
-      const oldData = await ((_a = game.settings) == null ? void 0 : _a.get(MODULE_ID$2, "libraryState"));
+      const oldData = await ((_a = game.settings) == null ? void 0 : _a.get(MODULE_ID$3, "libraryState"));
       if (!oldData || oldData === "") {
         Logger.info("No world-scoped data to migrate");
         return false;
@@ -5140,7 +5314,7 @@ function generateUUID() {
   });
 }
 __name(generateUUID, "generateUUID");
-const MODULE_ID$1 = "advanced-sound-engine";
+const MODULE_ID$2 = "advanced-sound-engine";
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 const _AdvancedSoundEngineApp = class _AdvancedSoundEngineApp extends HandlebarsApplicationMixin(ApplicationV2) {
   constructor(engine, socket, libraryManager2, queueManager2, options = {}) {
@@ -5211,11 +5385,11 @@ const _AdvancedSoundEngineApp = class _AdvancedSoundEngineApp extends Handlebars
       tabContent = await renderTemplate("modules/advanced-sound-engine/templates/library.hbs", libData);
     } else if (this.state.activeTab === "mixer") {
       const mixerData = await this.mixerApp.getData();
-      tabContent = await renderTemplate(`modules/${MODULE_ID$1}/templates/mixer.hbs`, mixerData);
+      tabContent = await renderTemplate(`modules/${MODULE_ID$2}/templates/mixer.hbs`, mixerData);
     } else if (this.state.activeTab === "sfx") {
       Logger.info(`[AdvancedSoundEngineApp] Rendering SFX tab...`);
       const effectsData = await this.effectsApp.getData();
-      tabContent = await renderTemplate(`modules/${MODULE_ID$1}/templates/effects.hbs`, effectsData);
+      tabContent = await renderTemplate(`modules/${MODULE_ID$2}/templates/effects.hbs`, effectsData);
     }
     return {
       activeTab: this.state.activeTab,
@@ -5388,7 +5562,7 @@ __name(_AdvancedSoundEngineApp, "AdvancedSoundEngineApp");
  */
 __publicField(_AdvancedSoundEngineApp, "PARTS", {
   main: {
-    template: `modules/${MODULE_ID$1}/templates/main-app.hbs`,
+    template: `modules/${MODULE_ID$2}/templates/main-app.hbs`,
     scrollable: [".ase-content-body"]
   }
 });
@@ -6272,12 +6446,60 @@ const _LibraryManager = class _LibraryManager {
 };
 __name(_LibraryManager, "LibraryManager");
 let LibraryManager = _LibraryManager;
+const MODULE_ID$1 = "advanced-sound-engine";
 const _PlaybackQueueManager = class _PlaybackQueueManager {
   constructor() {
     __publicField(this, "items", []);
     __publicField(this, "activeItemId", null);
     __publicField(this, "eventListeners", /* @__PURE__ */ new Map());
+    __publicField(this, "saveTimeout", null);
     Logger.info("PlaybackQueueManager initialized");
+  }
+  /**
+   * Load queue state from settings
+   */
+  async load() {
+    var _a;
+    try {
+      const savedState = (_a = game.settings) == null ? void 0 : _a.get(MODULE_ID$1, "queueState");
+      if (savedState && savedState.items) {
+        this.items = savedState.items;
+        this.activeItemId = savedState.activeItemId || null;
+        Logger.info(`Loaded ${this.items.length} items from queue`);
+      } else {
+        Logger.debug("No saved queue state found");
+      }
+    } catch (error) {
+      Logger.error("Failed to load queue state:", error);
+    }
+  }
+  /**
+   * Save queue state to settings (debounced)
+   */
+  scheduleSave() {
+    if (this.saveTimeout !== null) {
+      window.clearTimeout(this.saveTimeout);
+    }
+    this.saveTimeout = window.setTimeout(() => {
+      this.save();
+      this.saveTimeout = null;
+    }, 500);
+  }
+  /**
+   * Save queue state immediately
+   */
+  async save() {
+    var _a;
+    try {
+      const state = {
+        items: this.items,
+        activeItemId: this.activeItemId
+      };
+      await ((_a = game.settings) == null ? void 0 : _a.set(MODULE_ID$1, "queueState", state));
+      Logger.debug("Queue state saved");
+    } catch (error) {
+      Logger.error("Failed to save queue state:", error);
+    }
   }
   // ─────────────────────────────────────────────────────────────
   // Core Operations
@@ -6299,6 +6521,7 @@ const _PlaybackQueueManager = class _PlaybackQueueManager {
     this.items.push(item);
     this.emit("add", { item });
     this.emit("change", { items: this.items });
+    this.scheduleSave();
     Logger.debug("Added to queue:", item.id, libraryItemId);
     return item;
   }
@@ -6331,6 +6554,7 @@ const _PlaybackQueueManager = class _PlaybackQueueManager {
     }
     this.emit("remove", { item: removed });
     this.emit("change", { items: this.items });
+    this.scheduleSave();
     Logger.debug("Removed from queue:", queueItemId);
     return true;
   }
@@ -6342,6 +6566,7 @@ const _PlaybackQueueManager = class _PlaybackQueueManager {
     this.activeItemId = null;
     this.emit("change", { items: [] });
     this.emit("active", { item: void 0 });
+    this.scheduleSave();
     Logger.debug("Queue cleared");
   }
   // ─────────────────────────────────────────────────────────────
@@ -6451,12 +6676,14 @@ const _PlaybackQueueManager = class _PlaybackQueueManager {
 __name(_PlaybackQueueManager, "PlaybackQueueManager");
 let PlaybackQueueManager = _PlaybackQueueManager;
 const _PlaybackScheduler = class _PlaybackScheduler {
-  constructor(engine, library) {
+  constructor(engine, library, queue) {
     __publicField(this, "engine");
     __publicField(this, "library");
+    __publicField(this, "queue");
     __publicField(this, "currentContext", null);
     this.engine = engine;
     this.library = library;
+    this.queue = queue;
     this.setupListeners();
   }
   setupListeners() {
@@ -6478,36 +6705,48 @@ const _PlaybackScheduler = class _PlaybackScheduler {
    * Handle track ending
    */
   async handleTrackEnded(trackId) {
-    Logger.debug(`Track ${trackId} ended. Deciding next move...`);
+    Logger.info(`[PlaybackScheduler] Track ended: ${trackId}`);
+    Logger.info(`[PlaybackScheduler] Current context:`, this.currentContext);
     if (!this.currentContext) {
-      Logger.debug("No playback context. Stopping.");
+      Logger.warn("[PlaybackScheduler] No playback context available - auto-progression disabled");
       return;
     }
     const { type, id } = this.currentContext;
+    Logger.info(`[PlaybackScheduler] Context type: ${type}, id: ${id || "none"}, mode: ${this.currentContext.playbackMode}`);
     if (type === "playlist" && id) {
+      Logger.info(`[PlaybackScheduler] Handling playlist context: ${id}`);
       await this.handlePlaylistContext(id, trackId);
     } else if (type === "track") {
+      Logger.info(`[PlaybackScheduler] Handling track context`);
       await this.handleTrackContext(trackId);
     }
   }
   async handlePlaylistContext(playlistId, endedTrackId) {
     const playlist = this.library.playlists.getPlaylist(playlistId);
-    if (!playlist) return;
+    if (!playlist) {
+      Logger.warn(`Playlist ${playlistId} not found`);
+      return;
+    }
     const tracks = [...playlist.items].sort((a, b) => a.order - b.order);
-    if (tracks.length === 0) return;
+    if (tracks.length === 0) {
+      Logger.warn(`Playlist ${playlist.name} is empty`);
+      return;
+    }
     const currentIndex = tracks.findIndex((t) => t.libraryItemId === endedTrackId);
     if (currentIndex === -1) {
       Logger.warn(`Ended track ${endedTrackId} not found in playlist ${playlist.name}`);
       return;
     }
     const mode = playlist.playbackMode || "loop";
+    Logger.debug(`Playlist mode: ${mode}, current index: ${currentIndex}/${tracks.length}`);
     switch (mode) {
       case "linear":
         if (currentIndex < tracks.length - 1) {
           const nextItem = tracks[currentIndex + 1];
-          await this.playPlaylistItem(nextItem, { type: "playlist", id: playlistId });
+          await this.playPlaylistItem(nextItem, playlistId, playlist.playbackMode);
         } else {
           Logger.debug("Playlist linear playback finished.");
+          this.currentContext = null;
         }
         break;
       case "loop":
@@ -6515,7 +6754,7 @@ const _PlaybackScheduler = class _PlaybackScheduler {
         if (nextIndex >= tracks.length) {
           nextIndex = 0;
         }
-        await this.playPlaylistItem(tracks[nextIndex], { type: "playlist", id: playlistId });
+        await this.playPlaylistItem(tracks[nextIndex], playlistId, playlist.playbackMode);
         break;
       case "random":
         if (tracks.length > 1) {
@@ -6523,43 +6762,146 @@ const _PlaybackScheduler = class _PlaybackScheduler {
           do {
             randomIndex = Math.floor(Math.random() * tracks.length);
           } while (randomIndex === currentIndex && tracks.length > 1);
-          await this.playPlaylistItem(tracks[randomIndex], { type: "playlist", id: playlistId });
+          await this.playPlaylistItem(tracks[randomIndex], playlistId, playlist.playbackMode);
         } else {
-          await this.playPlaylistItem(tracks[0], { type: "playlist", id: playlistId });
+          await this.playPlaylistItem(tracks[0], playlistId, playlist.playbackMode);
         }
         break;
     }
   }
-  async playPlaylistItem(item, context) {
+  /**
+   * Воспроизвести элемент плейлиста
+   * @param item - Элемент плейлиста
+   * @param playlistId - ID плейлиста
+   * @param playlistMode - Режим воспроизведения плейлиста
+   */
+  async playPlaylistItem(item, playlistId, playlistMode) {
     const track = this.library.getItem(item.libraryItemId);
-    if (track) {
-      await this.engine.playTrack(track.url, 0, context);
-      if (item.volume !== void 0) {
-        this.engine.setTrackVolume(track.id, item.volume);
-      }
+    if (!track) {
+      Logger.warn(`Track ${item.libraryItemId} not found in library`);
+      return;
     }
+    Logger.debug(`Playing playlist item: ${track.name}`);
+    let player = this.engine.getTrack(track.id);
+    if (!player) {
+      player = await this.engine.createTrack({
+        id: track.id,
+        url: track.url,
+        group: track.group,
+        volume: item.volume !== void 0 ? item.volume : 1,
+        loop: false
+        // Playlist handles looping, not individual track
+      });
+    }
+    const context = {
+      type: "playlist",
+      id: playlistId,
+      playbackMode: playlistMode
+    };
+    await this.engine.playTrack(track.id, 0, context);
   }
+  /**
+   * Обработать завершение отдельного трека (не из плейлиста)
+   * @param trackId - ID завершившегося трека
+   */
   async handleTrackContext(trackId) {
     const track = this.library.getItem(trackId);
-    if (!track) return;
+    if (!track) {
+      Logger.warn(`Track ${trackId} not found in library`);
+      return;
+    }
     let mode = track.playbackMode;
     if (mode === "inherit") {
+      Logger.debug(`Track ${track.name} has inherit mode, using loop as fallback`);
       mode = "loop";
     }
+    Logger.debug(`Track ${track.name} playback mode: ${mode}`);
     switch (mode) {
       case "loop":
-        await this.engine.playTrack(trackId, 0, { type: "track" });
+        Logger.debug(`Looping track: ${track.name}`);
+        const context = {
+          type: "track",
+          playbackMode: "loop"
+        };
+        await this.engine.playTrack(trackId, 0, context);
+        break;
+      case "single":
+        Logger.debug(`Track ${track.name} finished (single mode)`);
+        this.currentContext = null;
         break;
       case "random":
-        const groupTracks = this.library.getAllItems().filter((t) => t.group === track.group);
-        if (groupTracks.length > 1) {
-          let randomTrack;
-          do {
-            randomTrack = groupTracks[Math.floor(Math.random() * groupTracks.length)];
-          } while (randomTrack.id === trackId);
-        }
+      case "linear":
+        await this.handleUngroupedQueueContext(trackId, mode);
         break;
     }
+  }
+  /**
+   * Обработать Random/Linear режимы для треков в Ungrouped очереди
+   * @param trackId - ID завершившегося трека
+   * @param mode - Режим воспроизведения (random или linear)
+   */
+  async handleUngroupedQueueContext(trackId, mode) {
+    const ungroupedTracks = this.queue.getItems().filter((item) => !item.playlistId);
+    if (ungroupedTracks.length === 0) {
+      Logger.debug("No ungrouped tracks in queue");
+      this.currentContext = null;
+      return;
+    }
+    const currentIndex = ungroupedTracks.findIndex((item) => item.libraryItemId === trackId);
+    if (currentIndex === -1) {
+      Logger.warn(`Track ${trackId} not found in ungrouped queue`);
+      this.currentContext = null;
+      return;
+    }
+    Logger.debug(`Ungrouped queue mode: ${mode}, current index: ${currentIndex}/${ungroupedTracks.length}`);
+    let nextTrack = null;
+    if (mode === "linear") {
+      if (currentIndex < ungroupedTracks.length - 1) {
+        nextTrack = ungroupedTracks[currentIndex + 1];
+        Logger.debug(`Linear: playing next track in ungrouped queue`);
+      } else {
+        Logger.debug("Ungrouped linear playback finished");
+        this.currentContext = null;
+        return;
+      }
+    } else if (mode === "random") {
+      if (ungroupedTracks.length > 1) {
+        let randomIndex;
+        do {
+          randomIndex = Math.floor(Math.random() * ungroupedTracks.length);
+        } while (randomIndex === currentIndex && ungroupedTracks.length > 1);
+        nextTrack = ungroupedTracks[randomIndex];
+        Logger.debug(`Random: selected track at index ${randomIndex}`);
+      } else {
+        nextTrack = ungroupedTracks[0];
+        Logger.debug("Random: only one track, repeating it");
+      }
+    }
+    if (!nextTrack) {
+      this.currentContext = null;
+      return;
+    }
+    const libraryItem = this.library.getItem(nextTrack.libraryItemId);
+    if (!libraryItem) {
+      Logger.warn(`Track ${nextTrack.libraryItemId} not found in library`);
+      this.currentContext = null;
+      return;
+    }
+    let player = this.engine.getTrack(libraryItem.id);
+    if (!player) {
+      player = await this.engine.createTrack({
+        id: libraryItem.id,
+        url: libraryItem.url,
+        group: libraryItem.group,
+        volume: 1,
+        loop: false
+      });
+    }
+    const context = {
+      type: "track",
+      playbackMode: mode
+    };
+    await this.engine.playTrack(libraryItem.id, 0, context);
   }
 };
 __name(_PlaybackScheduler, "PlaybackScheduler");
@@ -6706,13 +7048,14 @@ Hooks.once("ready", async () => {
   var _a;
   const isGM = ((_a = game.user) == null ? void 0 : _a.isGM) ?? false;
   Logger.info(`Starting Advanced Sound Engine (${isGM ? "GM" : "Player"})...`);
+  queueManager = new PlaybackQueueManager();
+  await queueManager.load();
   socketManager = new SocketManager();
   if (isGM) {
     await initializeGM();
   } else {
     await initializePlayer();
   }
-  queueManager = new PlaybackQueueManager();
   window.ASE = {
     isGM,
     openPanel: isGM ? openMainApp : openVolumePanel,
@@ -6730,7 +7073,7 @@ async function initializeGM() {
   gmEngine = new AudioEngine();
   socketManager.initializeAsGM(gmEngine);
   await gmEngine.loadSavedState();
-  new PlaybackScheduler(gmEngine, libraryManager);
+  new PlaybackScheduler(gmEngine, libraryManager, queueManager);
   Logger.info("PlaybackScheduler initialized");
 }
 __name(initializeGM, "initializeGM");
@@ -6805,6 +7148,14 @@ function registerSettings() {
     config: false,
     type: String,
     default: ""
+  });
+  game.settings.register(MODULE_ID, "queueState", {
+    name: "Queue State",
+    hint: "Playback queue state (persists between sessions)",
+    scope: "world",
+    config: false,
+    type: Object,
+    default: { items: [], activeItemId: null }
   });
 }
 __name(registerSettings, "registerSettings");

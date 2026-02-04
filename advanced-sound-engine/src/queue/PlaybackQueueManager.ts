@@ -3,20 +3,73 @@ import type { TrackGroup } from '@t/audio';
 import { generateUUID } from '@utils/uuid';
 import { Logger } from '../utils/logger';
 
+const MODULE_ID = 'advanced-sound-engine';
+
 type QueueEventType = 'add' | 'remove' | 'change' | 'active';
 type QueueEventCallback = (data: { item?: QueueItem; items?: QueueItem[] }) => void;
 
 /**
- * Manages the runtime playback queue
- * This is NOT persisted - it's a session-level working set for the mixer
+ * Manages the playback queue
+ * Queue state is persisted between sessions via game.settings
  */
 export class PlaybackQueueManager {
     private items: QueueItem[] = [];
     private activeItemId: string | null = null;
     private eventListeners: Map<QueueEventType, Set<QueueEventCallback>> = new Map();
+    private saveTimeout: number | null = null;
 
     constructor() {
         Logger.info('PlaybackQueueManager initialized');
+    }
+
+    /**
+     * Load queue state from settings
+     */
+    async load(): Promise<void> {
+        try {
+            const savedState = (game.settings as any)?.get(MODULE_ID, 'queueState') as PlaybackQueueState | undefined;
+
+            if (savedState && savedState.items) {
+                this.items = savedState.items;
+                this.activeItemId = savedState.activeItemId || null;
+                Logger.info(`Loaded ${this.items.length} items from queue`);
+            } else {
+                Logger.debug('No saved queue state found');
+            }
+        } catch (error) {
+            Logger.error('Failed to load queue state:', error);
+        }
+    }
+
+    /**
+     * Save queue state to settings (debounced)
+     */
+    private scheduleSave(): void {
+        if (this.saveTimeout !== null) {
+            window.clearTimeout(this.saveTimeout);
+        }
+
+        this.saveTimeout = window.setTimeout(() => {
+            this.save();
+            this.saveTimeout = null;
+        }, 500); // 500ms debounce
+    }
+
+    /**
+     * Save queue state immediately
+     */
+    private async save(): Promise<void> {
+        try {
+            const state: PlaybackQueueState = {
+                items: this.items,
+                activeItemId: this.activeItemId
+            };
+
+            await (game.settings as any)?.set(MODULE_ID, 'queueState', state);
+            Logger.debug('Queue state saved');
+        } catch (error) {
+            Logger.error('Failed to save queue state:', error);
+        }
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -41,6 +94,7 @@ export class PlaybackQueueManager {
         this.items.push(item);
         this.emit('add', { item });
         this.emit('change', { items: this.items });
+        this.scheduleSave();
 
         Logger.debug('Added to queue:', item.id, libraryItemId);
         return item;
@@ -81,6 +135,7 @@ export class PlaybackQueueManager {
 
         this.emit('remove', { item: removed });
         this.emit('change', { items: this.items });
+        this.scheduleSave();
 
         Logger.debug('Removed from queue:', queueItemId);
         return true;
@@ -94,6 +149,7 @@ export class PlaybackQueueManager {
         this.activeItemId = null;
         this.emit('change', { items: [] });
         this.emit('active', { item: undefined });
+        this.scheduleSave();
         Logger.debug('Queue cleared');
     }
 

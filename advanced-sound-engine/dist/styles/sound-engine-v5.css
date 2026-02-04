@@ -510,8 +510,10 @@
   background-color: var(--ase-border-accent);
   box-shadow: 0 0 8px rgba(255, 100, 0, 0.6);
 }
-.ase-icon-add-queue.active {
+
+.ase-queue-btn.active .ase-icon-add-queue {
   background-color: var(--ase-border-accent);
+  box-shadow: 0 0 8px rgba(255, 100, 0, 0.6);
 }
 
 .ase-list-group {
@@ -2400,4 +2402,17 @@
   height: 1px;
   background: var(--ase-border-dark);
   margin: 4px 0;
+}
+
+.ase-mode-icon {
+  position: relative;
+  z-index: 10;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: transform 0.2s, color 0.2s;
+}
+.ase-mode-icon:hover {
+  transform: scale(1.1);
+  color: var(--ase-text-highlight);
+  text-shadow: 0 0 5px rgba(255, 100, 0, 0.5);
 }

@@ -219,6 +219,10 @@ Hooks.once('ready', async () => {
   const isGM = game.user?.isGM ?? false;
   Logger.info(`Starting Advanced Sound Engine (${isGM ? 'GM' : 'Player'})...`);
 
+  // Initialize queue manager FIRST (needed by PlaybackScheduler)
+  queueManager = new PlaybackQueueManager();
+  await queueManager.load(); // Load saved queue state
+
   socketManager = new SocketManager();
 
   if (isGM) {
@@ -226,9 +230,6 @@ Hooks.once('ready', async () => {
   } else {
     await initializePlayer();
   }
-
-  // Initialize queue manager (runtime, no persistence)
-  queueManager = new PlaybackQueueManager();
 
   window.ASE = {
     isGM,
@@ -253,7 +254,7 @@ async function initializeGM(): Promise<void> {
   await gmEngine.loadSavedState();
 
   // Initialize Scheduler
-  playbackScheduler = new PlaybackScheduler(gmEngine, libraryManager);
+  playbackScheduler = new PlaybackScheduler(gmEngine, libraryManager, queueManager!);
   Logger.info('PlaybackScheduler initialized');
 }
 
@@ -349,6 +350,7 @@ function registerSettings(): void {
     default: 8
   });
 
+  // Legacy library state fallback (world-scoped, for migration only)
   (game.settings as any).register(MODULE_ID, 'libraryState', {
     name: 'Library State',
     hint: 'Internal storage for library items and playlists',
@@ -356,6 +358,16 @@ function registerSettings(): void {
     config: false,
     type: String,
     default: ''
+  });
+
+  // Queue state (world-scoped, session persistence  
+  (game.settings as any).register(MODULE_ID, 'queueState', {
+    name: 'Queue State',
+    hint: 'Playback queue state (persists between sessions)',
+    scope: 'world',
+    config: false,
+    type: Object,
+    default: { items: [], activeItemId: null }
   });
 }
 

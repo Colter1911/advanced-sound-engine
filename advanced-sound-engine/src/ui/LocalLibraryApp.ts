@@ -34,6 +34,7 @@ interface LibraryData {
   selectedPlaylistId: string | null;
   sortBy: string;
   hasActiveFilters: boolean;
+  sortOptions?: Array<{ value: string; label: string; }>; // Added for UI dropdown
 }
 
 interface TagViewData {
@@ -66,6 +67,7 @@ interface PlaylistViewData {
   favorite: boolean;
   inQueue: boolean;
   selected?: boolean;
+  playbackMode?: string;
 }
 
 interface FavoriteViewData {
@@ -94,6 +96,9 @@ export class LocalLibraryApp extends Application {
   }
 
   private parentApp: any; // Using any to avoid circular import issues for now, or use interface
+  private _queueListener: ((data: any) => void) | null = null;
+  private _listenersInitialized = false; // Track if we've initialized delegated listeners
+  private _renderDebounceTimer: number | null = null; // Debounce timer for renders
 
   constructor(library: LibraryManager, parentApp: any, options = {}) {
     super(options);
@@ -118,7 +123,14 @@ export class LocalLibraryApp extends Application {
 
   // Override render to delegate to main app
   override render(force?: boolean, options?: any): any {
-    // If we are part of the unified app, we just trigger the main app to update
+    // Background update: Trigger parent app re-render
+    if (options?.renderContext === 'queue-update') {
+      if (this.parentApp && typeof this.parentApp.render === 'function') {
+        return this.parentApp.render({ parts: ['main'] });
+      }
+    }
+
+    // Default behavior: Delegate to openPanel (likely focuses tab)
     if (window.ASE?.openPanel) {
       window.ASE.openPanel('library', true);
       return;
@@ -126,11 +138,36 @@ export class LocalLibraryApp extends Application {
     return super.render(force, options);
   }
 
+  override async close(options?: any): Promise<void> {
+    // Clean up queue listener
+    if (this._queueListener && window.ASE?.queue) {
+      window.ASE.queue.off('change', this._queueListener);
+      this._queueListener = null;
+    }
+
+    // Clean up debounce timer
+    if (this._renderDebounceTimer) {
+      clearTimeout(this._renderDebounceTimer);
+      this._renderDebounceTimer = null;
+    }
+
+    // Clean up global delegated event handler
+    if (this._listenersInitialized) {
+      $(document).off('mousedown.ase-lib-global');
+      this._listenersInitialized = false;
+    }
+
+    return super.close(options);
+  }
+
+
   override getData(): LibraryData {
     let items = this.library.getAllItems();
     const playlists = this.library.playlists.getAllPlaylists();
     const allTags = this.library.getAllTags();
+
     const stats = this.library.getStats();
+
 
     // Trigger background scan for missing durations (run once per session)
     this.library.scanMissingDurations().then(() => {
@@ -203,14 +240,16 @@ export class LocalLibraryApp extends Application {
     // Check if any filters are active (if NOT all channels are selected, or other filters exist)
     const allChannelsSelected = this.filterState.selectedChannels.size === 3; // Assuming 3 channels
     const hasActiveFilters = !!(
-      this.filterState.searchQuery ||
       !allChannelsSelected ||
       this.filterState.selectedPlaylistId ||
       this.filterState.selectedTags.size > 0
     );
 
+    // Map items to view data (adds inQueue, durationFormatted, etc.)
+    const itemsViewData = items.map(item => this.getItemViewData(item));
+
     return {
-      items: items.map(item => this.getItemViewData(item)),
+      items: itemsViewData,
       playlists: playlistsViewData,
       favorites,
       tags,
@@ -220,7 +259,6 @@ export class LocalLibraryApp extends Application {
         playlists: stats.totalPlaylists,
         tagCount: stats.tagCount
       },
-      // Filter state for UI
       searchQuery: this.filterState.searchQuery,
       filters: {
         music: this.filterState.selectedChannels.has('music'),
@@ -229,7 +267,15 @@ export class LocalLibraryApp extends Application {
       },
       selectedPlaylistId: this.filterState.selectedPlaylistId,
       sortBy: this.filterState.sortBy,
-      hasActiveFilters
+      hasActiveFilters,
+      sortOptions: [
+        { value: 'date-desc', label: 'Date Added (Newest)' },
+        { value: 'date-asc', label: 'Date Added (Oldest)' },
+        { value: 'name-asc', label: 'Name (A-Z)' },
+        { value: 'name-desc', label: 'Name (Z-A)' },
+        { value: 'duration-asc', label: 'Duration (Shortest)' },
+        { value: 'duration-desc', label: 'Duration (Longest)' }
+      ]
     };
   }
 
@@ -238,6 +284,7 @@ export class LocalLibraryApp extends Application {
     const inQueue = window.ASE?.queue?.getItems().some(
       item => item.playlistId === playlist.id
     ) ?? false;
+    console.log('ASE Debug: Playlist View Data:', { id: playlist.id, name: playlist.name, inQueue });
 
     return {
       id: playlist.id,
@@ -246,7 +293,8 @@ export class LocalLibraryApp extends Application {
       trackCount: playlist.items.length, // Alias for template
       favorite: playlist.favorite,
       inQueue,
-      selected: false
+      selected: false,
+      playbackMode: playlist.playbackMode
     };
   }
 
@@ -385,91 +433,118 @@ export class LocalLibraryApp extends Application {
   override activateListeners(html: JQuery): void {
     super.activateListeners(html);
 
+    // ═══════════════════════════════════════════════════════════════
+    // CRITICAL: Remove ALL namespaced event listeners to prevent memory leaks
+    // Using namespace ensures delegated handlers are also removed
+    // ═══════════════════════════════════════════════════════════════
+    html.off('.ase-library');
+
+    // ═══════════════════════════════════════════════════════════════
+    // Queue Change Listener - Register ONCE to update UI when queue changes
+    // ═══════════════════════════════════════════════════════════════
+    if (!this._queueListener && window.ASE?.queue) {
+      this._queueListener = () => {
+        // Debounce renders to prevent multiple rapid updates
+        if (this._renderDebounceTimer) {
+          clearTimeout(this._renderDebounceTimer);
+        }
+        this._renderDebounceTimer = window.setTimeout(() => {
+          this._renderDebounceTimer = null;
+          this.render(false, { renderContext: 'queue-update' });
+        }, 50); // 50ms debounce
+      };
+      window.ASE.queue.on('change', this._queueListener);
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // GLOBAL delegated handlers - registered ONCE to prevent accumulation
+    // ═══════════════════════════════════════════════════════════════
+    if (!this._listenersInitialized) {
+      $(document).off('mousedown.ase-lib-global'); // Clean up any previous global handlers
+      $(document).on('mousedown.ase-lib-global', '#local-library [data-action]', (e) => {
+        console.log('ASE: Mousedown on action stopped propagation', e.currentTarget);
+        e.stopPropagation();
+      });
+      this._listenersInitialized = true;
+    }
+
     // Toolbar actions
-    html.find('[data-action="add-track"]').on('click', this.onAddTrack.bind(this));
+    html.find('[data-action="add-track"]').on('click.ase-library', this.onAddTrack.bind(this));
     // Listen for KeyDown (Enter) for search execution
-    html.find('.ase-search-input').on('keydown', this.onSearchKeydown.bind(this));
+    html.find('.ase-search-input').on('keydown.ase-library', this.onSearchKeydown.bind(this));
     // Listen for 'input' to manage X button visibility and auto-reset on empty
-    html.find('.ase-search-input').on('input', this.onSearchInput.bind(this));
-    html.find('.ase-search-clear').on('click', this.onClearSearch.bind(this));
-    html.find('[data-action="filter-channel"]').on('click', this._onFilterChannel.bind(this));
-    html.find('[data-action="sort-change"]').on('change', this.onChangeSort.bind(this));
-    html.find('[data-action="clear-filters"]').on('click', this.onClearFilters.bind(this));
+    html.find('.ase-search-input').on('input.ase-library', this.onSearchInput.bind(this));
+    html.find('.ase-search-clear').on('click.ase-library', this.onClearSearch.bind(this));
+    html.find('[data-action="filter-channel"]').on('click.ase-library', this._onFilterChannel.bind(this));
+    html.find('[data-action="sort-change"]').on('change.ase-library', this.onChangeSort.bind(this));
+    html.find('[data-action="clear-filters"]').on('click.ase-library', this.onClearFilters.bind(this));
 
     // Tag actions
-    html.find('[data-action="toggle-tag"]').on('click', this.onToggleTag.bind(this));
-    html.find('[data-action="add-tag"]').on('click', this.onAddTag.bind(this));
+    html.find('[data-action="toggle-tag"]').on('click.ase-library', this.onToggleTag.bind(this));
+    html.find('[data-action="add-tag"]').on('click.ase-library', this.onAddTag.bind(this));
 
     // Track actions
-    html.find('[data-action="play-track"]').on('click', this.onPlayTrack.bind(this));
-    html.find('[data-action="pause-track"]').on('click', this.onPauseTrack.bind(this));
-    html.find('[data-action="stop-track"]').on('click', this.onStopTrack.bind(this));
-    html.find('[data-action="add-to-queue"]').on('click', this.onAddToQueue.bind(this));
-    html.find('[data-action="toggle-favorite"]').on('click', this.onToggleFavorite.bind(this));
-    html.find('[data-action="add-to-playlist"]').on('click', this.onAddToPlaylist.bind(this));
-    html.find('[data-action="track-menu"]').on('click', this.onTrackMenu.bind(this));
+    html.find('[data-action="play-track"]').on('click.ase-library', this.onPlayTrack.bind(this));
+    html.find('[data-action="pause-track"]').on('click.ase-library', this.onPauseTrack.bind(this));
+    html.find('[data-action="stop-track"]').on('click.ase-library', this.onStopTrack.bind(this));
+    html.find('[data-action="add-to-queue"]').on('click.ase-library', this.onAddToQueue.bind(this));
+    html.find('[data-action="toggle-favorite"]').on('click.ase-library', this.onToggleFavorite.bind(this));
+    html.find('[data-action="add-to-playlist"]').on('click.ase-library', this.onAddToPlaylist.bind(this));
+    html.find('[data-action="track-menu"]').on('click.ase-library', this.onTrackMenu.bind(this));
 
     // In-track tag management
-    html.find('[data-action="add-tag-to-track"]').on('click', this.onAddTagToTrack.bind(this));
+    html.find('[data-action="add-tag-to-track"]').on('click.ase-library', this.onAddTagToTrack.bind(this));
 
     // Channel dropdown
-    html.find('[data-action="channel-dropdown"]').on('click', this.onChannelDropdown.bind(this));
+    html.find('[data-action="channel-dropdown"]').on('click.ase-library', this.onChannelDropdown.bind(this));
 
     // Delete track
-    html.find('[data-action="delete-track"]').on('click', this.onDeleteTrack.bind(this));
+    html.find('[data-action="delete-track"]').on('click.ase-library', this.onDeleteTrack.bind(this));
 
     // Track context menu (right-click)
-    html.find('.ase-track-player-item').on('contextmenu', this.onTrackContext.bind(this));
+    html.find('.ase-track-player-item').on('contextmenu.ase-library', this.onTrackContext.bind(this));
 
     // Tag context menu on track (right-click on tag)
-    html.find('.ase-track-tags .ase-tag').on('contextmenu', this.onTrackTagContext.bind(this));
+    html.find('.ase-track-tags .ase-tag').on('contextmenu.ase-library', this.onTrackTagContext.bind(this));
 
     // Playlist actions
-    html.find('[data-action="select-playlist"]').on('click', this.onSelectPlaylist.bind(this));
-    html.find('[data-action="create-playlist"]').on('click', this.onCreatePlaylist.bind(this));
-    html.find('[data-action="toggle-playlist-favorite"]').on('click', this.onTogglePlaylistFavorite.bind(this));
-    html.find('[data-action="toggle-playlist-queue"]').on('click', this.onTogglePlaylistQueue.bind(this));
-    html.find('[data-action="play-playlist"]').on('click', this.onPlayPlaylist.bind(this)); // New handler
-    // Use event delegation for dynamic mode selectors to ensure reliability
-    console.log('ASE: Binding mode selector events via delegation');
-    html.on('click', '[data-action="playlist-mode-dropdown"]', (e) => {
-      console.log('ASE: Playlist Mode Clicked (Delegated)', e.currentTarget);
-      this.onPlaylistModeClick(e as unknown as JQuery.ClickEvent);
-    });
-    html.on('click', '[data-action="track-mode-dropdown"]', (e) => {
-      console.log('ASE: Track Mode Clicked (Delegated)', e.currentTarget);
-      this.onTrackModeClick(e as unknown as JQuery.ClickEvent);
-    });
-    // CRITICAL: Prevent row drag from swallowing clicks on ANY action button
-    html.on('mousedown', '[data-action]', (e) => {
-      console.log('ASE: Mousedown on action stopped propagation', e.currentTarget);
-      e.stopPropagation();
-    });
-    html.find('[data-action="playlist-menu"]').on('click', this.onPlaylistMenu.bind(this));
-    html.find('.ase-list-item[data-playlist-id]').on('contextmenu', this.onPlaylistContext.bind(this));
+    html.find('[data-action="select-playlist"]').on('click.ase-library', this.onSelectPlaylist.bind(this));
+    html.find('[data-action="create-playlist"]').on('click.ase-library', this.onCreatePlaylist.bind(this));
+    html.find('[data-action="toggle-playlist-favorite"]').on('click.ase-library', this.onTogglePlaylistFavorite.bind(this));
+    html.find('[data-action="toggle-playlist-queue"]').on('click.ase-library', this.onTogglePlaylistQueue.bind(this));
+    html.find('[data-action="play-playlist"]').on('click.ase-library', this.onPlayPlaylist.bind(this)); // New handler
+
+    // Switch to direct binding for reliability
+    html.find('[data-action="playlist-mode-dropdown"]').on('click.ase-library', this.onPlaylistModeClick.bind(this));
+    html.find('[data-action="track-mode-dropdown"]').on('click.ase-library', this.onTrackModeClick.bind(this));
+
+    // NOTE: Moved mousedown handler to global delegation above to prevent accumulation
+
+    html.find('[data-action="playlist-menu"]').on('click.ase-library', this.onPlaylistMenu.bind(this));
+    html.find('.ase-list-item[data-playlist-id]').on('contextmenu.ase-library', this.onPlaylistContext.bind(this));
 
     // Favorite actions
-    html.find('[data-action="remove-from-favorites"]').on('click', this.onRemoveFromFavorites.bind(this));
-    html.find('[data-action="toggle-favorite-queue"]').on('click', this.onToggleFavoriteQueue.bind(this));
+    html.find('[data-action="remove-from-favorites"]').on('click.ase-library', this.onRemoveFromFavorites.bind(this));
+    html.find('[data-action="toggle-favorite-queue"]').on('click.ase-library', this.onToggleFavoriteQueue.bind(this));
 
     // Drag and drop
     this.setupDragAndDrop(html);
     this.setupFoundryDragDrop(html);
 
     // Track hover highlighting for playlists
-    html.find('.ase-track-player-item').on('mouseenter', (event: JQuery.MouseEnterEvent) => {
+    html.find('.ase-track-player-item').on('mouseenter.ase-library', (event: JQuery.MouseEnterEvent) => {
       const trackId = $(event.currentTarget).data('item-id');
       if (trackId) {
         this.highlightPlaylistsContainingTrack(trackId);
       }
     });
 
-    html.find('.ase-track-player-item').on('mouseleave', () => {
+    html.find('.ase-track-player-item').on('mouseleave.ase-library', () => {
       this.clearPlaylistHighlights();
     });
 
     // Custom Context Menu for GLOBAL tags only (in top panel)
-    html.find('.ase-tags-inline .ase-tag').on('contextmenu', this.onTagContext.bind(this));
+    html.find('.ase-tags-inline .ase-tag').on('contextmenu.ase-library', this.onTagContext.bind(this));
 
     Logger.debug('LocalLibraryApp listeners activated');
   }
@@ -653,17 +728,37 @@ export class LocalLibraryApp extends Application {
 
     if (playlist && playlist.items.length > 0) {
 
-      let trackToPlay = playlist.items[0];
-      if (playlist.playbackMode === 'random' && playlist.items.length > 1) {
-        const randomIndex = Math.floor(Math.random() * playlist.items.length);
-        trackToPlay = playlist.items[randomIndex];
-      }
+      const queue = window.ASE?.queue;
+      if (queue) {
+        // 1. Add playlist items to queue (Append, do not clear)
+        const addedItems = queue.addPlaylist(playlistId, playlist.items);
 
-      const libItem = this.library.getItem(trackToPlay.libraryItemId);
-      if (libItem) {
-        await (window.ASE.engine as any).playTrack(libItem.id, 0, { type: 'playlist', id: playlistId });
+        // 2. Determine start track logic
+        if (addedItems.length > 0) {
+          let startItem = addedItems[0];
+
+          // Handle Random Start if mode is random
+          if (playlist.playbackMode === 'random' && addedItems.length > 1) {
+            const randomIndex = Math.floor(Math.random() * addedItems.length);
+            startItem = addedItems[randomIndex];
+          }
+
+          // 3. Play the track immediately
+          const libItem = this.library.getItem(startItem.libraryItemId);
+          if (libItem) {
+            await (window.ASE.engine as any).playTrack(libItem.id, 0, { type: 'playlist', id: playlistId });
+          }
+        }
+
         ui.notifications?.info(`Playing playlist: ${playlist.name}`);
         this.render();
+      } else {
+        console.warn("ASE: Queue Manager not available");
+        let trackToPlay = playlist.items[0];
+        const libItem = this.library.getItem(trackToPlay.libraryItemId);
+        if (libItem) {
+          await (window.ASE.engine as any).playTrack(libItem.id, 0, { type: 'playlist', id: playlistId });
+        }
       }
     } else {
       ui.notifications?.warn('Playlist is empty');
@@ -1686,7 +1781,7 @@ export class LocalLibraryApp extends Application {
     event.preventDefault();
     event.stopPropagation();
 
-    const playlistId = String($(event.currentTarget).data('playlist-id'));
+    const playlistId = $(event.currentTarget).closest('[data-playlist-id]').data('playlist-id') as string;
     const playlist = this.library.playlists.getPlaylist(playlistId);
 
     if (!playlist || !window.ASE?.queue) {
@@ -1717,8 +1812,6 @@ export class LocalLibraryApp extends Application {
       window.ASE.queue.addPlaylist(playlistId, playlistItems);
       ui.notifications?.info(`Added "${playlist.name}" (${playlist.items.length} tracks) to queue`);
     }
-
-    this.render();
   }
 
   private onPlaylistContext(event: JQuery.ContextMenuEvent): void {

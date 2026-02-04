@@ -93,8 +93,15 @@
                   <i class="fa-solid fa-pause" data-action="pause-queue" title="Pause"></i>
                   <i class="fa-solid fa-stop" data-action="stop-queue" title="Stop"></i>
                 </div>
-                <i class="fa-solid fa-redo {{#if loop}}active{{/if}}" data-action="loop-queue" title="Loop"
-                  style="{{#if loop}}color: var(--accent-cyan);{{/if}}"></i>
+                {{!-- Playback Mode Selector --}}
+                <i class="fa-solid ase-mode-icon
+                    {{#if (eq playbackMode 'single')}}fa-stop
+                    {{else if (eq playbackMode 'linear')}}fa-arrow-right
+                    {{else if (eq playbackMode 'loop')}}fa-repeat
+                    {{else if (eq playbackMode 'random')}}fa-shuffle
+                    {{else if (eq playbackMode 'inherit')}}fa-arrow-turn-down
+                    {{else}}fa-arrow-turn-down{{/if}}" title="Playback Mode: {{playbackMode}}"
+                  data-action="track-mode-dropdown" data-item-id="{{libraryItemId}}"></i>
                 <i class="fa-solid fa-trash ase-btn-delete" data-action="remove-queue" title="Remove"></i>
               </div>
             </div>

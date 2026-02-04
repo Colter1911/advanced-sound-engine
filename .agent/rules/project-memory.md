@@ -1,3 +1,7 @@
+---
+trigger: always_on
+---
+
 # Project Codebase Memory
 
 ## 1. Global Types & Domain Models
@@ -27,7 +31,16 @@
 
 ## 3. UI Components & Apps (Foundry VTT)
 - **AdvancedSoundEngineApp** (`src/ui/AdvancedSoundEngineApp.ts`): Main application frame / window manager.
-- **LocalLibraryApp** (`src/ui/LocalLibraryApp.ts`): Library tab controller. Manage tracks, tags, playlists, and file uploads.
+- **LocalLibraryApp** (`src/ui/LocalLibraryApp.ts`):
+  - Library tab controller. Manage tracks, tags, playlists, and file uploads.
+  - **Render Delegation**: Delegates `render()` to `window.ASE.openPanel` to maintain unified app state.
+  - **Bypass**: Uses `render(false, { renderContext: 'queue-update' })` for background UI updates (e.g. queue glow).
+  - **🚨 CRITICAL Event Listener Patterns**:
+    - **Namespaced Events**: All listeners use `.ase-library` namespace for proper cleanup (`html.off('.ase-library')`)
+    - **Global Delegated Handlers**: Register ONCE via `_listenersInitialized` flag on `document` level, NOT on `html`
+    - **Queue Listener**: Registered in `activateListeners()` with 50ms debounce, **NEVER in `getData()`**
+    - **⛔ ANTI-PATTERN**: Registering event listeners in `getData()` causes exponential listener accumulation
+  - **Cleanup**: `close()` method must clear: queue listeners, debounce timers, and global delegated handlers
 - **SoundMixerApp** (`src/ui/SoundMixerApp.ts`): Mixer tab controller. Manage active playback, volume channels, and syncing.
 - **PlayerVolumePanel** (`src/ui/PlayerVolumePanel.ts`): Simple volume control for non-GM players.
 
@@ -66,7 +79,11 @@
     - Identical routing to GM (type-based IDs)
     - Receives effect param/routing/enabled updates via socket
 - **PlaybackQueueManager** (`src/queue/PlaybackQueueManager.ts`):
-  - Manages the list of active/queued tracks.
+  - Manages the list of active/queued tracks (Session-level, non-persisted).
+  - `addItem(libId, opts)`, `addPlaylist(id, items)`.
+  - `removeItem(id)`, `clearQueue()`.
+  - `hasItem(libId)`: Checks presence for UI glow.
+  - Events: `add`, `remove`, `change`, `active`.
 - **SocketManager** (`src/sync/SocketManager.ts`):
   - Handles real-time state synchronization between GM and players.
   - **Message Types**: 
@@ -137,4 +154,33 @@
 - **Buttons**:
   - **Icons**: Ghost style (transparent bg) -> Hover fill.
   - **Primary**: Gold border, localized glow.
+
+## 8. Playback Modes Implementation
+### Track Modes
+Defined in `LocalLibraryApp.onTrackModeClick` and stored in `LibraryItem.playbackMode`.
+- **Inherit (Default)** (`inherit`): Uses the playback mode of the playlist it belongs to, or "single" if played individually.
+- **Loop** (`loop`): Repeats the track indefinitely.
+- **Single** (`single`): Plays once and stops.
+- **Linear** (`linear`): (Conceptually for multi-file tracks, acts as Single for simple files).
+- **Random** (`random`): (Conceptually for multi-file tracks).
+
+#### Внутренняя реализация
+- **SoundMixerApp**: Передаёт `PlaybackContext` в `AudioEngine.playTrack()` при запуске треков/плейлистов
+- **AudioEngine**: Эмитит событие `contextChanged` и сохраняет контекст
+- **PlaybackScheduler**: 
+  - Слушает событие `trackEnded` от AudioEngine
+  - Определяет следующий трек на основе контекста
+  - Создаёт треки через `createTrack()` перед воспроизведением
+  - Очищает контекст после завершения Linear плейлистов или Single треков
+
+### Playlist Modes
+Defined in `LocalLibraryApp.onPlaylistModeClick` and stored in `Playlist.playbackMode`.
+- **Loop (Default)** (`loop`): Plays through the playlist and restarts from the beginning.
+- **Linear** (`linear`): Plays through the playlist once and stops.
+- **Random** (`random`): Shuffles the playlist order.
+
+### UI Integration (`LocalLibraryApp.ts`)
+- **Events**: Delegated click listeners on `[data-action="track-mode-dropdown"]` and `[data-action="playlist-mode-dropdown"]`.
+- **View Data**: `getItemViewData` and `getPlaylistViewData` **MUST** explicitly map `playbackMode` to the view object for the Handlebars template to render the correct icon.
+- **Icons**: FontAwesome icons are dynamically selected in `library.hbs` based on the mode value.
 
