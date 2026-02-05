@@ -4280,7 +4280,12 @@ const _SoundMixerApp = class _SoundMixerApp {
     this.libraryManager = libraryManager2;
     this.queueManager = queueManager2;
     this.queueManager.on("change", () => this.onQueueChange());
+    this.engine.on("trackEnded", () => this.onTrackStateChange());
     Hooks.on("ase.favoritesChanged", () => {
+      this.requestRender();
+    });
+    Hooks.on("ase.trackAutoSwitched", () => {
+      Logger.debug("[SoundMixerApp] Track auto-switched, re-rendering");
       this.requestRender();
     });
   }
@@ -4377,13 +4382,6 @@ const _SoundMixerApp = class _SoundMixerApp {
     const isPlaying = (player == null ? void 0 : player.state) === "playing";
     const isPaused = (player == null ? void 0 : player.state) === "paused";
     const shouldBeHidden = parentCollapsed && !isPlaying && !isPaused;
-    console.log(`[DEBUG] Track: ${libraryItem == null ? void 0 : libraryItem.name}`, {
-      parentCollapsed,
-      playerState: player == null ? void 0 : player.state,
-      isPlaying,
-      isPaused,
-      shouldBeHidden
-    });
     return {
       queueId: queueItem.id,
       libraryItemId: queueItem.libraryItemId,
@@ -4927,6 +4925,10 @@ const _SoundMixerApp = class _SoundMixerApp {
   }
   onQueueChange() {
     Logger.debug("Queue changed, mixer should refresh");
+    this.requestRender();
+  }
+  onTrackStateChange() {
+    Logger.debug("[SoundMixerApp] Track state changed, re-rendering mixer");
     this.requestRender();
   }
   requestRender() {
@@ -6779,6 +6781,17 @@ const _PlaybackScheduler = class _PlaybackScheduler {
       Logger.warn(`Ended track ${endedTrackId} not found in playlist ${playlist.name}`);
       return;
     }
+    const track = this.library.getItem(endedTrackId);
+    if (!track) {
+      Logger.warn(`Track ${endedTrackId} not found in library`);
+      return;
+    }
+    if (track.playbackMode && track.playbackMode !== "inherit") {
+      Logger.info(`Track ${track.name} has individual mode: ${track.playbackMode}`);
+      await this.handleIndividualTrackMode(endedTrackId, track.playbackMode);
+      return;
+    }
+    Logger.debug(`Track ${track.name} inherits playlist mode`);
     const mode = playlist.playbackMode || "loop";
     Logger.debug(`Playlist mode: ${mode}, current index: ${currentIndex}/${tracks.length}`);
     switch (mode) {
@@ -6839,6 +6852,7 @@ const _PlaybackScheduler = class _PlaybackScheduler {
       playbackMode: playlistMode
     };
     await this.engine.playTrack(track.id, 0, context);
+    Hooks.call("ase.trackAutoSwitched");
   }
   /**
    * Обработать завершение отдельного трека (не из плейлиста)
@@ -6872,6 +6886,52 @@ const _PlaybackScheduler = class _PlaybackScheduler {
       case "random":
       case "linear":
         await this.handleUngroupedQueueContext(trackId, mode);
+        break;
+    }
+  }
+  /**
+   * Обработать индивидуальный режим воспроизведения трека в контексте плейлиста
+   * @param trackId - ID завершившегося трека
+   * @param mode - Индивидуальный режим трека
+   */
+  async handleIndividualTrackMode(trackId, mode) {
+    const track = this.library.getItem(trackId);
+    if (!track) {
+      Logger.warn(`Track ${trackId} not found in library`);
+      return;
+    }
+    Logger.debug(`Handling individual track mode: ${track.name} - ${mode}`);
+    switch (mode) {
+      case "loop":
+        Logger.debug(`Looping track: ${track.name}`);
+        const loopContext = {
+          type: "track",
+          playbackMode: "loop"
+        };
+        await this.engine.playTrack(trackId, 0, loopContext);
+        Hooks.call("ase.trackAutoSwitched");
+        break;
+      case "single":
+        Logger.debug(`Track ${track.name} finished (single mode) - stopping`);
+        await this.engine.stopTrack(trackId);
+        this.currentContext = null;
+        break;
+      case "random":
+        Logger.debug(`Random track: ${track.name} - repeating`);
+        const randomContext = {
+          type: "track",
+          playbackMode: "random"
+        };
+        await this.engine.playTrack(trackId, 0, randomContext);
+        Hooks.call("ase.trackAutoSwitched");
+        break;
+      case "linear":
+        Logger.debug(`Track ${track.name} has linear mode in playlist - treating as single`);
+        await this.engine.stopTrack(trackId);
+        this.currentContext = null;
+        break;
+      case "inherit":
+        Logger.warn(`Unexpected inherit mode in handleIndividualTrackMode`);
         break;
     }
   }
@@ -6941,6 +7001,7 @@ const _PlaybackScheduler = class _PlaybackScheduler {
       playbackMode: mode
     };
     await this.engine.playTrack(libraryItem.id, 0, context);
+    Hooks.call("ase.trackAutoSwitched");
   }
 };
 __name(_PlaybackScheduler, "PlaybackScheduler");

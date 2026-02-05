@@ -67,8 +67,7 @@
           {{!-- Show all if not collapsed, otherwise only playing/paused --}}
           <div
             class="ase-track-player-item ase-queue-track {{#if isPlaying}}is-playing{{else if isPaused}}is-paused{{/if}} {{#if shouldBeHidden}}collapsed-hidden{{/if}}"
-            data-queue-id="{{queueId}}" data-item-id="{{libraryItemId}}"
-            data-debug-hidden="{{#if shouldBeHidden}}YES{{else}}NO{{/if}}">
+            data-queue-id="{{queueId}}" data-item-id="{{libraryItemId}}">
 
             {{!-- Row 1: Identity (Icon + Info + Volume + Buttons + Delete) --}}
             <div class="track-identity-row">

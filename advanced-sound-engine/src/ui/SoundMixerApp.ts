@@ -100,8 +100,17 @@ export class SoundMixerApp {
     // Subscribe to queue changes for real-time updates
     this.queueManager.on('change', () => this.onQueueChange());
 
+    // Subscribe to track state changes for UI updates
+    this.engine.on('trackEnded', () => this.onTrackStateChange());
+
     // Listen for external favorite changes (Global Hook)
     Hooks.on('ase.favoritesChanged' as any, () => {
+      this.requestRender();
+    });
+
+    // Listen for automatic track switches from PlaybackScheduler
+    Hooks.on('ase.trackAutoSwitched' as any, () => {
+      Logger.debug('[SoundMixerApp] Track auto-switched, re-rendering');
       this.requestRender();
     });
   }
@@ -224,15 +233,6 @@ export class SoundMixerApp {
     const isPlaying = player?.state === 'playing';
     const isPaused = player?.state === 'paused';
     const shouldBeHidden = parentCollapsed && !isPlaying && !isPaused;
-
-    // DEBUG: Print all values
-    console.log(`[DEBUG] Track: ${libraryItem?.name}`, {
-      parentCollapsed,
-      playerState: player?.state,
-      isPlaying,
-      isPaused,
-      shouldBeHidden,
-    });
 
     return {
       queueId: queueItem.id,
@@ -935,6 +935,11 @@ export class SoundMixerApp {
 
   private onQueueChange(): void {
     Logger.debug('Queue changed, mixer should refresh');
+    this.requestRender();
+  }
+
+  private onTrackStateChange(): void {
+    Logger.debug('[SoundMixerApp] Track state changed, re-rendering mixer');
     this.requestRender();
   }
 

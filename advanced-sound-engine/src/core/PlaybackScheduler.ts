@@ -97,6 +97,22 @@ export class PlaybackScheduler {
             return;
         }
 
+        // Проверить индивидуальный режим трека
+        const track = this.library.getItem(endedTrackId);
+        if (!track) {
+            Logger.warn(`Track ${endedTrackId} not found in library`);
+            return;
+        }
+
+        // Если у трека свой режим (не inherit), обработать его индивидуально
+        if (track.playbackMode && track.playbackMode !== 'inherit') {
+            Logger.info(`Track ${track.name} has individual mode: ${track.playbackMode}`);
+            await this.handleIndividualTrackMode(endedTrackId, track.playbackMode as PlaybackMode, playlistId);
+            return; // Не продолжать логику плейлиста
+        }
+
+        // Трек наследует режим плейлиста
+        Logger.debug(`Track ${track.name} inherits playlist mode`);
         const mode = (playlist.playbackMode || 'loop') as PlaylistPlaybackMode;
         Logger.debug(`Playlist mode: ${mode}, current index: ${currentIndex}/${tracks.length}`);
 
@@ -171,6 +187,9 @@ export class PlaybackScheduler {
 
         // Воспроизвести трек с контекстом плейлиста
         await this.engine.playTrack(track.id, 0, context);
+
+        // Notify UI about track change
+        Hooks.call('ase.trackAutoSwitched' as any);
     }
 
     /**
@@ -206,8 +225,9 @@ export class PlaybackScheduler {
                 break;
 
             case 'single':
-                // Воспроизвести один раз и остановить
-                Logger.debug(`Track ${track.name} finished (single mode)`);
+                // Воспроизвести один раз и остановить (полный сброс)
+                Logger.debug(`Track ${track.name} finished (single mode) - stopping`);
+                await this.engine.stopTrack(trackId);
                 this.currentContext = null;
                 break;
 
@@ -215,6 +235,80 @@ export class PlaybackScheduler {
             case 'linear':
                 // Для отдельных треков используем Ungrouped как виртуальный плейлист
                 await this.handleUngroupedQueueContext(trackId, mode);
+                break;
+        }
+    }
+
+    /**
+     * Обработать индивидуальный режим воспроизведения трека в контексте плейлиста
+     * @param trackId - ID завершившегося трека
+     * @param mode - Индивидуальный режим трека
+     * @param playlistId - ID плейлиста (если контекст плейлиста)
+     */
+    private async handleIndividualTrackMode(trackId: string, mode: PlaybackMode, playlistId?: string): Promise<void> {
+        const track = this.library.getItem(trackId);
+        if (!track) {
+            Logger.warn(`Track ${trackId} not found in library`);
+            return;
+        }
+
+        Logger.debug(`Handling individual track mode: ${track.name} - ${mode}`);
+
+        switch (mode) {
+            case 'loop':
+                // Повторить тот же трек (игнорируя логику плейлиста)
+                Logger.debug(`Looping track: ${track.name}`);
+                const loopContext: PlaybackContext = {
+                    type: 'track',
+                    playbackMode: 'loop'
+                };
+                await this.engine.playTrack(trackId, 0, loopContext);
+                Hooks.call('ase.trackAutoSwitched' as any);
+                break;
+
+            case 'single':
+                // Остановить трек полностью (перевести в Stop)
+                Logger.debug(`Track ${track.name} finished (single mode) - stopping`);
+                await this.engine.stopTrack(trackId);
+                this.currentContext = null;
+                break;
+
+            case 'random':
+                // Random для одного трека = повторить его в random режиме
+                Logger.debug(`Random track: ${track.name} - repeating`);
+                const randomContext: PlaybackContext = {
+                    type: 'track',
+                    playbackMode: 'random'
+                };
+                await this.engine.playTrack(trackId, 0, randomContext);
+                Hooks.call('ase.trackAutoSwitched' as any);
+                break;
+
+            case 'linear':
+                if (playlistId) {
+                    const playlist = this.library.playlists.getPlaylist(playlistId);
+                    if (playlist) {
+                        const tracks = [...playlist.items].sort((a, b) => a.order - b.order);
+                        const currentIndex = tracks.findIndex(t => t.libraryItemId === trackId);
+
+                        if (currentIndex !== -1 && currentIndex < tracks.length - 1) {
+                            Logger.debug(`Track ${track.name} (linear) -> launching next track in playlist`);
+                            const nextItem = tracks[currentIndex + 1];
+                            await this.playPlaylistItem(nextItem, playlistId, playlist.playbackMode || 'loop');
+                            return;
+                        }
+                    }
+                }
+
+                // Linear для одиночного трека (или конец плейлиста) = single (остановить)
+                Logger.debug(`Track ${track.name} finished (linear mode) and no next track - stopping`);
+                await this.engine.stopTrack(trackId);
+                this.currentContext = null;
+                break;
+
+            case 'inherit':
+                // Не должно попасть сюда (проверено выше)
+                Logger.warn(`Unexpected inherit mode in handleIndividualTrackMode`);
                 break;
         }
     }
@@ -307,5 +401,8 @@ export class PlaybackScheduler {
 
         // Воспроизвести следующий трек
         await this.engine.playTrack(libraryItem.id, 0, context);
+
+        // Notify UI about track change
+        Hooks.call('ase.trackAutoSwitched' as any);
     }
 }
