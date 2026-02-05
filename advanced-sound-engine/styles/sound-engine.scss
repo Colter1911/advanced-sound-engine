@@ -852,7 +852,7 @@
   background: linear-gradient(to right, rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.3));
   padding: 8px 12px;
   padding-left: 72px;
-  /* Space for image */
+  /* Space for image in Library */
   padding-right: 220px;
   border-top: 1px solid var(--ase-border-dark);
   border-bottom: 1px solid var(--ase-border-dark);
@@ -871,6 +871,12 @@
     background: #000;
     border: 1px dashed var(--ase-border-light);
   }
+}
+
+// Override padding-left for Mixer tracks (they don't have cover art image)
+// Must be after .ase-track-player-item to override via cascade
+.ase-queue-track.ase-track-player-item {
+  padding-left: 10px;
 }
 
 /* Image container */
@@ -1489,9 +1495,11 @@
   overflow: hidden;
 
   &.is-collapsed {
-    .ase-queue-tracks {
-      display: none;
-    }
+    // ВАЖНО: Не скрываем весь контейнер, чтобы показывать playing/paused треки
+    // Отдельные треки скрываются через класс .collapsed-hidden
+    // .ase-queue-tracks {
+    //   display: none;
+    // }
 
     .ase-collapse-icon {
       transform: rotate(-90deg);
@@ -1531,39 +1539,379 @@
   }
 }
 
-// ─── Queue Track Item ───
+// ─── Queue Track Item (Wide Player Style) ───
 .ase-queue-track {
-  padding: 12px;
-  background: var(--bg-panel);
-  border-bottom: 1px solid var(--border-subtle);
-  border-left: 3px solid transparent;
-  transition: all 0.15s ease;
+  background-color: #171717;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 10px 15px;
+  margin-bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
+  transition: border-color 250ms ease-out, box-shadow 250ms ease-out, background-color 250ms ease-out;
 
-  &:last-child {
-    border-bottom: none;
+  &:hover {
+    background: linear-gradient(to right, rgba(255, 255, 255, 0.05), rgba(0, 0, 0, 0.3));
+    border-top-color: var(--ase-border-gold);
+    border-bottom-color: var(--ase-border-gold);
   }
 
-  // Playback states
   &.is-playing {
-    border-left-color: var(--ase-success);
-    background: rgba(34, 197, 94, 0.08);
-
-    .ase-track-name {
-      color: var(--ase-success);
-    }
+    background: linear-gradient(to right, rgba(34, 197, 94, 0.03), rgba(34, 197, 94, 0.00));
+    border-color: #4ade80;
+    box-shadow: 0 0 10px rgba(74, 222, 128, 0.15);
   }
 
   &.is-paused {
-    border-left-color: var(--ase-warning);
-    background: rgba(251, 191, 36, 0.08);
+    background: linear-gradient(to right, rgba(234, 179, 8, 0.03), rgba(234, 179, 8, 0.00));
+    border-color: #facc15;
+    box-shadow: 0 0 10px rgba(250, 204, 21, 0.15);
+  }
 
-    .ase-track-name {
-      color: var(--ase-warning);
+  // Hide tracks when playlist is collapsed (unless playing/paused)
+  // CRITICAL: High specificity to override .ase-mixer-workspace .ase-queue-track
+}
+
+// CRITICAL: Must have higher specificity than .ase-mixer-workspace .ase-queue-track (0,2,0)
+// Solution: Use 3+ classes (0,3,0) to guarantee override
+.ase-mixer-workspace .ase-queue-track.collapsed-hidden,
+.ase-queue-tracks .ase-queue-track.collapsed-hidden {
+  display: none !important;
+  visibility: hidden !important;
+  height: 0 !important;
+  overflow: hidden !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+// ─── Row 1: Identity (Icon + Info + Buttons + Delete) ───
+.track-identity-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+
+  .track-icon {
+    width: 36px;
+    height: 36px;
+    background: #202020;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #777;
+    font-size: 16px;
+    flex-shrink: 0;
+  }
+
+  .track-info {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    overflow: hidden;
+  }
+
+  .title-line {
+    display: flex;
+    align-items: center;
+  }
+
+  .track-title {
+    font-weight: 700;
+    font-size: 15px;
+    color: #fff;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .tags-line {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+  }
+
+  .category-badge {
+    border: 1px solid var(--ase-border-gold);
+    color: var(--ase-border-gold);
+    padding: 0 4px;
+    border-radius: 2px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+    text-transform: capitalize;
+
+    i {
+      font-size: 8px;
+    }
+
+    &:hover {
+      background: var(--ase-border-gold);
+      color: #000;
     }
   }
 
+  .tag {
+    background: #1a1a1a;
+    color: #999;
+    padding: 1px 5px;
+    border-radius: 2px;
+  }
+
+  .playback-buttons {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  .volume-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #111;
+    padding: 4px 10px;
+    border-radius: 4px;
+    border: 1px solid var(--ase-border-gold);
+    margin-left: auto;
+    margin-right: 8px;
+
+    .vol-icon {
+      color: #777;
+      font-size: 14px;
+      flex-shrink: 0;
+    }
+
+    .volume-slider {
+      width: 120px;
+      height: 4px;
+      background: #222;
+      border-radius: 2px;
+      outline: none;
+      cursor: pointer;
+      -webkit-appearance: none;
+      appearance: none;
+
+      &::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        width: 12px;
+        height: 12px;
+        background: var(--ase-border-gold);
+        border-radius: 50%;
+        cursor: pointer;
+      }
+
+      &::-moz-range-thumb {
+        width: 12px;
+        height: 12px;
+        background: var(--ase-border-gold);
+        border-radius: 50%;
+        cursor: pointer;
+        border: none;
+      }
+
+      &:hover::-webkit-slider-thumb {
+        background: #eec46f;
+      }
+
+      &:hover::-moz-range-thumb {
+        background: #eec46f;
+      }
+    }
+
+    .vol-value {
+      font-family: var(--ase-font-mono);
+      color: #777;
+      font-size: 11px;
+      min-width: 38px;
+      text-align: right;
+      flex-shrink: 0;
+    }
+  }
+
+  .btn-delete-inline {
+    background: none;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 4px;
+    color: #666;
+    font-size: 14px;
+    cursor: pointer;
+    padding: 6px;
+    transition: color 0.2s, text-shadow 0.2s, transform 0.1s, border-color 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+
+    &:hover {
+      color: #f87171;
+      text-shadow: 0 0 5px rgba(248, 113, 113, 0.3);
+      border-color: rgba(248, 113, 113, 0.35);
+    }
+
+    &:active {
+      transform: scale(0.95);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--ase-accent-main);
+      outline-offset: 2px;
+    }
+  }
+}
+
+// ─── Row 2: Progress Wrapper (Bar + Timer) ───
+.progress-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+}
+
+.progress-section {
+  position: relative;
+  height: 11px;
+  background: #1f1f1f;
+  border-radius: 3px;
+  width: 100%;
+  cursor: pointer;
+  transition: height 200ms ease-out;
+
   &:hover {
-    background: var(--bg-active);
+    height: 13px;
+  }
+
+  .seek-slider {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    cursor: pointer;
+    z-index: 5;
+    margin: 0;
+    top: 0;
+    left: 0;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #b08d48, #eec46f);
+    border-radius: 3px;
+    pointer-events: none;
+    transition: width 0.1s linear;
+  }
+
+  .progress-hover-time {
+    position: absolute;
+    bottom: 100%;
+    margin-bottom: 8px;
+    background: rgba(0, 0, 0, 0.9);
+    color: #fff;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 500;
+    pointer-events: none;
+    white-space: nowrap;
+    z-index: 10;
+    transform: translateX(-50%);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+
+    &::after {
+      content: '';
+      position: absolute;
+      top: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      border: 4px solid transparent;
+      border-top-color: rgba(0, 0, 0, 0.9);
+    }
+  }
+}
+
+.track-timer {
+  font-family: var(--ase-font-mono);
+  color: #666;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+// ─── Row 3: Controls (Volume only) ───
+.controls-row {
+  display: flex;
+  align-items: center;
+  width: 100%;
+
+  .volume-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #111;
+    padding: 4px 10px;
+    border-radius: 12px;
+    border: 1px solid #333;
+    width: 30%;
+    margin-left: auto;
+
+    .vol-icon {
+      color: #777;
+      font-size: 14px;
+      flex-shrink: 0;
+    }
+
+    .volume-slider {
+      flex: 1;
+      height: 4px;
+      background: #222;
+      border-radius: 2px;
+      outline: none;
+      cursor: pointer;
+      -webkit-appearance: none;
+      appearance: none;
+
+      &::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        width: 12px;
+        height: 12px;
+        background: var(--ase-border-gold);
+        border-radius: 50%;
+        cursor: pointer;
+      }
+
+      &::-moz-range-thumb {
+        width: 12px;
+        height: 12px;
+        background: var(--ase-border-gold);
+        border-radius: 50%;
+        cursor: pointer;
+        border: none;
+      }
+
+      &:hover::-webkit-slider-thumb {
+        background: #eec46f;
+      }
+
+      &:hover::-moz-range-thumb {
+        background: #eec46f;
+      }
+    }
+
+    .vol-value {
+      font-family: var(--ase-font-mono);
+      color: #777;
+      font-size: 11px;
+      min-width: 38px;
+      text-align: right;
+      flex-shrink: 0;
+    }
   }
 }
 
@@ -2303,13 +2651,18 @@
   .ase-mixer-favorites {
     flex: 1;
     max-height: none;
-    border-top: none;
+
     overflow: hidden;
 
     .ase-list-group {
       flex: 1;
       overflow-y: auto;
     }
+  }
+
+  /* Add spacing between favorites and track list */
+  .ase-track-player-list {
+    padding-left: 5px;
   }
 
   /* Mixer Favorite Item */
@@ -2360,12 +2713,11 @@
 
   /* Reset track item for vertical layout in mixer */
   .ase-queue-track {
-    padding: 12px 12px 12px 72px !important;
+    padding: 12px 12px 12px 10px !important;
     min-height: auto !important;
     display: flex !important;
     flex-direction: column !important;
     gap: 10px !important;
-    border-bottom: 1px solid var(--ase-border-gold) !important;
 
     /* Track image stays absolute */
     .ase-track-image {
@@ -2382,61 +2734,64 @@
       align-items: center !important;
       gap: 12px !important;
     }
-
-    /* Track header uses full width */
-    .ase-track-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      width: 100%;
-    }
-
-    /* Row 2: Tags + Channel */
-    .ase-track-row2 {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      width: 100%;
-    }
   }
 
-  /* Playlist header */
-  .ase-queue-playlist-header {
+  /* Remove conflicting hover styles from base .ase-track-player-item for Mixer tracks */
+
+
+  /* Track header uses full width */
+  .ase-track-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
+  }
+
+  /* Row 2: Tags + Channel */
+  .ase-track-row2 {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 8px 12px;
-    background: var(--ase-bg-header);
-    border-bottom: 1px solid var(--ase-border-dark);
-    cursor: pointer;
-    transition: background 0.2s;
+    width: 100%;
+  }
+}
 
-    &:hover {
-      background: rgba(255, 255, 255, 0.05);
-    }
+/* Playlist header */
+.ase-queue-playlist-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--ase-bg-header);
+  border-bottom: 1px solid var(--ase-border-dark);
+  cursor: pointer;
+  transition: background 0.2s;
 
-    .ase-collapse-icon {
-      color: var(--ase-text-muted);
-      font-size: 12px;
-      transition: transform 0.2s;
-    }
-
-    .ase-playlist-name {
-      font-weight: 600;
-      color: var(--ase-text-header);
-      font-size: 13px;
-    }
-
-    .ase-playlist-count {
-      font-size: 11px;
-      color: var(--ase-text-muted);
-    }
+  &:hover {
+    background: rgba(255, 255, 255, 0.05);
   }
 
-  .ase-queue-playlist.is-collapsed .ase-collapse-icon {
-    transform: rotate(-90deg);
+  .ase-collapse-icon {
+    color: var(--ase-text-muted);
+    font-size: 12px;
+    transition: transform 0.2s;
   }
+
+  .ase-playlist-name {
+    font-weight: 600;
+    color: var(--ase-text-header);
+    font-size: 13px;
+  }
+
+  .ase-playlist-count {
+    font-size: 11px;
+    color: var(--ase-text-muted);
+  }
+}
+
+.ase-queue-playlist.is-collapsed .ase-collapse-icon {
+  transform: rotate(-90deg);
 }
 
 /* Timeline row with seek slider */
@@ -2581,6 +2936,10 @@
   border-top: 1px solid var(--ase-border-gold);
   background: rgba(0, 0, 0, 0.3);
   flex-shrink: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 80px;
 }
 
 .ase-effects-header {
@@ -2596,30 +2955,36 @@
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
+  justify-content: center;
 }
 
-.ase-effect-toggle-item {
+.ase-effect-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--ase-border-light);
+  color: var(--ase-text-muted);
+  padding: 0 20px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 18px;
+  text-transform: lowercase;
+  transition: all 0.2s;
+  height: 40px;
   display: flex;
   align-items: center;
-  gap: 6px;
-  cursor: pointer;
-  padding: 4px 8px;
-  border-radius: 3px;
-  transition: background 0.15s ease;
+  font-family: var(--ase-font-header);
+  user-select: none;
 
-  &:hover {
-    background: rgba(255, 255, 255, 0.05);
+  &.active {
+    background: rgba(255, 100, 0, 0.2);
+    border-color: var(--ase-border-accent);
+    color: var(--ase-text-highlight);
+    box-shadow: 0 0 8px rgba(255, 100, 0, 0.4);
   }
 
-  input[type="checkbox"] {
-    cursor: pointer;
-    accent-color: var(--ase-border-accent);
-  }
-
-  span {
-    font-size: 11px;
+  &:hover:not(.active) {
+    border-color: var(--ase-text-body);
     color: var(--ase-text-body);
-    user-select: none;
+    background: rgba(255, 255, 255, 0.1);
   }
 }
 

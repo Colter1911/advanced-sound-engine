@@ -66,73 +66,83 @@
           {{#each tracks}}
           {{!-- Show all if not collapsed, otherwise only playing/paused --}}
           <div
-            class="ase-track-player-item ase-queue-track {{#if isPlaying}}is-playing{{else if isPaused}}is-paused{{/if}}"
-            data-queue-id="{{queueId}}" data-item-id="{{libraryItemId}}" {{#if ../collapsed}}{{#unless
-            isPlaying}}{{#unless isPaused}}style="display: none;" {{/unless}}{{/unless}}{{/if}}>
+            class="ase-track-player-item ase-queue-track {{#if isPlaying}}is-playing{{else if isPaused}}is-paused{{/if}} {{#if shouldBeHidden}}collapsed-hidden{{/if}}"
+            data-queue-id="{{queueId}}" data-item-id="{{libraryItemId}}"
+            data-debug-hidden="{{#if shouldBeHidden}}YES{{else}}NO{{/if}}">
 
-            {{!-- Track Icon --}}
-            <div class="ase-track-image">
-              {{#if (eq group 'music')}}
-              <i class="fa-solid fa-music"></i>
-              {{else if (eq group 'ambience')}}
-              <i class="fa-solid fa-cloud"></i>
-              {{else}}
-              <i class="fa-solid fa-bolt"></i>
-              {{/if}}
-            </div>
-
-            {{!-- Row 1: Title + Controls --}}
-            <div class="ase-track-header">
-              <div class="ase-track-title-block">
-                <span class="ase-track-name">{{name}}</span>
-                <span class="ase-track-duration">{{durationFormatted}}</span>
+            {{!-- Row 1: Identity (Icon + Info + Volume + Buttons + Delete) --}}
+            <div class="track-identity-row">
+              {{!-- Track Icon --}}
+              <div class="track-icon">
+                {{#if (eq group 'music')}}
+                <i class="fa-solid fa-music"></i>
+                {{else if (eq group 'ambience')}}
+                <i class="fa-solid fa-cloud"></i>
+                {{else}}
+                <i class="fa-solid fa-bolt"></i>
+                {{/if}}
               </div>
-              <div class="ase-track-controls">
-                <div class="ase-playback-controls">
-                  <i class="fa-solid fa-play" data-action="play-queue" title="Play"></i>
-                  <i class="fa-solid fa-pause" data-action="pause-queue" title="Pause"></i>
-                  <i class="fa-solid fa-stop" data-action="stop-queue" title="Stop"></i>
+
+              {{!-- Track Info --}}
+              <div class="track-info">
+                <div class="title-line">
+                  <span class="track-title">{{name}}</span>
                 </div>
-                {{!-- Playback Mode Selector --}}
-                <i class="fa-solid ase-mode-icon
-                    {{#if (eq playbackMode 'single')}}fa-stop
-                    {{else if (eq playbackMode 'linear')}}fa-arrow-right
-                    {{else if (eq playbackMode 'loop')}}fa-repeat
-                    {{else if (eq playbackMode 'random')}}fa-shuffle
-                    {{else if (eq playbackMode 'inherit')}}fa-arrow-turn-down
-                    {{else}}fa-arrow-turn-down{{/if}}" title="Playback Mode: {{playbackMode}}"
-                  data-action="track-mode-dropdown" data-item-id="{{libraryItemId}}"></i>
-                <i class="fa-solid fa-trash ase-btn-delete" data-action="remove-queue" title="Remove"></i>
+                <div class="tags-line">
+                  <span class="category-badge" data-action="channel-dropdown" data-item-id="{{libraryItemId}}"
+                    title="Audio Channel">
+                    {{group}} <i class="fa-solid fa-chevron-down"></i>
+                  </span>
+                  {{#each tags}}
+                  <span class="tag">#{{this}}</span>
+                  {{/each}}
+                </div>
               </div>
+
+              {{!-- Volume Control --}}
+              <div class="volume-container">
+                <i class="fa-solid fa-volume-up vol-icon"></i>
+                <input type="range" class="volume-slider" data-action="volume" min="0" max="100"
+                  value="{{volumePercent}}">
+                <span class="vol-value">{{volumePercent}}%</span>
+              </div>
+
+              {{!-- Playback Buttons --}}
+              <div class="playback-buttons">
+                {{!-- Play/Pause Toggle --}}
+                <button class="btn-icon" data-action="{{#if isPlaying}}pause-queue{{else}}play-queue{{/if}}"
+                  title="{{#if isPlaying}}Pause{{else}}Play{{/if}}">
+                  <i class="fa-solid {{#if isPlaying}}fa-pause{{else}}fa-play{{/if}}"></i>
+                </button>
+                {{!-- Stop --}}
+                <button class="btn-icon" data-action="stop-queue" title="Stop">
+                  <i class="fa-solid fa-stop"></i>
+                </button>
+                {{!-- Playback Mode --}}
+                <button class="btn-icon" data-action="track-mode-dropdown" data-item-id="{{libraryItemId}}"
+                  title="Playback Mode: {{playbackMode}}">
+                  <i
+                    class="fa-solid {{#if (eq playbackMode 'single')}}fa-stop-circle{{else if (eq playbackMode 'linear')}}fa-arrow-right{{else if (eq playbackMode 'loop')}}fa-sync-alt{{else if (eq playbackMode 'random')}}fa-shuffle{{else}}fa-arrow-turn-down{{/if}}"></i>
+                </button>
+              </div>
+
+              {{!-- Delete Button --}}
+              <button class="btn-icon btn-delete-inline" data-action="remove-queue" title="Remove from Queue">
+                <i class="fa-solid fa-trash"></i>
+              </button>
             </div>
 
-            {{!-- Row 2: Tags + Channel --}}
-            <div class="ase-track-row2">
-              <div class="ase-channel-select" data-action="channel-dropdown">
-                <span>{{group}}</span>
-                <i class="fa-solid fa-chevron-down"></i>
+            {{!-- Row 2: Progress Bar + Timer --}}
+            <div class="progress-wrapper">
+              <div class="progress-section">
+                <input type="range" class="seek-slider" data-action="seek" min="0" max="100" value="{{progress}}"
+                  step="0.1">
+                <div class="progress-fill" style="width: {{progress}};"></div>
+                <div class="progress-hover-time" style="display: none;"></div>
               </div>
-              <div class="ase-track-tags">
-                {{#each tags}}
-                <span class="ase-tag">#{{this}}</span>
-                {{/each}}
+              <div class="track-timer">
+                {{currentTimeFormatted}} / {{durationFormatted}}
               </div>
-            </div>
-
-            {{!-- Row 3: Timeline --}}
-            <div class="ase-queue-track-timeline">
-              <span class="ase-time-current">{{currentTimeFormatted}}</span>
-              <input type="range" class="ase-seek-slider" data-action="seek" min="0" max="100" value="{{progress}}"
-                step="0.1">
-              <span class="ase-time-duration">{{durationFormatted}}</span>
-            </div>
-
-            {{!-- Row 4: Volume --}}
-            <div class="ase-queue-track-volume">
-              <i class="fa-solid fa-volume-low"></i>
-              <input type="range" class="ase-volume-slider" data-action="volume" min="0" max="100"
-                value="{{volumePercent}}">
-              <span class="ase-volume-value">{{volumePercent}}%</span>
             </div>
           </div>
           {{/each}}
@@ -152,15 +162,11 @@
 
     {{!-- Effects Control Panel --}}
     <div class="ase-mixer-effects-panel">
-      <div class="ase-effects-header">
-        <span>Effects</span>
-      </div>
       <div class="ase-effects-toggles">
         {{#each effects}}
-        <label class="ase-effect-toggle-item">
-          <input type="checkbox" {{#if enabled}}checked{{/if}} data-action="toggle-effect" data-effect-id="{{id}}">
-          <span>{{name}}</span>
-        </label>
+        <button class="ase-effect-btn {{#if enabled}}active{{/if}}" data-action="toggle-effect" data-effect-id="{{id}}">
+          {{name}}
+        </button>
         {{/each}}
       </div>
     </div>

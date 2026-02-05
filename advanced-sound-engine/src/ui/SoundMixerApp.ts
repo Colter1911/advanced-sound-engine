@@ -63,6 +63,7 @@ interface QueueTrackViewData {
   duration: number;
   durationFormatted: string;
   progress: number;
+  shouldBeHidden: boolean; // Computed: true if collapsed and not playing/paused
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -75,6 +76,7 @@ export class SoundMixerApp {
   private libraryManager: LibraryManager;
   private queueManager: PlaybackQueueManager;
   private collapsedPlaylists: Set<string> = new Set();
+  private ungroupedCollapsed: boolean = false;
   private updateInterval: ReturnType<typeof setInterval> | null = null;
   private html: JQuery | null = null;
   private renderParent: (() => void) | null = null;
@@ -194,12 +196,13 @@ export class SoundMixerApp {
         name = playlist?.name ?? 'Unknown Playlist';
       }
 
-      const tracks = items.map(queueItem => this.getQueueTrackViewData(queueItem));
+      const collapsed = playlistId ? this.collapsedPlaylists.has(playlistId) : this.ungroupedCollapsed;
+      const tracks = items.map(queueItem => this.getQueueTrackViewData(queueItem, collapsed));
 
       playlists.push({
         id: playlistId,
         name,
-        collapsed: playlistId ? this.collapsedPlaylists.has(playlistId) : false,
+        collapsed: playlistId ? this.collapsedPlaylists.has(playlistId) : this.ungroupedCollapsed,
         tracks,
       });
     }
@@ -207,7 +210,7 @@ export class SoundMixerApp {
     return playlists;
   }
 
-  private getQueueTrackViewData(queueItem: QueueItem): QueueTrackViewData {
+  private getQueueTrackViewData(queueItem: QueueItem, parentCollapsed: boolean = false): QueueTrackViewData {
     const libraryItem = this.libraryManager.getItem(queueItem.libraryItemId);
     const player = this.engine.getTrack(queueItem.libraryItemId);
 
@@ -218,14 +221,27 @@ export class SoundMixerApp {
     // Get volume and loop from player if available (persisted state), fallback to queueItem
     const volume = player?.volume ?? queueItem.volume;
 
+    const isPlaying = player?.state === 'playing';
+    const isPaused = player?.state === 'paused';
+    const shouldBeHidden = parentCollapsed && !isPlaying && !isPaused;
+
+    // DEBUG: Print all values
+    console.log(`[DEBUG] Track: ${libraryItem?.name}`, {
+      parentCollapsed,
+      playerState: player?.state,
+      isPlaying,
+      isPaused,
+      shouldBeHidden,
+    });
+
     return {
       queueId: queueItem.id,
       libraryItemId: queueItem.libraryItemId,
       name: libraryItem?.name ?? 'Unknown Track',
-      group: queueItem.group,
+      group: libraryItem?.group ?? queueItem.group,
       tags: libraryItem?.tags ?? [],
-      isPlaying: player?.state === 'playing',
-      isPaused: player?.state === 'paused',
+      isPlaying,
+      isPaused,
       isStopped: !player || player.state === 'stopped',
       isLoading: player?.state === 'loading',
       volume,
@@ -236,6 +252,7 @@ export class SoundMixerApp {
       duration,
       durationFormatted: formatTime(duration),
       progress,
+      shouldBeHidden,
     };
   }
 
@@ -260,6 +277,7 @@ export class SoundMixerApp {
     html.find('[data-action="remove-queue"]').on('click', (e) => this.onRemoveQueueItem(e));
     // Removed old loop button handler
     html.find('[data-action="track-mode-dropdown"]').on('click', (e) => this.onTrackModeClick(e));
+    html.find('[data-action="channel-dropdown"]').on('click', (e) => this.onChannelDropdown(e));
 
     // Playlist collapse/expand
     html.find('[data-action="toggle-playlist"]').on('click', (e) => this.onTogglePlaylist(e));
@@ -268,8 +286,54 @@ export class SoundMixerApp {
     html.find('[data-action="seek"]').on('input', (e) => this.onSeek(e));
     html.find('[data-action="volume"]').on('input', (e) => this.onVolumeChange(e));
 
+    // Real-time volume display update (without triggering audio change)
+    html.find('.volume-slider').on('input', (e) => {
+      const slider = e.currentTarget as HTMLInputElement;
+      const value = slider.value;
+      const volumeDisplay = $(slider).siblings('.vol-value');
+      volumeDisplay.text(`${value}%`);
+    });
+
+    // Progress bar time preview on hover
+    html.find('.progress-section').each((_, section) => {
+      const $section = $(section);
+      const $tooltip = $section.find('.progress-hover-time');
+
+      $section.on('mousemove', (e) => {
+        const rect = section.getBoundingClientRect();
+        const offsetX = e.clientX - rect.left;
+        const percentage = Math.max(0, Math.min(100, (offsetX / rect.width) * 100));
+
+        // Get duration from nearest track
+        const $track = $section.closest('.ase-queue-track');
+        const durationText = $track.find('.track-timer').text().split('/')[1]?.trim();
+
+        if (durationText) {
+          // Parse duration MM:SS to seconds
+          const [mins, secs] = durationText.split(':').map(Number);
+          const totalSeconds = (mins * 60) + secs;
+          const hoverSeconds = Math.floor((percentage / 100) * totalSeconds);
+
+          // Format to MM:SS
+          const hoverMins = Math.floor(hoverSeconds / 60);
+          const hoverSecs = hoverSeconds % 60;
+          const hoverTime = `${hoverMins}:${hoverSecs.toString().padStart(2, '0')}`;
+
+          $tooltip.text(hoverTime);
+          $tooltip.css({
+            left: `${percentage}%`,
+            display: 'block'
+          });
+        }
+      });
+
+      $section.on('mouseleave', () => {
+        $tooltip.css('display', 'none');
+      });
+    });
+
     // Effects controls
-    html.find('[data-action="toggle-effect"]').on('change', (e) => this.onToggleEffect(e));
+    html.find('[data-action="toggle-effect"]').on('click', (e) => this.onToggleEffect(e));
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -504,6 +568,71 @@ export class SoundMixerApp {
     }, 10);
   }
 
+  /**
+   * Handle channel dropdown click
+   */
+  private onChannelDropdown(event: JQuery.ClickEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const btn = $(event.currentTarget);
+    const itemId = btn.data('item-id') as string;
+
+    // Also try finding it if clicked on icon inside
+    const id = itemId || btn.closest('[data-item-id]').data('item-id') as string;
+
+    const item = this.libraryManager.getItem(id);
+    if (!item) return;
+
+    const currentGroup = item.group || 'music';
+    const channels = ['music', 'ambience', 'sfx'];
+
+    // Create dropdown menu
+    const menu = $(`
+      <div class="ase-dropdown-menu">
+        ${channels.map(ch => `
+          <div class="ase-dropdown-item ${ch === currentGroup ? 'active' : ''}" data-channel="${ch}">
+            ${ch.charAt(0).toUpperCase() + ch.slice(1)}
+          </div>
+        `).join('')}
+      </div>
+    `);
+
+    // Position menu
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    menu.css({ top: rect.bottom + 2, left: rect.left });
+
+    $('body').append(menu);
+
+    menu.find('.ase-dropdown-item').on('click', (e) => {
+      e.stopPropagation();
+      const newChannel = $(e.currentTarget).data('channel') as string;
+      this.updateTrackChannel(id, newChannel);
+      menu.remove();
+    });
+
+    // Close on outside click
+    setTimeout(() => {
+      $(document).one('click', () => menu.remove());
+    }, 10);
+  }
+
+  private updateTrackChannel(itemId: string, channel: string): void {
+    const item = this.libraryManager.getItem(itemId);
+    if (!item) return;
+
+    this.libraryManager.updateItem(itemId, { group: channel as any });
+
+    // Also update queue item logic if needed? 
+    // LibraryManager update should trigger re-renders via hooks/events eventually, 
+    // but Mixer subscribes to queue changes mostly.
+    // However, LibraryItem update doesn't automatically trigger "queue change" event unless
+    // something in queue manager reacts to library updates.
+    // Let's force render.
+    this.requestRender();
+    ui.notifications?.info(`Channel set to ${channel}`);
+  }
+
   private async onAddToQueueFromFavorite(event: JQuery.ClickEvent): Promise<void> {
     event.preventDefault();
     event.stopPropagation();
@@ -564,27 +693,26 @@ export class SoundMixerApp {
   // ─────────────────────────────────────────────────────────────
 
   private onTogglePlaylist(event: JQuery.ClickEvent): void {
+    event.preventDefault();
     const $playlist = $(event.currentTarget).closest('.ase-queue-playlist');
-    const playlistId = $playlist.data('playlist-id') as string;
+    const playlistId = $playlist.data('playlist-id') as string | null;
 
-    if (!playlistId) return;
-
-    if (this.collapsedPlaylists.has(playlistId)) {
-      this.collapsedPlaylists.delete(playlistId);
-      $playlist.removeClass('is-collapsed');
-      // Show all tracks
-      $playlist.find('.ase-queue-track').show();
+    // Handle Ungrouped (null/undefined) vs actual playlist IDs
+    if (playlistId === null || playlistId === undefined || playlistId === '') {
+      // Toggle Ungrouped
+      this.ungroupedCollapsed = !this.ungroupedCollapsed;
     } else {
-      this.collapsedPlaylists.add(playlistId);
-      $playlist.addClass('is-collapsed');
-      // Hide non-playing/paused tracks
-      $playlist.find('.ase-queue-track').each((_, el) => {
-        const $el = $(el);
-        if (!$el.hasClass('is-playing') && !$el.hasClass('is-paused')) {
-          $el.hide();
-        }
-      });
+      // Toggle normal playlist
+      if (this.collapsedPlaylists.has(playlistId)) {
+        this.collapsedPlaylists.delete(playlistId);
+      } else {
+        this.collapsedPlaylists.add(playlistId);
+      }
     }
+
+    // Re-render to apply visual changes via Handlebars template
+    // This ensures tracks are shown/hidden based on their current state
+    this.requestRender();
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -777,15 +905,29 @@ export class SoundMixerApp {
         const duration = player.getDuration();
         const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
-        $track.find('.ase-time-current').text(formatTime(currentTime));
-        $track.find('.ase-seek-slider').val(progress);
+        // Update progress bar
+        $track.find('.progress-fill').css('width', `${progress}%`);
+        $track.find('.seek-slider').val(progress);
 
-        // Update state classes
+        // Update timer
+        $track.find('.track-timer').text(`${formatTime(currentTime)} / ${formatTime(duration)}`);
+
+        // Update state classes and play/pause button
         $track.removeClass('is-playing is-paused');
+        const $playPauseBtn = $track.find('[data-action="play-queue"], [data-action="pause-queue"]');
+        const $playPauseIcon = $playPauseBtn.find('i');
+
         if (player.state === 'playing') {
           $track.addClass('is-playing');
+          $playPauseIcon.removeClass('fa-play').addClass('fa-pause');
+          $playPauseBtn.attr('data-action', 'pause-queue').attr('title', 'Pause');
         } else if (player.state === 'paused') {
           $track.addClass('is-paused');
+          $playPauseIcon.removeClass('fa-pause').addClass('fa-play');
+          $playPauseBtn.attr('data-action', 'play-queue').attr('title', 'Play');
+        } else {
+          $playPauseIcon.removeClass('fa-pause').addClass('fa-play');
+          $playPauseBtn.attr('data-action', 'play-queue').attr('title', 'Play');
         }
       }
     });
@@ -802,12 +944,24 @@ export class SoundMixerApp {
     }
   }
 
-  private onToggleEffect(event: JQuery.ChangeEvent): void {
-    const $checkbox = $(event.currentTarget) as JQuery<HTMLInputElement>;
-    const effectId = $checkbox.data('effect-id') as string;
-    const enabled = $checkbox.is(':checked');
+  private onToggleEffect(event: JQuery.ClickEvent): void {
+    event.preventDefault();
+    const $btn = $(event.currentTarget);
+    const effectId = $btn.data('effect-id') as string;
 
-    this.engine.setEffectEnabled(effectId, enabled);
-    Logger.info(`Effect ${effectId} ${enabled ? 'enabled' : 'disabled'}`);
+    // Toggle state based on current class
+    const wasEnabled = $btn.hasClass('active');
+    const newState = !wasEnabled;
+
+    this.engine.setEffectEnabled(effectId, newState);
+
+    // Optimistic UI update
+    if (newState) {
+      $btn.addClass('active');
+    } else {
+      $btn.removeClass('active');
+    }
+
+    Logger.info(`Effect ${effectId} ${newState ? 'enabled' : 'disabled'}`);
   }
 }

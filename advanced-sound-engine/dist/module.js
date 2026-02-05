@@ -2348,10 +2348,10 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
   }
   showModeContextMenu(event, modes, callback) {
     const menuHtml = `
-        <div id="ase-mode-menu" style="position: fixed; z-index: 10000; background: #110f1c; border: 1px solid #363249; border-radius: 4px; padding: 5px 0; box-shadow: 0 4px 12px rgba(0,0,0,0.5);">
+        <div id="ase-mode-menu" class="ase-context-menu">
           ${modes.map((m) => `
-            <div class="ase-ctx-item" data-value="${m.value}" style="padding: 8px 15px; cursor: pointer; color: #eee; display: flex; align-items: center; gap: 8px;">
-                <i class="fa-solid ${m.icon}" style="width: 16px; text-align: center; color: #cca477;"></i> 
+            <div class="ase-ctx-item" data-value="${m.value}">
+                <i class="fa-solid ${m.icon}"></i> 
                 <span>${m.label}</span>
             </div>
           `).join("")}
@@ -2361,14 +2361,6 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     const menu = $(menuHtml);
     $("body").append(menu);
     menu.css({ top: event.clientY, left: event.clientX });
-    menu.find(".ase-ctx-item").hover(
-      function() {
-        $(this).css("background", "#363249");
-      },
-      function() {
-        $(this).css("background", "transparent");
-      }
-    );
     menu.find(".ase-ctx-item").on("click", (e) => {
       e.stopPropagation();
       const val = $(e.currentTarget).data("value");
@@ -4276,6 +4268,7 @@ const _SoundMixerApp = class _SoundMixerApp {
     __publicField(this, "libraryManager");
     __publicField(this, "queueManager");
     __publicField(this, "collapsedPlaylists", /* @__PURE__ */ new Set());
+    __publicField(this, "ungroupedCollapsed", false);
     __publicField(this, "updateInterval", null);
     __publicField(this, "html", null);
     __publicField(this, "renderParent", null);
@@ -4363,31 +4356,42 @@ const _SoundMixerApp = class _SoundMixerApp {
         const playlist = this.libraryManager.playlists.getPlaylist(playlistId);
         name = (playlist == null ? void 0 : playlist.name) ?? "Unknown Playlist";
       }
-      const tracks = items.map((queueItem) => this.getQueueTrackViewData(queueItem));
+      const collapsed = playlistId ? this.collapsedPlaylists.has(playlistId) : this.ungroupedCollapsed;
+      const tracks = items.map((queueItem) => this.getQueueTrackViewData(queueItem, collapsed));
       playlists.push({
         id: playlistId,
         name,
-        collapsed: playlistId ? this.collapsedPlaylists.has(playlistId) : false,
+        collapsed: playlistId ? this.collapsedPlaylists.has(playlistId) : this.ungroupedCollapsed,
         tracks
       });
     }
     return playlists;
   }
-  getQueueTrackViewData(queueItem) {
+  getQueueTrackViewData(queueItem, parentCollapsed = false) {
     const libraryItem = this.libraryManager.getItem(queueItem.libraryItemId);
     const player = this.engine.getTrack(queueItem.libraryItemId);
     const currentTime = (player == null ? void 0 : player.getCurrentTime()) ?? 0;
     const duration = (libraryItem == null ? void 0 : libraryItem.duration) ?? (player == null ? void 0 : player.getDuration()) ?? 0;
     const progress = duration > 0 ? currentTime / duration * 100 : 0;
     const volume = (player == null ? void 0 : player.volume) ?? queueItem.volume;
+    const isPlaying = (player == null ? void 0 : player.state) === "playing";
+    const isPaused = (player == null ? void 0 : player.state) === "paused";
+    const shouldBeHidden = parentCollapsed && !isPlaying && !isPaused;
+    console.log(`[DEBUG] Track: ${libraryItem == null ? void 0 : libraryItem.name}`, {
+      parentCollapsed,
+      playerState: player == null ? void 0 : player.state,
+      isPlaying,
+      isPaused,
+      shouldBeHidden
+    });
     return {
       queueId: queueItem.id,
       libraryItemId: queueItem.libraryItemId,
       name: (libraryItem == null ? void 0 : libraryItem.name) ?? "Unknown Track",
-      group: queueItem.group,
+      group: (libraryItem == null ? void 0 : libraryItem.group) ?? queueItem.group,
       tags: (libraryItem == null ? void 0 : libraryItem.tags) ?? [],
-      isPlaying: (player == null ? void 0 : player.state) === "playing",
-      isPaused: (player == null ? void 0 : player.state) === "paused",
+      isPlaying,
+      isPaused,
       isStopped: !player || player.state === "stopped",
       isLoading: (player == null ? void 0 : player.state) === "loading",
       volume,
@@ -4398,7 +4402,8 @@ const _SoundMixerApp = class _SoundMixerApp {
       currentTimeFormatted: formatTime(currentTime),
       duration,
       durationFormatted: formatTime(duration),
-      progress
+      progress,
+      shouldBeHidden
     };
   }
   // ─────────────────────────────────────────────────────────────
@@ -4416,10 +4421,45 @@ const _SoundMixerApp = class _SoundMixerApp {
     html.find('[data-action="stop-queue"]').on("click", (e) => this.onStopQueueItem(e));
     html.find('[data-action="remove-queue"]').on("click", (e) => this.onRemoveQueueItem(e));
     html.find('[data-action="track-mode-dropdown"]').on("click", (e) => this.onTrackModeClick(e));
+    html.find('[data-action="channel-dropdown"]').on("click", (e) => this.onChannelDropdown(e));
     html.find('[data-action="toggle-playlist"]').on("click", (e) => this.onTogglePlaylist(e));
     html.find('[data-action="seek"]').on("input", (e) => this.onSeek(e));
     html.find('[data-action="volume"]').on("input", (e) => this.onVolumeChange(e));
-    html.find('[data-action="toggle-effect"]').on("change", (e) => this.onToggleEffect(e));
+    html.find(".volume-slider").on("input", (e) => {
+      const slider = e.currentTarget;
+      const value = slider.value;
+      const volumeDisplay = $(slider).siblings(".vol-value");
+      volumeDisplay.text(`${value}%`);
+    });
+    html.find(".progress-section").each((_, section) => {
+      const $section = $(section);
+      const $tooltip = $section.find(".progress-hover-time");
+      $section.on("mousemove", (e) => {
+        var _a;
+        const rect = section.getBoundingClientRect();
+        const offsetX = e.clientX - rect.left;
+        const percentage = Math.max(0, Math.min(100, offsetX / rect.width * 100));
+        const $track = $section.closest(".ase-queue-track");
+        const durationText = (_a = $track.find(".track-timer").text().split("/")[1]) == null ? void 0 : _a.trim();
+        if (durationText) {
+          const [mins, secs] = durationText.split(":").map(Number);
+          const totalSeconds = mins * 60 + secs;
+          const hoverSeconds = Math.floor(percentage / 100 * totalSeconds);
+          const hoverMins = Math.floor(hoverSeconds / 60);
+          const hoverSecs = hoverSeconds % 60;
+          const hoverTime = `${hoverMins}:${hoverSecs.toString().padStart(2, "0")}`;
+          $tooltip.text(hoverTime);
+          $tooltip.css({
+            left: `${percentage}%`,
+            display: "block"
+          });
+        }
+      });
+      $section.on("mouseleave", () => {
+        $tooltip.css("display", "none");
+      });
+    });
+    html.find('[data-action="toggle-effect"]').on("click", (e) => this.onToggleEffect(e));
   }
   // ─────────────────────────────────────────────────────────────
   // Favorites Handlers
@@ -4584,10 +4624,10 @@ const _SoundMixerApp = class _SoundMixerApp {
    */
   showModeContextMenu(event, modes, callback) {
     const menuHtml = `
-      <div id="ase-mode-menu" style="position: fixed; z-index: 10000; background: #110f1c; border: 1px solid #363249; border-radius: 4px; padding: 5px 0; box-shadow: 0 4px 12px rgba(0,0,0,0.5);">
+      <div id="ase-mode-menu" class="ase-context-menu">
         ${modes.map((m) => `
-          <div class="ase-ctx-item" data-value="${m.value}" style="padding: 8px 15px; cursor: pointer; color: #eee; display: flex; align-items: center; gap: 8px;">
-              <i class="fa-solid ${m.icon}" style="width: 16px; text-align: center; color: #cca477;"></i> 
+          <div class="ase-ctx-item" data-value="${m.value}">
+              <i class="fa-solid ${m.icon}"></i> 
               <span>${m.label}</span>
           </div>
         `).join("")}
@@ -4597,14 +4637,6 @@ const _SoundMixerApp = class _SoundMixerApp {
     const menu = $(menuHtml);
     $("body").append(menu);
     menu.css({ top: event.clientY, left: event.clientX });
-    menu.find(".ase-ctx-item").hover(
-      function() {
-        $(this).css("background", "#363249");
-      },
-      function() {
-        $(this).css("background", "transparent");
-      }
-    );
     menu.find(".ase-ctx-item").on("click", (e) => {
       e.stopPropagation();
       const val = $(e.currentTarget).data("value");
@@ -4617,6 +4649,49 @@ const _SoundMixerApp = class _SoundMixerApp {
         menu.remove();
       });
     }, 10);
+  }
+  /**
+   * Handle channel dropdown click
+   */
+  onChannelDropdown(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    const btn = $(event.currentTarget);
+    const itemId = btn.data("item-id");
+    const id = itemId || btn.closest("[data-item-id]").data("item-id");
+    const item = this.libraryManager.getItem(id);
+    if (!item) return;
+    const currentGroup = item.group || "music";
+    const channels = ["music", "ambience", "sfx"];
+    const menu = $(`
+      <div class="ase-dropdown-menu">
+        ${channels.map((ch) => `
+          <div class="ase-dropdown-item ${ch === currentGroup ? "active" : ""}" data-channel="${ch}">
+            ${ch.charAt(0).toUpperCase() + ch.slice(1)}
+          </div>
+        `).join("")}
+      </div>
+    `);
+    const rect = event.currentTarget.getBoundingClientRect();
+    menu.css({ top: rect.bottom + 2, left: rect.left });
+    $("body").append(menu);
+    menu.find(".ase-dropdown-item").on("click", (e) => {
+      e.stopPropagation();
+      const newChannel = $(e.currentTarget).data("channel");
+      this.updateTrackChannel(id, newChannel);
+      menu.remove();
+    });
+    setTimeout(() => {
+      $(document).one("click", () => menu.remove());
+    }, 10);
+  }
+  updateTrackChannel(itemId, channel) {
+    var _a;
+    const item = this.libraryManager.getItem(itemId);
+    if (!item) return;
+    this.libraryManager.updateItem(itemId, { group: channel });
+    this.requestRender();
+    (_a = ui.notifications) == null ? void 0 : _a.info(`Channel set to ${channel}`);
   }
   async onAddToQueueFromFavorite(event) {
     var _a, _b, _c, _d;
@@ -4667,23 +4742,19 @@ const _SoundMixerApp = class _SoundMixerApp {
   // Playlist Toggle
   // ─────────────────────────────────────────────────────────────
   onTogglePlaylist(event) {
+    event.preventDefault();
     const $playlist = $(event.currentTarget).closest(".ase-queue-playlist");
     const playlistId = $playlist.data("playlist-id");
-    if (!playlistId) return;
-    if (this.collapsedPlaylists.has(playlistId)) {
-      this.collapsedPlaylists.delete(playlistId);
-      $playlist.removeClass("is-collapsed");
-      $playlist.find(".ase-queue-track").show();
+    if (playlistId === null || playlistId === void 0 || playlistId === "") {
+      this.ungroupedCollapsed = !this.ungroupedCollapsed;
     } else {
-      this.collapsedPlaylists.add(playlistId);
-      $playlist.addClass("is-collapsed");
-      $playlist.find(".ase-queue-track").each((_, el) => {
-        const $el = $(el);
-        if (!$el.hasClass("is-playing") && !$el.hasClass("is-paused")) {
-          $el.hide();
-        }
-      });
+      if (this.collapsedPlaylists.has(playlistId)) {
+        this.collapsedPlaylists.delete(playlistId);
+      } else {
+        this.collapsedPlaylists.add(playlistId);
+      }
     }
+    this.requestRender();
   }
   // ─────────────────────────────────────────────────────────────
   // Track Controls
@@ -4833,13 +4904,23 @@ const _SoundMixerApp = class _SoundMixerApp {
         const currentTime = player.getCurrentTime();
         const duration = player.getDuration();
         const progress = duration > 0 ? currentTime / duration * 100 : 0;
-        $track.find(".ase-time-current").text(formatTime(currentTime));
-        $track.find(".ase-seek-slider").val(progress);
+        $track.find(".progress-fill").css("width", `${progress}%`);
+        $track.find(".seek-slider").val(progress);
+        $track.find(".track-timer").text(`${formatTime(currentTime)} / ${formatTime(duration)}`);
         $track.removeClass("is-playing is-paused");
+        const $playPauseBtn = $track.find('[data-action="play-queue"], [data-action="pause-queue"]');
+        const $playPauseIcon = $playPauseBtn.find("i");
         if (player.state === "playing") {
           $track.addClass("is-playing");
+          $playPauseIcon.removeClass("fa-play").addClass("fa-pause");
+          $playPauseBtn.attr("data-action", "pause-queue").attr("title", "Pause");
         } else if (player.state === "paused") {
           $track.addClass("is-paused");
+          $playPauseIcon.removeClass("fa-pause").addClass("fa-play");
+          $playPauseBtn.attr("data-action", "play-queue").attr("title", "Play");
+        } else {
+          $playPauseIcon.removeClass("fa-pause").addClass("fa-play");
+          $playPauseBtn.attr("data-action", "play-queue").attr("title", "Play");
         }
       }
     });
@@ -4854,11 +4935,18 @@ const _SoundMixerApp = class _SoundMixerApp {
     }
   }
   onToggleEffect(event) {
-    const $checkbox = $(event.currentTarget);
-    const effectId = $checkbox.data("effect-id");
-    const enabled = $checkbox.is(":checked");
-    this.engine.setEffectEnabled(effectId, enabled);
-    Logger.info(`Effect ${effectId} ${enabled ? "enabled" : "disabled"}`);
+    event.preventDefault();
+    const $btn = $(event.currentTarget);
+    const effectId = $btn.data("effect-id");
+    const wasEnabled = $btn.hasClass("active");
+    const newState = !wasEnabled;
+    this.engine.setEffectEnabled(effectId, newState);
+    if (newState) {
+      $btn.addClass("active");
+    } else {
+      $btn.removeClass("active");
+    }
+    Logger.info(`Effect ${effectId} ${newState ? "enabled" : "disabled"}`);
   }
 };
 __name(_SoundMixerApp, "SoundMixerApp");
@@ -6984,6 +7072,10 @@ function registerHandlebarsHelpers() {
   });
   Handlebars.registerHelper("eq", (a, b) => {
     return a === b;
+  });
+  Handlebars.registerHelper("or", (...args) => {
+    const values = args.slice(0, -1);
+    return values.some((val) => !!val);
   });
 }
 __name(registerHandlebarsHelpers, "registerHandlebarsHelpers");

@@ -198,6 +198,13 @@ function registerHandlebarsHelpers(): void {
   Handlebars.registerHelper('eq', (a: any, b: any): boolean => {
     return a === b;
   });
+
+  // OR helper for conditional logic
+  Handlebars.registerHelper('or', (...args: any[]): boolean => {
+    // Last argument is Handlebars options object, exclude it
+    const values = args.slice(0, -1);
+    return values.some((val) => !!val);
+  });
 }
 
 // ─────────────────────────────────────────────────────────────
