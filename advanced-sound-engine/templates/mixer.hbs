@@ -121,7 +121,7 @@
                 <button class="btn-icon" data-action="track-mode-dropdown" data-item-id="{{libraryItemId}}"
                   title="Playback Mode: {{playbackMode}}">
                   <i
-                    class="fa-solid {{#if (eq playbackMode 'single')}}fa-stop-circle{{else if (eq playbackMode 'linear')}}fa-arrow-right{{else if (eq playbackMode 'loop')}}fa-sync-alt{{else if (eq playbackMode 'random')}}fa-shuffle{{else}}fa-arrow-turn-down{{/if}}"></i>
+                    class="fa-solid {{#if (eq playbackMode 'single')}}fa-arrow-right-to-line{{else if (eq playbackMode 'linear')}}fa-arrow-right{{else if (eq playbackMode 'loop')}}fa-repeat{{else if (eq playbackMode 'random')}}fa-shuffle{{else}}fa-arrow-turn-down{{/if}}"></i>
                 </button>
               </div>
 
@@ -136,7 +136,8 @@
               <div class="progress-section">
                 <input type="range" class="seek-slider" data-action="seek" min="0" max="100" value="{{progress}}"
                   step="0.1">
-                <div class="progress-fill" style="width: {{progress}};"></div>
+                <div class="progress-fill {{#if (eq progress 0)}}notransition{{/if}}" style="width: {{progress}}%;">
+                </div>
                 <div class="progress-hover-time" style="display: none;"></div>
               </div>
               <div class="track-timer">

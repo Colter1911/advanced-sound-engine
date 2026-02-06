@@ -114,24 +114,26 @@ export class LocalLibraryApp extends Application {
     } as any;
   }
 
-  // Helper to request scroll persistence
-  private persistScroll(): void {
-    if (this.parentApp && typeof this.parentApp.captureLibraryScroll === 'function') {
-      this.parentApp.captureLibraryScroll();
-    }
-  }
-
   // Override render to delegate to main app
   override render(force?: boolean, options?: any): any {
     // Background update: Trigger parent app re-render
     if (options?.renderContext === 'queue-update') {
       if (this.parentApp && typeof this.parentApp.render === 'function') {
+        this.parentApp.captureScroll(); // Capture before background update
         return this.parentApp.render({ parts: ['main'] });
       }
     }
 
     // Default behavior: Delegate to openPanel (likely focuses tab)
     if (window.ASE?.openPanel) {
+      // openPanel calls render, so we should capture if we are already open
+      if (this.parentApp) {
+        if (options?.resetScroll) {
+          this.parentApp.resetScroll('library');
+        } else {
+          this.parentApp.captureScroll();
+        }
+      }
       window.ASE.openPanel('library', true);
       return;
     }
@@ -571,7 +573,7 @@ export class LocalLibraryApp extends Application {
       const selectedTags = Array.from(this.filterState.selectedTags);
 
       const item = await this.library.addItem(path, undefined, group, selectedTags);
-      this.persistScroll();
+      if (this.parentApp) this.parentApp.captureScroll();
       this.render();
       ui.notifications?.info(`Added to library: ${item.name}`);
     } catch (error) {
@@ -599,7 +601,7 @@ export class LocalLibraryApp extends Application {
         btn.removeClass('active');
       }
 
-      this.persistScroll();
+      if (this.parentApp) this.parentApp.captureScroll();
       const isFavorite = this.library.toggleFavorite(itemId);
 
       // We still re-render to update the sidebar/state fully, but the button interaction felt instant
@@ -778,7 +780,7 @@ export class LocalLibraryApp extends Application {
       // Create playlist -> might want to scroll to it? Or keep position?
       // User: "actions in zone of tracks". Playlists are separate zone. 
       // But adding playlist shouldn't jump list to top? Let's persist.
-      this.persistScroll();
+      if (this.parentApp) this.parentApp.captureScroll();
       this.render();
       ui.notifications?.info(`Created playlist: ${playlist.name}`);
     } catch (error) {
@@ -795,7 +797,7 @@ export class LocalLibraryApp extends Application {
     const playlistId = $(event.currentTarget).closest('[data-playlist-id]').data('playlist-id') as string;
 
     try {
-      this.persistScroll();
+      if (this.parentApp) this.parentApp.captureScroll();
       const isFavorite = this.library.playlists.togglePlaylistFavorite(playlistId);
       this.render();
       ui.notifications?.info(isFavorite ? 'Added to favorites' : 'Removed from favorites');
@@ -816,7 +818,7 @@ export class LocalLibraryApp extends Application {
     // If field becomes empty and search was active, reset search
     if (!trimmedVal && this.filterState.searchQuery) {
       this.filterState.searchQuery = '';
-      this.render();
+      this.render(false, { resetScroll: true });
     }
   }
 
@@ -826,7 +828,7 @@ export class LocalLibraryApp extends Application {
       const query = ($(event.currentTarget).val() as string || '').trim().toLowerCase();
       if (this.filterState.searchQuery !== query) {
         this.filterState.searchQuery = query;
-        this.render();
+        this.render(false, { resetScroll: true });
       }
     }
   }
@@ -836,7 +838,8 @@ export class LocalLibraryApp extends Application {
     this.filterState.searchQuery = '';
     const wrapper = $(event.currentTarget).closest('.ase-search-input-wrapper');
     wrapper.find('.ase-search-input').val('');
-    this.render(); // Re-render to show all items
+    wrapper.find('.ase-search-input').val('');
+    this.render(false, { resetScroll: true }); // Re-render to show all items
   }
 
   private _onFilterChannel(event: JQuery.ClickEvent): void {
@@ -856,7 +859,8 @@ export class LocalLibraryApp extends Application {
     // Pass true to force render because complex logic might need re-evaluation of the list
     // OR implement client-side hiding for this too if feeling brave. 
     // Given 3 checkboxes, re-render is safer to ensure correct combinatorics.
-    this.render();
+    // Given 3 checkboxes, re-render is safer to ensure correct combinatorics.
+    this.render(false, { resetScroll: true });
     Logger.debug('Filter channel toggled:', channel, this.filterState.selectedChannels);
   }
 
@@ -884,7 +888,7 @@ export class LocalLibraryApp extends Application {
 
     // So we DO NOT reset selectedChannels.
 
-    this.render();
+    this.render(false, { resetScroll: true });
     ui.notifications?.info('Filters cleared (Channels preserved)');
   }
 
@@ -909,7 +913,7 @@ export class LocalLibraryApp extends Application {
       console.log('[ASE] Tag selected');
     }
 
-    this.render();
+    this.render(false, { resetScroll: true });
   }
 
   private onTagContext(event: JQuery.ContextMenuEvent): void {
@@ -1032,7 +1036,7 @@ export class LocalLibraryApp extends Application {
       // User said "zone of tracks with tracks". Tag list is separate. 
       // But renaming right from track context menu? Let's enabling it generally.
       // Actually user said "zone of tracks". Let's persist.
-      this.persistScroll();
+      if (this.parentApp) this.parentApp.captureScroll();
       this.render();
       ui.notifications?.info(`Renamed tag "${oldTag}" to "${newTag}" on ${count} tracks.`);
     }
@@ -1055,7 +1059,7 @@ export class LocalLibraryApp extends Application {
     this.filterState.selectedTags.delete(tagStr);
 
     // Always re-render
-    this.persistScroll();
+    if (this.parentApp) this.parentApp.captureScroll();
     this.render();
     ui.notifications?.info(count > 0 ? `Deleted tag "${tagStr}" from ${count} tracks.` : `Deleted custom tag "${tagStr}".`);
   }
@@ -1147,7 +1151,7 @@ export class LocalLibraryApp extends Application {
       socket.broadcastTrackPlay(itemId, offset);
     }
 
-    this.persistScroll();
+    if (this.parentApp) this.parentApp.captureScroll();
     this.render();
   }
 
@@ -1172,7 +1176,7 @@ export class LocalLibraryApp extends Application {
       window.ASE.queue.removeByLibraryItemId(itemId);
     }
 
-    this.persistScroll();
+    if (this.parentApp) this.parentApp.captureScroll();
     this.render();
   }
 
@@ -1198,7 +1202,7 @@ export class LocalLibraryApp extends Application {
       socket.broadcastTrackPause(itemId, currentTime);
     }
 
-    this.persistScroll();
+    if (this.parentApp) this.parentApp.captureScroll();
     this.render(); // Update UI and bottom panel indicators
   }
 
@@ -1233,7 +1237,7 @@ export class LocalLibraryApp extends Application {
       ui.notifications?.info(`"${item.name}" added to queue`);
     }
 
-    this.persistScroll();
+    if (this.parentApp) this.parentApp.captureScroll();
     this.render();
   }
 
@@ -1326,7 +1330,7 @@ export class LocalLibraryApp extends Application {
       }
     }
 
-    this.persistScroll();
+    if (this.parentApp) this.parentApp.captureScroll();
     this.render();
   }
 
@@ -1382,7 +1386,7 @@ export class LocalLibraryApp extends Application {
       }
     }
 
-    this.persistScroll();
+    if (this.parentApp) this.parentApp.captureScroll();
     this.render();
   }
 
@@ -1436,7 +1440,7 @@ export class LocalLibraryApp extends Application {
 
     // Update group field directly (not as a tag)
     this.library.updateItem(itemId, { group: channel as TrackGroup });
-    this.persistScroll();
+    if (this.parentApp) this.parentApp.captureScroll();
     this.render();
     ui.notifications?.info(`Channel set to ${channel}`);
   }
@@ -1475,7 +1479,7 @@ export class LocalLibraryApp extends Application {
       label: isInPlaylist ? 'Delete Track (Global)' : 'Delete',
       callback: () => {
         this.library.removeItem(itemId);
-        this.persistScroll();
+        if (this.parentApp) this.parentApp.captureScroll();
         this.render();
         ui.notifications?.info(`Deleted "${item.name}"`);
       }
@@ -1595,7 +1599,7 @@ export class LocalLibraryApp extends Application {
     menu.find('[data-action="remove-tag"]').on('click', () => {
       menu.remove();
       this.library.removeTagFromItem(itemId, tagName);
-      this.persistScroll();
+      if (this.parentApp) this.parentApp.captureScroll();
       this.render();
       ui.notifications?.info(`Removed tag "${tagName}"`);
     });
@@ -1612,7 +1616,7 @@ export class LocalLibraryApp extends Application {
     const newName = await this.promptInput('Rename Track', 'Track Name:', item.name);
     if (newName && newName !== item.name) {
       this.library.updateItem(itemId, { name: newName });
-      this.persistScroll();
+      if (this.parentApp) this.parentApp.captureScroll();
       this.render();
       ui.notifications?.info(`Renamed to "${newName}"`);
     }
@@ -1633,7 +1637,7 @@ export class LocalLibraryApp extends Application {
 
     const group = this.inferGroupFromTags(item.tags) as TrackGroup;
     this.library.playlists.addTrackToPlaylist(selectedPlaylistId, itemId, group);
-    this.persistScroll();
+    if (this.parentApp) this.parentApp.captureScroll();
     this.render();
     ui.notifications?.info(`Added "${item.name}" to playlist`);
   }
@@ -1683,7 +1687,7 @@ export class LocalLibraryApp extends Application {
             }
 
             this.library.updateItem(itemId, { tags: selectedTags });
-            this.persistScroll();
+            if (this.parentApp) this.parentApp.captureScroll();
             this.render();
           }
         },
@@ -1744,7 +1748,7 @@ export class LocalLibraryApp extends Application {
       this.filterState.selectedPlaylistId = playlistId;
     }
 
-    this.render();
+    this.render(false, { resetScroll: true });
     Logger.debug('Select playlist:', playlistId);
   }
 
@@ -1869,7 +1873,7 @@ export class LocalLibraryApp extends Application {
     if (!newName || newName === playlist.name) return;
 
     this.library.playlists.updatePlaylist(playlistId, { name: newName });
-    this.persistScroll();
+    if (this.parentApp) this.parentApp.captureScroll();
     this.render();
     ui.notifications?.info(`Renamed playlist to "${newName}"`);
   }
@@ -2535,7 +2539,7 @@ export class LocalLibraryApp extends Application {
   private async removeTrackFromPlaylist(playlistId: string, trackId: string): Promise<void> {
     try {
       this.library.playlists.removeLibraryItemFromPlaylist(playlistId, trackId);
-      this.persistScroll();
+      if (this.parentApp) this.parentApp.captureScroll();
       this.render();
       ui.notifications?.info('Removed track from playlist');
     } catch (error) {
@@ -2610,7 +2614,7 @@ export class LocalLibraryApp extends Application {
           const itemId = li.data('item-id') as string;
           try {
             const isFavorite = this.library.toggleFavorite(itemId);
-            this.persistScroll();
+            if (this.parentApp) this.parentApp.captureScroll();
             this.render();
             ui.notifications?.info(isFavorite ? 'Added to favorites' : 'Removed from favorites');
           } catch (error) {
@@ -2718,7 +2722,7 @@ export class LocalLibraryApp extends Application {
 
     try {
       this.library.updateItem(itemId, { name: newName });
-      this.persistScroll();
+      if (this.parentApp) this.parentApp.captureScroll();
       this.render();
       ui.notifications?.info(`Renamed to: ${newName}`);
     } catch (error) {
@@ -2749,7 +2753,7 @@ export class LocalLibraryApp extends Application {
 
     try {
       this.library.updateItem(itemId, { tags: newTags });
-      this.persistScroll();
+      if (this.parentApp) this.parentApp.captureScroll();
       this.render();
       ui.notifications?.info('Tags updated');
     } catch (error) {
@@ -2777,7 +2781,7 @@ export class LocalLibraryApp extends Application {
     if (confirmed) {
       try {
         this.library.removeItem(itemId);
-        this.persistScroll();
+        if (this.parentApp) this.parentApp.captureScroll();
         this.render();
         ui.notifications?.info(`Deleted: ${item.name}`);
       } catch (error) {

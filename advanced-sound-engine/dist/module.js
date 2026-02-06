@@ -1928,21 +1928,25 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
       tabs: [{ navSelector: ".tabs", contentSelector: ".content", initial: "library" }]
     });
   }
-  // Helper to request scroll persistence
-  persistScroll() {
-    if (this.parentApp && typeof this.parentApp.captureLibraryScroll === "function") {
-      this.parentApp.captureLibraryScroll();
-    }
-  }
   // Override render to delegate to main app
   render(force, options) {
     var _a;
     if ((options == null ? void 0 : options.renderContext) === "queue-update") {
       if (this.parentApp && typeof this.parentApp.render === "function") {
+        this.parentApp.captureScroll();
         return this.parentApp.render({ parts: ["main"] });
       }
     }
     if ((_a = window.ASE) == null ? void 0 : _a.openPanel) {
+      if (this.parentApp) {
+        if (options == null ? void 0 : options.resetScroll) {
+          Logger.debug("[LocalLibraryApp] Resetting scroll before render");
+          this.parentApp.resetScroll("library");
+        } else {
+          Logger.debug("[LocalLibraryApp] Capturing scroll before render");
+          this.parentApp.captureScroll();
+        }
+      }
       window.ASE.openPanel("library", true);
       return;
     }
@@ -2257,7 +2261,7 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     try {
       const selectedTags = Array.from(this.filterState.selectedTags);
       const item = await this.library.addItem(path, void 0, group, selectedTags);
-      this.persistScroll();
+      if (this.parentApp) this.parentApp.captureScroll();
       this.render();
       (_a = ui.notifications) == null ? void 0 : _a.info(`Added to library: ${item.name}`);
     } catch (error) {
@@ -2281,7 +2285,7 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
         icon.removeClass("fas active").addClass("far");
         btn.removeClass("active");
       }
-      this.persistScroll();
+      if (this.parentApp) this.parentApp.captureScroll();
       const isFavorite = this.library.toggleFavorite(itemId);
       this.render();
       (_a = ui.notifications) == null ? void 0 : _a.info(isFavorite ? "Added to favorites" : "Removed from favorites");
@@ -2420,7 +2424,7 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     if (!name) return;
     try {
       const playlist = this.library.playlists.createPlaylist(name);
-      this.persistScroll();
+      if (this.parentApp) this.parentApp.captureScroll();
       this.render();
       (_a = ui.notifications) == null ? void 0 : _a.info(`Created playlist: ${playlist.name}`);
     } catch (error) {
@@ -2435,7 +2439,7 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     event.stopPropagation();
     const playlistId = $(event.currentTarget).closest("[data-playlist-id]").data("playlist-id");
     try {
-      this.persistScroll();
+      if (this.parentApp) this.parentApp.captureScroll();
       const isFavorite = this.library.playlists.togglePlaylistFavorite(playlistId);
       this.render();
       (_a = ui.notifications) == null ? void 0 : _a.info(isFavorite ? "Added to favorites" : "Removed from favorites");
@@ -2452,7 +2456,7 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     const trimmedVal = val.trim();
     if (!trimmedVal && this.filterState.searchQuery) {
       this.filterState.searchQuery = "";
-      this.render();
+      this.render(false, { resetScroll: true });
     }
   }
   onSearchKeydown(event) {
@@ -2461,7 +2465,7 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
       const query = ($(event.currentTarget).val() || "").trim().toLowerCase();
       if (this.filterState.searchQuery !== query) {
         this.filterState.searchQuery = query;
-        this.render();
+        this.render(false, { resetScroll: true });
       }
     }
   }
@@ -2470,7 +2474,8 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     this.filterState.searchQuery = "";
     const wrapper = $(event.currentTarget).closest(".ase-search-input-wrapper");
     wrapper.find(".ase-search-input").val("");
-    this.render();
+    wrapper.find(".ase-search-input").val("");
+    this.render(false, { resetScroll: true });
   }
   _onFilterChannel(event) {
     event.preventDefault();
@@ -2483,7 +2488,7 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
       this.filterState.selectedChannels.add(channel);
       btn.addClass("active");
     }
-    this.render();
+    this.render(false, { resetScroll: true });
     Logger.debug("Filter channel toggled:", channel, this.filterState.selectedChannels);
   }
   onChangeSort(event) {
@@ -2498,7 +2503,7 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     this.filterState.searchQuery = "";
     this.filterState.selectedPlaylistId = null;
     this.filterState.selectedTags.clear();
-    this.render();
+    this.render(false, { resetScroll: true });
     (_a = ui.notifications) == null ? void 0 : _a.info("Filters cleared (Channels preserved)");
   }
   // ─────────────────────────────────────────────────────────────
@@ -2516,7 +2521,7 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
       this.filterState.selectedTags.add(tag);
       console.log("[ASE] Tag selected");
     }
-    this.render();
+    this.render(false, { resetScroll: true });
   }
   onTagContext(event) {
     event.preventDefault();
@@ -2604,7 +2609,7 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
       this.filterState.selectedTags.add(newTag);
     }
     if (count > 0) {
-      this.persistScroll();
+      if (this.parentApp) this.parentApp.captureScroll();
       this.render();
       (_a = ui.notifications) == null ? void 0 : _a.info(`Renamed tag "${oldTag}" to "${newTag}" on ${count} tracks.`);
     }
@@ -2620,7 +2625,7 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     if (!confirm) return;
     const count = this.library.deleteTag(tagStr);
     this.filterState.selectedTags.delete(tagStr);
-    this.persistScroll();
+    if (this.parentApp) this.parentApp.captureScroll();
     this.render();
     (_a = ui.notifications) == null ? void 0 : _a.info(count > 0 ? `Deleted tag "${tagStr}" from ${count} tracks.` : `Deleted custom tag "${tagStr}".`);
   }
@@ -2690,7 +2695,7 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
       Logger.debug("LocalLibrary: Broadcasting Play for track", itemId);
       socket.broadcastTrackPlay(itemId, offset);
     }
-    this.persistScroll();
+    if (this.parentApp) this.parentApp.captureScroll();
     this.render();
   }
   onStopTrack(event) {
@@ -2707,7 +2712,7 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     if ((_c = window.ASE) == null ? void 0 : _c.queue) {
       window.ASE.queue.removeByLibraryItemId(itemId);
     }
-    this.persistScroll();
+    if (this.parentApp) this.parentApp.captureScroll();
     this.render();
   }
   onPauseTrack(event) {
@@ -2727,7 +2732,7 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
       console.log("[ASE DEBUG] Broadcasting pause for", itemId);
       socket.broadcastTrackPause(itemId, currentTime);
     }
-    this.persistScroll();
+    if (this.parentApp) this.parentApp.captureScroll();
     this.render();
   }
   onAddToQueue(event) {
@@ -2756,7 +2761,7 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
       Logger.debug("Added to queue:", itemId);
       (_c = ui.notifications) == null ? void 0 : _c.info(`"${item.name}" added to queue`);
     }
-    this.persistScroll();
+    if (this.parentApp) this.parentApp.captureScroll();
     this.render();
   }
   async onAddTagToTrack(event) {
@@ -2832,7 +2837,7 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
         (_b = ui.notifications) == null ? void 0 : _b.info(`Removed "${item.name}" from favorites`);
       }
     }
-    this.persistScroll();
+    if (this.parentApp) this.parentApp.captureScroll();
     this.render();
   }
   onToggleFavoriteQueue(event) {
@@ -2878,7 +2883,7 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
         (_e = ui.notifications) == null ? void 0 : _e.info(`Added "${item.name}" to queue`);
       }
     }
-    this.persistScroll();
+    if (this.parentApp) this.parentApp.captureScroll();
     this.render();
   }
   // ─────────────────────────────────────────────────────────────
@@ -2918,7 +2923,7 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     const item = this.library.getItem(itemId);
     if (!item) return;
     this.library.updateItem(itemId, { group: channel });
-    this.persistScroll();
+    if (this.parentApp) this.parentApp.captureScroll();
     this.render();
     (_a = ui.notifications) == null ? void 0 : _a.info(`Channel set to ${channel}`);
   }
@@ -2952,7 +2957,7 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
       callback: /* @__PURE__ */ __name(() => {
         var _a;
         this.library.removeItem(itemId);
-        this.persistScroll();
+        if (this.parentApp) this.parentApp.captureScroll();
         this.render();
         (_a = ui.notifications) == null ? void 0 : _a.info(`Deleted "${item.name}"`);
       }, "callback")
@@ -3050,7 +3055,7 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
       var _a;
       menu.remove();
       this.library.removeTagFromItem(itemId, tagName);
-      this.persistScroll();
+      if (this.parentApp) this.parentApp.captureScroll();
       this.render();
       (_a = ui.notifications) == null ? void 0 : _a.info(`Removed tag "${tagName}"`);
     });
@@ -3065,7 +3070,7 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     const newName = await this.promptInput("Rename Track", "Track Name:", item.name);
     if (newName && newName !== item.name) {
       this.library.updateItem(itemId, { name: newName });
-      this.persistScroll();
+      if (this.parentApp) this.parentApp.captureScroll();
       this.render();
       (_a = ui.notifications) == null ? void 0 : _a.info(`Renamed to "${newName}"`);
     }
@@ -3083,7 +3088,7 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     if (!item) return;
     const group = this.inferGroupFromTags(item.tags);
     this.library.playlists.addTrackToPlaylist(selectedPlaylistId, itemId, group);
-    this.persistScroll();
+    if (this.parentApp) this.parentApp.captureScroll();
     this.render();
     (_b = ui.notifications) == null ? void 0 : _b.info(`Added "${item.name}" to playlist`);
   }
@@ -3128,7 +3133,7 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
               this.library.addCustomTag(newTag);
             }
             this.library.updateItem(itemId, { tags: selectedTags });
-            this.persistScroll();
+            if (this.parentApp) this.parentApp.captureScroll();
             this.render();
           }, "callback")
         },
@@ -3182,7 +3187,7 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     } else {
       this.filterState.selectedPlaylistId = playlistId;
     }
-    this.render();
+    this.render(false, { resetScroll: true });
     Logger.debug("Select playlist:", playlistId);
   }
   onPlaylistMenu(event) {
@@ -3275,7 +3280,7 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     const newName = await this.promptPlaylistName(playlist.name);
     if (!newName || newName === playlist.name) return;
     this.library.playlists.updatePlaylist(playlistId, { name: newName });
-    this.persistScroll();
+    if (this.parentApp) this.parentApp.captureScroll();
     this.render();
     (_a = ui.notifications) == null ? void 0 : _a.info(`Renamed playlist to "${newName}"`);
   }
@@ -3744,7 +3749,7 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     var _a, _b;
     try {
       this.library.playlists.removeLibraryItemFromPlaylist(playlistId, trackId);
-      this.persistScroll();
+      if (this.parentApp) this.parentApp.captureScroll();
       this.render();
       (_a = ui.notifications) == null ? void 0 : _a.info("Removed track from playlist");
     } catch (error) {
@@ -3811,7 +3816,7 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
           const itemId = li.data("item-id");
           try {
             const isFavorite = this.library.toggleFavorite(itemId);
-            this.persistScroll();
+            if (this.parentApp) this.parentApp.captureScroll();
             this.render();
             (_a = ui.notifications) == null ? void 0 : _a.info(isFavorite ? "Added to favorites" : "Removed from favorites");
           } catch (error) {
@@ -3912,7 +3917,7 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     if (!newName || newName === item.name) return;
     try {
       this.library.updateItem(itemId, { name: newName });
-      this.persistScroll();
+      if (this.parentApp) this.parentApp.captureScroll();
       this.render();
       (_b = ui.notifications) == null ? void 0 : _b.info(`Renamed to: ${newName}`);
     } catch (error) {
@@ -3936,7 +3941,7 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     const newTags = tagsString.split(",").map((t) => t.trim()).filter((t) => t.length > 0);
     try {
       this.library.updateItem(itemId, { tags: newTags });
-      this.persistScroll();
+      if (this.parentApp) this.parentApp.captureScroll();
       this.render();
       (_b = ui.notifications) == null ? void 0 : _b.info("Tags updated");
     } catch (error) {
@@ -3962,7 +3967,7 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     if (confirmed) {
       try {
         this.library.removeItem(itemId);
-        this.persistScroll();
+        if (this.parentApp) this.parentApp.captureScroll();
         this.render();
         (_b = ui.notifications) == null ? void 0 : _b.info(`Deleted: ${item.name}`);
       } catch (error) {
@@ -4375,9 +4380,14 @@ const _SoundMixerApp = class _SoundMixerApp {
   getQueueTrackViewData(queueItem, parentCollapsed = false) {
     const libraryItem = this.libraryManager.getItem(queueItem.libraryItemId);
     const player = this.engine.getTrack(queueItem.libraryItemId);
-    const currentTime = (player == null ? void 0 : player.getCurrentTime()) ?? 0;
+    const currentTimeRaw = (player == null ? void 0 : player.getCurrentTime()) ?? 0;
     const duration = (libraryItem == null ? void 0 : libraryItem.duration) ?? (player == null ? void 0 : player.getDuration()) ?? 0;
-    const progress = duration > 0 ? currentTime / duration * 100 : 0;
+    const currentTime = Math.min(currentTimeRaw, duration);
+    let progress = 0;
+    if (duration > 0 && Number.isFinite(duration)) {
+      progress = currentTime / duration * 100;
+    }
+    progress = Math.min(Math.max(progress, 0), 100);
     const volume = (player == null ? void 0 : player.volume) ?? queueItem.volume;
     const isPlaying = (player == null ? void 0 : player.state) === "playing";
     const isPaused = (player == null ? void 0 : player.state) === "paused";
@@ -4608,7 +4618,7 @@ const _SoundMixerApp = class _SoundMixerApp {
     const modes = [
       { label: "Inherit (Default)", value: "inherit", icon: "fa-arrow-turn-down" },
       { label: "Loop", value: "loop", icon: "fa-repeat" },
-      { label: "Single", value: "single", icon: "fa-stop" },
+      { label: "Single", value: "single", icon: "fa-arrow-right-to-line" },
       { label: "Linear", value: "linear", icon: "fa-arrow-right" },
       { label: "Random", value: "random", icon: "fa-shuffle" }
     ];
@@ -5378,8 +5388,24 @@ const _AdvancedSoundEngineApp = class _AdvancedSoundEngineApp extends Handlebars
       // Default to library as per user focus
       syncEnabled: false
     });
-    __publicField(this, "persistScrollOnce", false);
-    __publicField(this, "_scrollLibrary", { tracks: 0, playlists: 0, favorites: 0 });
+    // Unified Scroll State Store
+    __publicField(this, "scrollStates", {
+      library: {
+        ".ase-track-player-list": 0,
+        ".ase-list-group": 0,
+        // Playlists list
+        ".ase-favorites-section .ase-list-group": 0
+        // Favorites
+      },
+      mixer: {
+        '[data-section="mixer-queue"]': 0,
+        '[data-section="mixer-favorites"]': 0
+      },
+      sfx: {
+        ".ase-effects-layout": 0
+      },
+      online: {}
+    });
     this.engine = engine;
     this.socket = socket;
     this.libraryManager = libraryManager2;
@@ -5389,16 +5415,19 @@ const _AdvancedSoundEngineApp = class _AdvancedSoundEngineApp extends Handlebars
     this.effectsApp = new SoundEffectsApp(this.engine, this.socket, this.libraryManager.storage);
     this.mixerApp.setRenderCallback(() => {
       if (this.state.activeTab === "mixer") {
+        this.captureScroll();
         this.render({ parts: ["main"] });
       }
     });
     this.effectsApp.setRenderCallback(() => {
       if (this.state.activeTab === "sfx") {
+        this.captureScroll();
         this.render({ parts: ["main"] });
       }
     });
     this.queueManager.on("change", () => {
       if (this.state.activeTab === "mixer") {
+        this.captureScroll();
         this.render({ parts: ["main"] });
       }
     });
@@ -5482,21 +5511,7 @@ const _AdvancedSoundEngineApp = class _AdvancedSoundEngineApp extends Handlebars
       Logger.info("[AdvancedSoundEngineApp] Delegating to effectsApp.activateListeners");
       this.effectsApp.activateListeners(html);
     }
-    if (this.state.activeTab === "library") {
-      if (this.persistScrollOnce) {
-        const scrollState = { ...this._scrollLibrary };
-        this.persistScrollOnce = false;
-        setTimeout(() => {
-          const tracksList = html.find(".ase-track-player-list");
-          const playlistList = html.find(".ase-list-group").first();
-          const favList = html.find(".ase-favorites-section .ase-list-group");
-          if (tracksList.length) tracksList.scrollTop(scrollState.tracks);
-          if (playlistList.length) playlistList.scrollTop(scrollState.playlists);
-          if (favList.length) favList.scrollTop(scrollState.favorites);
-          Logger.info(`[SmartScroll] Restored scroll (delayed): Tracks=${scrollState.tracks}`);
-        }, 1);
-      }
-    }
+    this.restoreScroll();
   }
   /**
    * V2 Close Hook
@@ -5511,27 +5526,67 @@ const _AdvancedSoundEngineApp = class _AdvancedSoundEngineApp extends Handlebars
     event.preventDefault();
     const tabName = $(event.currentTarget).data("tab");
     if (this.state.activeTab === tabName) return;
-    if (this.state.activeTab === "library") {
-      const html = $(this.element);
-      this._scrollLibrary.tracks = html.find(".ase-track-player-list").scrollTop() || 0;
-      this._scrollLibrary.playlists = html.find(".ase-list-group").first().scrollTop() || 0;
-    }
+    this.captureScroll();
     this.state.activeTab = tabName;
     this.render({ parts: ["main"] });
   }
   /**
-   * Captures the current scroll positions of the library tab.
-   * Call this before triggering a re-render if you want to restore scroll afterwards.
-   * Sets persistScrollOnce to true automatically.
+   * Resets the scroll state for a specific tab to 0.
+   * Use this when changing filters or view context where the user expects to start from the top.
    */
-  captureLibraryScroll() {
-    if (this.state.activeTab !== "library") return;
+  resetScroll(tabName) {
+    const targetTab = tabName || this.state.activeTab;
+    const map = this.scrollStates[targetTab];
+    if (!map) return;
+    Logger.debug(`[SmartScroll] Resetting scroll for ${targetTab}`);
+    for (const selector of Object.keys(map)) {
+      map[selector] = 0;
+    }
+  }
+  /**
+   * Captures the current scroll positions for the ACTIVE tab.
+   * Call this before any operation that might trigger a re-render.
+   */
+  captureScroll() {
+    const activeTab = this.state.activeTab;
     const html = $(this.element);
-    this._scrollLibrary.tracks = html.find(".ase-track-player-list").scrollTop() || 0;
-    this._scrollLibrary.playlists = html.find(".ase-list-group").first().scrollTop() || 0;
-    this._scrollLibrary.favorites = html.find(".ase-favorites-section .ase-list-group").scrollTop() || 0;
-    Logger.info(`[SmartScroll] Captured scroll: Tracks=${this._scrollLibrary.tracks}`);
-    this.persistScrollOnce = true;
+    const map = this.scrollStates[activeTab];
+    if (!map) return;
+    Logger.debug(`[SmartScroll] Capturing for ${activeTab}...`);
+    for (const selector of Object.keys(map)) {
+      const el = html.find(selector);
+      if (el.length) {
+        const scrollTop = el.scrollTop() || 0;
+        map[selector] = scrollTop;
+        if (scrollTop > 0) Logger.debug(`[SmartScroll] Captured ${selector}: ${scrollTop}`);
+      } else {
+        Logger.debug(`[SmartScroll] Selector not found: ${selector}`);
+      }
+    }
+  }
+  /**
+   * Restores scroll positions for the ACTIVE tab.
+   * called automatically in _onRender.
+   */
+  restoreScroll() {
+    const activeTab = this.state.activeTab;
+    const html = $(this.element);
+    const map = this.scrollStates[activeTab];
+    if (!map) return;
+    Logger.debug(`[SmartScroll] Restoring for ${activeTab}...`);
+    for (const [selector, scrollTop] of Object.entries(map)) {
+      const el = html.find(selector);
+      if (el.length) {
+        const currentScroll = el.scrollTop();
+        Logger.debug(`[SmartScroll] Restoring ${selector}. Stored: ${scrollTop}, Current: ${currentScroll}`);
+        el.scrollTop(scrollTop);
+        if (Math.abs((el.scrollTop() || 0) - scrollTop) > 1) {
+          Logger.warn(`[SmartScroll] Failed to restore ${selector}. Wanted: ${scrollTop}, Got: ${el.scrollTop()}`);
+        }
+      } else {
+        Logger.debug(`[SmartScroll] Selector not found for restoration: ${selector}`);
+      }
+    }
   }
   onToggleSync(event) {
     const enabled = !this.socket.syncEnabled;
@@ -6788,7 +6843,7 @@ const _PlaybackScheduler = class _PlaybackScheduler {
     }
     if (track.playbackMode && track.playbackMode !== "inherit") {
       Logger.info(`Track ${track.name} has individual mode: ${track.playbackMode}`);
-      await this.handleIndividualTrackMode(endedTrackId, track.playbackMode);
+      await this.handleIndividualTrackMode(endedTrackId, track.playbackMode, playlistId);
       return;
     }
     Logger.debug(`Track ${track.name} inherits playlist mode`);
@@ -6798,9 +6853,11 @@ const _PlaybackScheduler = class _PlaybackScheduler {
       case "linear":
         if (currentIndex < tracks.length - 1) {
           const nextItem = tracks[currentIndex + 1];
+          await this.engine.stopTrack(endedTrackId);
           await this.playPlaylistItem(nextItem, playlistId, playlist.playbackMode);
         } else {
           Logger.debug("Playlist linear playback finished.");
+          await this.engine.stopTrack(endedTrackId);
           this.currentContext = null;
         }
         break;
@@ -6809,9 +6866,11 @@ const _PlaybackScheduler = class _PlaybackScheduler {
         if (nextIndex >= tracks.length) {
           nextIndex = 0;
         }
+        await this.engine.stopTrack(endedTrackId);
         await this.playPlaylistItem(tracks[nextIndex], playlistId, playlist.playbackMode);
         break;
       case "random":
+        await this.engine.stopTrack(endedTrackId);
         if (tracks.length > 1) {
           let randomIndex;
           do {
@@ -6880,7 +6939,8 @@ const _PlaybackScheduler = class _PlaybackScheduler {
         await this.engine.playTrack(trackId, 0, context);
         break;
       case "single":
-        Logger.debug(`Track ${track.name} finished (single mode)`);
+        Logger.debug(`Track ${track.name} finished (single mode) - stopping`);
+        await this.engine.stopTrack(trackId);
         this.currentContext = null;
         break;
       case "random":
@@ -6893,8 +6953,9 @@ const _PlaybackScheduler = class _PlaybackScheduler {
    * Обработать индивидуальный режим воспроизведения трека в контексте плейлиста
    * @param trackId - ID завершившегося трека
    * @param mode - Индивидуальный режим трека
+   * @param playlistId - ID плейлиста (если контекст плейлиста)
    */
-  async handleIndividualTrackMode(trackId, mode) {
+  async handleIndividualTrackMode(trackId, mode, playlistId) {
     const track = this.library.getItem(trackId);
     if (!track) {
       Logger.warn(`Track ${trackId} not found in library`);
@@ -6918,6 +6979,7 @@ const _PlaybackScheduler = class _PlaybackScheduler {
         break;
       case "random":
         Logger.debug(`Random track: ${track.name} - repeating`);
+        await this.engine.stopTrack(trackId);
         const randomContext = {
           type: "track",
           playbackMode: "random"
@@ -6926,7 +6988,21 @@ const _PlaybackScheduler = class _PlaybackScheduler {
         Hooks.call("ase.trackAutoSwitched");
         break;
       case "linear":
-        Logger.debug(`Track ${track.name} has linear mode in playlist - treating as single`);
+        if (playlistId) {
+          const playlist = this.library.playlists.getPlaylist(playlistId);
+          if (playlist) {
+            const tracks = [...playlist.items].sort((a, b) => a.order - b.order);
+            const currentIndex = tracks.findIndex((t) => t.libraryItemId === trackId);
+            if (currentIndex !== -1 && currentIndex < tracks.length - 1) {
+              Logger.debug(`Track ${track.name} (linear) -> launching next track in playlist`);
+              await this.engine.stopTrack(trackId);
+              const nextItem = tracks[currentIndex + 1];
+              await this.playPlaylistItem(nextItem, playlistId, playlist.playbackMode || "loop");
+              return;
+            }
+          }
+        }
+        Logger.debug(`Track ${track.name} finished (linear mode) and no next track - stopping`);
         await this.engine.stopTrack(trackId);
         this.currentContext = null;
         break;

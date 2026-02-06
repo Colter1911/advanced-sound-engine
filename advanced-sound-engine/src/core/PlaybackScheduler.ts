@@ -120,10 +120,13 @@ export class PlaybackScheduler {
             case 'linear':
                 if (currentIndex < tracks.length - 1) {
                     const nextItem = tracks[currentIndex + 1];
+                    // Остановить текущий трек перед запуском следующего
+                    await this.engine.stopTrack(endedTrackId);
                     await this.playPlaylistItem(nextItem, playlistId, playlist.playbackMode);
                 } else {
                     Logger.debug('Playlist linear playback finished.');
                     // Очистить контекст после завершения
+                    await this.engine.stopTrack(endedTrackId);
                     this.currentContext = null;
                 }
                 break;
@@ -132,9 +135,14 @@ export class PlaybackScheduler {
                 if (nextIndex >= tracks.length) {
                     nextIndex = 0; // Loop back to start
                 }
+                // Остановить текущий трек перед запуском следующего
+                await this.engine.stopTrack(endedTrackId);
                 await this.playPlaylistItem(tracks[nextIndex], playlistId, playlist.playbackMode);
                 break;
             case 'random':
+                // Остановить текущий трек перед запуском следующего
+                await this.engine.stopTrack(endedTrackId);
+
                 // Simple random: pick any other track. 
                 if (tracks.length > 1) {
                     let randomIndex;
@@ -276,6 +284,9 @@ export class PlaybackScheduler {
             case 'random':
                 // Random для одного трека = повторить его в random режиме
                 Logger.debug(`Random track: ${track.name} - repeating`);
+                // Остановить перед повторным запуском (сброс UI)
+                await this.engine.stopTrack(trackId);
+
                 const randomContext: PlaybackContext = {
                     type: 'track',
                     playbackMode: 'random'
@@ -293,6 +304,9 @@ export class PlaybackScheduler {
 
                         if (currentIndex !== -1 && currentIndex < tracks.length - 1) {
                             Logger.debug(`Track ${track.name} (linear) -> launching next track in playlist`);
+                            // Остановить текущий трек перед запуском следующего
+                            await this.engine.stopTrack(trackId);
+
                             const nextItem = tracks[currentIndex + 1];
                             await this.playPlaylistItem(nextItem, playlistId, playlist.playbackMode || 'loop');
                             return;

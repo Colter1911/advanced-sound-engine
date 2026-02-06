@@ -2859,3 +2859,7 @@
 .ase-ctx-item:hover {
   background: var(--ase-bg-hover);
 }
+
+.notransition {
+  transition: none !important;
+}

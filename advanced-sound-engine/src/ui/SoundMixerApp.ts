@@ -223,9 +223,15 @@ export class SoundMixerApp {
     const libraryItem = this.libraryManager.getItem(queueItem.libraryItemId);
     const player = this.engine.getTrack(queueItem.libraryItemId);
 
-    const currentTime = player?.getCurrentTime() ?? 0;
+    const currentTimeRaw = player?.getCurrentTime() ?? 0;
     const duration = libraryItem?.duration ?? player?.getDuration() ?? 0;
-    const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
+    const currentTime = Math.min(currentTimeRaw, duration);
+
+    let progress = 0;
+    if (duration > 0 && Number.isFinite(duration)) {
+      progress = (currentTime / duration) * 100;
+    }
+    progress = Math.min(Math.max(progress, 0), 100);
 
     // Get volume and loop from player if available (persisted state), fallback to queueItem
     const volume = player?.volume ?? queueItem.volume;
@@ -520,7 +526,7 @@ export class SoundMixerApp {
     const modes: { label: string, value: string, icon: string }[] = [
       { label: 'Inherit (Default)', value: 'inherit', icon: 'fa-arrow-turn-down' },
       { label: 'Loop', value: 'loop', icon: 'fa-repeat' },
-      { label: 'Single', value: 'single', icon: 'fa-stop' },
+      { label: 'Single', value: 'single', icon: 'fa-arrow-right-to-line' },
       { label: 'Linear', value: 'linear', icon: 'fa-arrow-right' },
       { label: 'Random', value: 'random', icon: 'fa-shuffle' }
     ];

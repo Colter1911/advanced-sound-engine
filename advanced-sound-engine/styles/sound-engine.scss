@@ -3188,3 +3188,8 @@
     background: var(--ase-bg-hover);
   }
 }
+
+// Utility: Disable transitions
+.notransition {
+  transition: none !important;
+}

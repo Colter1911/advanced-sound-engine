@@ -74,12 +74,14 @@ export class AdvancedSoundEngineApp extends HandlebarsApplicationMixin(Applicati
         // Set render callback for mixer to trigger parent re-render
         this.mixerApp.setRenderCallback(() => {
             if (this.state.activeTab === 'mixer') {
+                this.captureScroll(); // Capture before re-rendering
                 this.render({ parts: ['main'] });
             }
         });
 
         this.effectsApp.setRenderCallback(() => {
             if (this.state.activeTab === 'sfx') {
+                this.captureScroll();
                 this.render({ parts: ['main'] });
             }
         });
@@ -87,6 +89,7 @@ export class AdvancedSoundEngineApp extends HandlebarsApplicationMixin(Applicati
         // Subscribe to queue changes for UI updates
         this.queueManager.on('change', () => {
             if (this.state.activeTab === 'mixer') {
+                this.captureScroll();
                 this.render({ parts: ['main'] });
             }
         });
@@ -194,31 +197,26 @@ export class AdvancedSoundEngineApp extends HandlebarsApplicationMixin(Applicati
             this.effectsApp.activateListeners(html);
         }
 
-        // Restore Scroll 
-        // V2 has native `scrollable` support in `PARTS`, but for complex intra-tab scrolling we might still need this manual handling
-        if (this.state.activeTab === 'library') {
-            if (this.persistScrollOnce) {
-                const scrollState = { ...this._scrollLibrary };
-                this.persistScrollOnce = false;
-
-                // Use setTimeout to ensure DOM is fully painted/layout is calculated
-                setTimeout(() => {
-                    const tracksList = html.find('.ase-track-player-list');
-                    const playlistList = html.find('.ase-list-group').first();
-                    const favList = html.find('.ase-favorites-section .ase-list-group');
-
-                    if (tracksList.length) tracksList.scrollTop(scrollState.tracks);
-                    if (playlistList.length) playlistList.scrollTop(scrollState.playlists);
-                    if (favList.length) favList.scrollTop(scrollState.favorites);
-
-                    Logger.info(`[SmartScroll] Restored scroll (delayed): Tracks=${scrollState.tracks}`);
-                }, 1);
-            }
-        }
+        // Restore Scroll (Global Smart Scroll)
+        this.restoreScroll();
     }
 
-    public persistScrollOnce = false;
-    private _scrollLibrary = { tracks: 0, playlists: 0, favorites: 0 };
+    // Unified Scroll State Store
+    private scrollStates: Record<'library' | 'mixer' | 'sfx' | 'online', Record<string, number>> = {
+        library: {
+            '.ase-track-player-list': 0,
+            '.ase-list-group': 0, // Playlists list
+            '.ase-favorites-section .ase-list-group': 0 // Favorites
+        },
+        mixer: {
+            '[data-section="mixer-queue"]': 0,
+            '[data-section="mixer-favorites"]': 0
+        },
+        sfx: {
+            '.ase-effects-layout': 0
+        },
+        online: {}
+    };
 
     /**
      * V2 Close Hook
@@ -237,32 +235,66 @@ export class AdvancedSoundEngineApp extends HandlebarsApplicationMixin(Applicati
         const tabName = $(event.currentTarget).data('tab');
         if (this.state.activeTab === tabName) return;
 
-        // Before switching, save scroll if leaving library (optional, or just reset)
-        if (this.state.activeTab === 'library') {
-            const html = $(this.element);
-            this._scrollLibrary.tracks = html.find('.ase-track-player-list').scrollTop() || 0;
-            this._scrollLibrary.playlists = html.find('.ase-list-group').first().scrollTop() || 0;
-        }
+        // Capture scroll BEFORE switching
+        this.captureScroll();
 
         this.state.activeTab = tabName;
         this.render({ parts: ['main'] });
     }
 
     /**
-     * Captures the current scroll positions of the library tab.
-     * Call this before triggering a re-render if you want to restore scroll afterwards.
-     * Sets persistScrollOnce to true automatically.
+     * Resets the scroll state for a specific tab to 0.
+     * Use this when changing filters or view context where the user expects to start from the top.
      */
-    public captureLibraryScroll(): void {
-        if (this.state.activeTab !== 'library') return;
+    public resetScroll(tabName?: 'library' | 'mixer'): void {
+        const targetTab = tabName || this.state.activeTab;
+        const map = this.scrollStates[targetTab];
 
+        if (!map) return;
+
+        for (const selector of Object.keys(map)) {
+            map[selector] = 0;
+        }
+    }
+
+    /**
+     * Captures the current scroll positions for the ACTIVE tab.
+     * Call this before any operation that might trigger a re-render.
+     */
+    public captureScroll(): void {
+        const activeTab = this.state.activeTab;
         const html = $(this.element);
-        this._scrollLibrary.tracks = html.find('.ase-track-player-list').scrollTop() || 0;
-        this._scrollLibrary.playlists = html.find('.ase-list-group').first().scrollTop() || 0;
-        this._scrollLibrary.favorites = html.find('.ase-favorites-section .ase-list-group').scrollTop() || 0;
+        const map = this.scrollStates[activeTab];
 
-        Logger.info(`[SmartScroll] Captured scroll: Tracks=${this._scrollLibrary.tracks}`);
-        this.persistScrollOnce = true;
+        if (!map) return;
+
+        for (const selector of Object.keys(map)) {
+            const el = html.find(selector);
+            if (el.length) {
+                const scrollTop = el.scrollTop() || 0;
+                map[selector] = scrollTop;
+            }
+        }
+    }
+
+    /**
+     * Restores scroll positions for the ACTIVE tab.
+     * called automatically in _onRender.
+     */
+    private restoreScroll(): void {
+        const activeTab = this.state.activeTab;
+        const html = $(this.element);
+        const map = this.scrollStates[activeTab];
+
+        if (!map) return;
+
+        for (const [selector, scrollTop] of Object.entries(map)) {
+            const el = html.find(selector);
+            if (el.length) {
+                // Always enforce the stored scroll state
+                el.scrollTop(scrollTop);
+            }
+        }
     }
 
     private onToggleSync(event: JQuery.ClickEvent): void {
