@@ -319,7 +319,8 @@ export class SocketManager {
   }
 
   broadcastStopAll(): void {
-    if (!this._syncEnabled) return;
+    // No syncEnabled guard — stop-all MUST always reach players,
+    // even if sync was just toggled off. This prevents phantom sound.
     this.send('stop-all', {});
   }
 

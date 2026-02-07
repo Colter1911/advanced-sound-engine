@@ -33,6 +33,7 @@ const _StreamingPlayer = class _StreamingPlayer {
     __publicField(this, "_state", "stopped");
     __publicField(this, "_volume", 1);
     __publicField(this, "_ready", false);
+    __publicField(this, "_stopRequested", false);
     __publicField(this, "onEnded");
     this.id = id;
     this.ctx = ctx;
@@ -115,13 +116,22 @@ const _StreamingPlayer = class _StreamingPlayer {
       Logger.warn(`Track ${this.id} not ready`);
       return;
     }
+    this._stopRequested = false;
     try {
       this.audio.currentTime = Math.max(0, Math.min(offset, this.audio.duration || 0));
       this.audio.loop = false;
       await this.audio.play();
+      if (this._stopRequested) {
+        Logger.debug(`Track ${this.id} play resolved but stop was requested — staying stopped`);
+        return;
+      }
       this._state = "playing";
       Logger.debug(`Track ${this.id} playing from ${offset.toFixed(2)}s`);
     } catch (error) {
+      if ((error == null ? void 0 : error.name) === "AbortError") {
+        Logger.debug(`Track ${this.id} play aborted (stop was called)`);
+        return;
+      }
       Logger.error(`Failed to play ${this.id}:`, error);
     }
   }
@@ -132,6 +142,7 @@ const _StreamingPlayer = class _StreamingPlayer {
     Logger.debug(`Track ${this.id} paused at ${this.audio.currentTime.toFixed(2)}s`);
   }
   stop() {
+    this._stopRequested = true;
     this.audio.pause();
     this.audio.currentTime = 0;
     this._state = "stopped";
@@ -169,8 +180,10 @@ const _StreamingPlayer = class _StreamingPlayer {
   }
   dispose() {
     var _a;
+    this._stopRequested = true;
     this.audio.pause();
     this.audio.src = "";
+    this.onEnded = void 0;
     (_a = this.sourceNode) == null ? void 0 : _a.disconnect();
     this.gainNode.disconnect();
     this.outputNode.disconnect();
@@ -756,7 +769,8 @@ const _AudioEngine = class _AudioEngine extends SimpleEventEmitter {
     __publicField(this, "channelGains");
     __publicField(this, "players", /* @__PURE__ */ new Map());
     __publicField(this, "_activeContext", null);
-    // Effects System
+    __publicField(this, "_scheduler", null);
+    __publicField(this, "_socketManager", null);
     // Effects System
     __publicField(this, "effects", /* @__PURE__ */ new Map());
     // Sends: Channel -> EffectId -> GainNode
@@ -820,6 +834,16 @@ const _AudioEngine = class _AudioEngine extends SimpleEventEmitter {
         this.sends[group].set(effectId, sendGain);
       });
     });
+  }
+  /**
+   * Wire up references after construction to avoid circular dependencies.
+   * Called from main.ts after all managers are created.
+   */
+  setScheduler(scheduler) {
+    this._scheduler = scheduler;
+  }
+  setSocketManager(socketManager2) {
+    this._socketManager = socketManager2;
   }
   // ─────────────────────────────────────────────────────────────
   // Persistence (GM only)
@@ -956,9 +980,15 @@ const _AudioEngine = class _AudioEngine extends SimpleEventEmitter {
     this.scheduleSave();
   }
   stopAll() {
+    var _a, _b;
+    (_a = this._scheduler) == null ? void 0 : _a.clearContext();
+    this._activeContext = null;
     for (const player of this.players.values()) {
       player.stop();
     }
+    (_b = this._socketManager) == null ? void 0 : _b.broadcastStopAll();
+    this.scheduleSave();
+    Logger.info("All tracks stopped");
   }
   // ─────────────────────────────────────────────────────────────
   // Volume Control
@@ -1162,7 +1192,6 @@ const _AudioEngine = class _AudioEngine extends SimpleEventEmitter {
 __name(_AudioEngine, "AudioEngine");
 let AudioEngine = _AudioEngine;
 const _PlayerAudioEngine = class _PlayerAudioEngine {
-  // 10 seconds
   constructor(socketManager2) {
     __publicField(this, "ctx");
     __publicField(this, "masterGain");
@@ -1195,6 +1224,9 @@ const _PlayerAudioEngine = class _PlayerAudioEngine {
     // Reference to SocketManager for requesting sync
     __publicField(this, "lastSyncRequestTime", 0);
     __publicField(this, "SYNC_REQUEST_COOLDOWN", 1e4);
+    // 10 seconds
+    __publicField(this, "syncRequestFailCount", 0);
+    __publicField(this, "MAX_SYNC_RETRIES", 3);
     this.ctx = new AudioContext();
     this.socketManager = socketManager2;
     this.startSyncVerification();
@@ -1230,43 +1262,45 @@ const _PlayerAudioEngine = class _PlayerAudioEngine {
   verifySyncState() {
     let needsResync = false;
     if (this.lastSyncState.length === 0) {
-      if (this.players.size > 0) {
-        console.warn("[ASE PLAYER] Sync verification: Have", this.players.size, "players but sync state is empty");
+      const hasActivePlayers = Array.from(this.players.values()).some(
+        (p) => p.state === "playing" || p.state === "paused"
+      );
+      if (hasActivePlayers) {
+        Logger.warn("Sync verification: Active players exist but sync state is empty");
         needsResync = true;
       } else {
-        console.log("[ASE PLAYER] Sync verification OK (no tracks)");
         return;
       }
     }
-    for (const expectedTrack of this.lastSyncState) {
-      const player = this.players.get(expectedTrack.id);
-      if (!player) {
-        if (expectedTrack.isPlaying) {
-          console.warn("[ASE PLAYER] Sync verification: Expected track not found", expectedTrack.id);
-          needsResync = true;
-          break;
+    if (!needsResync) {
+      for (const expectedTrack of this.lastSyncState) {
+        const player = this.players.get(expectedTrack.id);
+        if (!player) {
+          if (expectedTrack.isPlaying) {
+            Logger.warn(`Sync verification: Expected playing track not found: ${expectedTrack.id}`);
+            needsResync = true;
+            break;
+          }
+          continue;
         }
-        continue;
-      }
-      if (player) {
         const actuallyPlaying = player.state === "playing";
         if (expectedTrack.isPlaying && !actuallyPlaying) {
-          console.warn("[ASE PLAYER] Sync verification: Track should be playing but is", player.state, expectedTrack.id);
+          Logger.warn(`Sync verification: Track should be playing but is ${player.state}: ${expectedTrack.id}`);
           needsResync = true;
           break;
         }
         if (!expectedTrack.isPlaying && actuallyPlaying) {
-          console.warn("[ASE PLAYER] Sync verification: Track should be stopped but is playing", expectedTrack.id);
+          Logger.warn(`Sync verification: Track should be stopped but is playing: ${expectedTrack.id}`);
           needsResync = true;
           break;
         }
       }
     }
-    if (!needsResync) {
+    if (!needsResync && this.lastSyncState.length > 0) {
       const expectedIds = new Set(this.lastSyncState.map((t) => t.id));
       for (const [id, player] of this.players) {
-        if (!expectedIds.has(id)) {
-          console.warn("[ASE PLAYER] Sync verification: Unexpected track exists:", id, "state:", player.state);
+        if (!expectedIds.has(id) && player.state === "playing") {
+          Logger.warn(`Sync verification: Unexpected playing track: ${id}`);
           needsResync = true;
           break;
         }
@@ -1275,18 +1309,22 @@ const _PlayerAudioEngine = class _PlayerAudioEngine {
     if (needsResync) {
       const now = Date.now();
       if (now - this.lastSyncRequestTime < this.SYNC_REQUEST_COOLDOWN) {
-        console.warn("[ASE PLAYER] Sync request on cooldown, skipping");
         return;
       }
-      console.log("[ASE PLAYER] Sync verification failed - requesting full sync from GM");
+      this.syncRequestFailCount++;
+      if (this.syncRequestFailCount > this.MAX_SYNC_RETRIES) {
+        Logger.warn(`Sync verification: Exceeded ${this.MAX_SYNC_RETRIES} retries, stopping requests`);
+        return;
+      }
+      Logger.info(`Sync verification failed — requesting full sync (attempt ${this.syncRequestFailCount}/${this.MAX_SYNC_RETRIES})`);
       this.lastSyncRequestTime = now;
       if (this.socketManager) {
         this.socketManager.requestFullSync();
       } else {
-        console.warn("[ASE PLAYER] Cannot request sync: socketManager not set");
+        Logger.warn("Cannot request sync: socketManager not set");
       }
     } else {
-      console.log("[ASE PLAYER] Sync verification OK");
+      this.syncRequestFailCount = 0;
     }
   }
   dispose() {
@@ -1483,8 +1521,8 @@ const _PlayerAudioEngine = class _PlayerAudioEngine {
   // ─────────────────────────────────────────────────────────────
   async syncState(tracks, volumes, effectsState = []) {
     Logger.debug(`Player: Sync State Received. Tracks=${tracks.length}, Effects=${(effectsState == null ? void 0 : effectsState.length) || 0}`);
-    Logger.debug("Player: Volumes", volumes);
     this.lastSyncState = tracks;
+    this.syncRequestFailCount = 0;
     this.setAllGMVolumes(volumes);
     Logger.debug(`Player: GM Gain set to ${this.gmGain.gain.value}`);
     if (effectsState && effectsState.length > 0) {
@@ -1536,6 +1574,14 @@ const _PlayerAudioEngine = class _PlayerAudioEngine {
       if (trackState.isPlaying) {
         const elapsed = (getServerTime() - trackState.startTimestamp) / 1e3;
         const adjustedTime = trackState.currentTime + elapsed;
+        if (player.state === "playing") {
+          const drift = Math.abs(player.getCurrentTime() - adjustedTime);
+          if (drift < 2) {
+            Logger.debug(`Player: Track ${trackState.id} already playing, drift=${drift.toFixed(2)}s — skipping re-play`);
+            continue;
+          }
+          Logger.debug(`Player: Track ${trackState.id} drift=${drift.toFixed(2)}s — re-syncing`);
+        }
         await player.play(adjustedTime);
       } else {
         player.stop();
@@ -1546,28 +1592,28 @@ const _PlayerAudioEngine = class _PlayerAudioEngine {
   // ─────────────────────────────────────────────────────────────
   // Sync Off
   // ─────────────────────────────────────────────────────────────
-  // Stop all tracks without disposing
+  // Stop all tracks — full cleanup to prevent phantom sound and sync loops
   stopAll() {
-    console.log("[ASE PLAYER] Stopping all tracks");
-    for (const player of this.players.values()) {
-      if (player.state === "playing" || player.state === "paused") {
-        player.stop();
-      }
-    }
-    this.lastSyncState = [];
-    console.log("[ASE PLAYER] Cleared lastSyncState after stopAll");
-  }
-  // Clear all tracks (stop + dispose)
-  clearAll() {
-    console.log("[ASE PLAYER] Clearing all tracks");
+    Logger.info("Player: Stopping all tracks");
     for (const player of this.players.values()) {
       player.stop();
       player.dispose();
     }
     this.players.clear();
     this.lastSyncState = [];
+    this.syncRequestFailCount = 0;
+    Logger.info("Player: All tracks stopped and cleared");
+  }
+  // Clear all tracks (stop + dispose) — used on sync-stop
+  clearAll() {
+    for (const player of this.players.values()) {
+      player.stop();
+      player.dispose();
+    }
+    this.players.clear();
+    this.lastSyncState = [];
+    this.syncRequestFailCount = 0;
     Logger.info("Player: all tracks cleared");
-    console.log("[ASE PLAYER] Cleared lastSyncState after clearAll");
   }
   // ─────────────────────────────────────────────────────────────
   // Audio Context
@@ -1816,7 +1862,6 @@ const _SocketManager = class _SocketManager {
     this.send("channel-volume", payload);
   }
   broadcastStopAll() {
-    if (!this._syncEnabled) return;
     this.send("stop-all", {});
   }
   dispose() {
@@ -1940,10 +1985,8 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     if ((_a = window.ASE) == null ? void 0 : _a.openPanel) {
       if (this.parentApp) {
         if (options == null ? void 0 : options.resetScroll) {
-          Logger.debug("[LocalLibraryApp] Resetting scroll before render");
           this.parentApp.resetScroll("library");
         } else {
-          Logger.debug("[LocalLibraryApp] Capturing scroll before render");
           this.parentApp.captureScroll();
         }
       }
@@ -5538,7 +5581,6 @@ const _AdvancedSoundEngineApp = class _AdvancedSoundEngineApp extends Handlebars
     const targetTab = tabName || this.state.activeTab;
     const map = this.scrollStates[targetTab];
     if (!map) return;
-    Logger.debug(`[SmartScroll] Resetting scroll for ${targetTab}`);
     for (const selector of Object.keys(map)) {
       map[selector] = 0;
     }
@@ -5552,15 +5594,11 @@ const _AdvancedSoundEngineApp = class _AdvancedSoundEngineApp extends Handlebars
     const html = $(this.element);
     const map = this.scrollStates[activeTab];
     if (!map) return;
-    Logger.debug(`[SmartScroll] Capturing for ${activeTab}...`);
     for (const selector of Object.keys(map)) {
       const el = html.find(selector);
       if (el.length) {
         const scrollTop = el.scrollTop() || 0;
         map[selector] = scrollTop;
-        if (scrollTop > 0) Logger.debug(`[SmartScroll] Captured ${selector}: ${scrollTop}`);
-      } else {
-        Logger.debug(`[SmartScroll] Selector not found: ${selector}`);
       }
     }
   }
@@ -5573,18 +5611,10 @@ const _AdvancedSoundEngineApp = class _AdvancedSoundEngineApp extends Handlebars
     const html = $(this.element);
     const map = this.scrollStates[activeTab];
     if (!map) return;
-    Logger.debug(`[SmartScroll] Restoring for ${activeTab}...`);
     for (const [selector, scrollTop] of Object.entries(map)) {
       const el = html.find(selector);
       if (el.length) {
-        const currentScroll = el.scrollTop();
-        Logger.debug(`[SmartScroll] Restoring ${selector}. Stored: ${scrollTop}, Current: ${currentScroll}`);
         el.scrollTop(scrollTop);
-        if (Math.abs((el.scrollTop() || 0) - scrollTop) > 1) {
-          Logger.warn(`[SmartScroll] Failed to restore ${selector}. Wanted: ${scrollTop}, Got: ${el.scrollTop()}`);
-        }
-      } else {
-        Logger.debug(`[SmartScroll] Selector not found for restoration: ${selector}`);
       }
     }
   }
@@ -5630,9 +5660,6 @@ const _AdvancedSoundEngineApp = class _AdvancedSoundEngineApp extends Handlebars
   }
   onGlobalStop() {
     this.engine.stopAll();
-    if (this.socket.syncEnabled) {
-      this.socket.broadcastStopAll();
-    }
     this.render();
   }
   onVolumeInput(event) {
@@ -6780,6 +6807,7 @@ const _PlaybackScheduler = class _PlaybackScheduler {
     __publicField(this, "library");
     __publicField(this, "queue");
     __publicField(this, "currentContext", null);
+    __publicField(this, "_stopped", false);
     this.engine = engine;
     this.library = library;
     this.queue = queue;
@@ -6798,13 +6826,28 @@ const _PlaybackScheduler = class _PlaybackScheduler {
    */
   setContext(context) {
     this.currentContext = context;
+    this._stopped = false;
     Logger.debug("Playback Context set:", context);
+  }
+  /**
+   * Clear the playback context and stop scheduling.
+   * Called by AudioEngine.stopAll() to prevent race conditions
+   * where an 'ended' event fires after stopAll and Scheduler starts the next track.
+   */
+  clearContext() {
+    this.currentContext = null;
+    this._stopped = true;
+    Logger.debug("Playback Context cleared (stopAll)");
   }
   /**
    * Handle track ending
    */
   async handleTrackEnded(trackId) {
     Logger.info(`[PlaybackScheduler] Track ended: ${trackId}`);
+    if (this._stopped) {
+      Logger.debug(`[PlaybackScheduler] Ignoring ended event after stopAll for: ${trackId}`);
+      return;
+    }
     Logger.info(`[PlaybackScheduler] Current context:`, this.currentContext);
     if (!this.currentContext) {
       Logger.warn("[PlaybackScheduler] No playback context available - auto-progression disabled");
@@ -7088,6 +7131,7 @@ let gmEngine = null;
 let mainApp = null;
 let libraryManager = null;
 let queueManager = null;
+let playbackScheduler = null;
 let playerEngine = null;
 let volumePanel = null;
 let socketManager = null;
@@ -7253,7 +7297,9 @@ async function initializeGM() {
   gmEngine = new AudioEngine();
   socketManager.initializeAsGM(gmEngine);
   await gmEngine.loadSavedState();
-  new PlaybackScheduler(gmEngine, libraryManager, queueManager);
+  playbackScheduler = new PlaybackScheduler(gmEngine, libraryManager, queueManager);
+  gmEngine.setScheduler(playbackScheduler);
+  gmEngine.setSocketManager(socketManager);
   Logger.info("PlaybackScheduler initialized");
 }
 __name(initializeGM, "initializeGM");

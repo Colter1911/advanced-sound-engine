@@ -262,6 +262,11 @@ async function initializeGM(): Promise<void> {
 
   // Initialize Scheduler
   playbackScheduler = new PlaybackScheduler(gmEngine, libraryManager, queueManager!);
+
+  // Wire up references for atomic stopAll()
+  gmEngine.setScheduler(playbackScheduler);
+  gmEngine.setSocketManager(socketManager!);
+
   Logger.info('PlaybackScheduler initialized');
 }
 

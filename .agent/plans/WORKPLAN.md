@@ -194,10 +194,10 @@ stopAll() не очищает контекст Scheduler
 
 | Задача | Статус | Дата | Комментарий |
 |--------|--------|------|-------------|
-| 1.1 | ⬜ TODO | — | Атомарный stopAll |
-| 1.2 | ⬜ TODO | — | Race condition StreamingPlayer |
-| 1.3 | ⬜ TODO | — | Periodic sync verification |
-| 1.4 | ⬜ TODO | — | syncState() re-play guard |
+| 1.1 | ✅ DONE | Feb 2026 | Атомарный stopAll |
+| 1.2 | ✅ DONE | Feb 2026 | Race condition StreamingPlayer |
+| 1.3 | ✅ DONE | Feb 2026 | Periodic sync verification |
+| 1.4 | ✅ DONE | Feb 2026 | syncState() re-play guard |
 | 2.1 | ⬜ TODO | — | Cleanup ресурсов |
 | 2.2 | ⬜ TODO | — | Rate limiting |
 | 2.3 | ⬜ TODO | — | Версионирование сообщений |

@@ -57,7 +57,9 @@ trigger: always_on
   - `deletePhysicalFile()`: Helper to delete files from disk.
 - **AudioEngine** (`src/core/AudioEngine.ts`):
   - GM-side audio controller.
-  - `playTrack()`, `stopTrack()`, `setChannelVolume()`.
+  - `playTrack()`, `stopTrack()`, `setChannelVolume()`, `stopAll()`.
+  - `setScheduler()`, `setSocketManager()`: Wired post-construction from `main.ts` to avoid circular deps.
+  - **stopAll()** is atomic: clears PlaybackScheduler context → stops all players → broadcasts stop-all to players → saves state.
   - **Effects System (Type-Based IDs)**:
     - Effects identified by `type` ('reverb', 'delay', 'filter', 'compressor', 'distortion')
     - **Insert Effects**: Filter, Distortion, Compressor (mutes dry signal when active + routed)
@@ -65,17 +67,19 @@ trigger: always_on
     - Effect routing per channel (music/ambience/sfx)
     - Effect state synchronized to players via socket
   - **Known Issues**:
-    - `stopAll()` doesn't broadcast to players
     - Track limit enforcement doesn't prevent player-side playback
-    - Can freeze with 7-8+ simultaneous tracks
+    - Can freeze with 7-8+ simultaneous tracks (browser HTMLAudioElement limit)
 - **PlayerAudioEngine** (`src/core/PlayerAudioEngine.ts`):
   - Player-side audio controller (receive-only).
   - Mirrors GM state based on socket messages.
+  - **stopAll()**: Fully disposes and clears all players from Map (prevents phantom sound + sync loops).
+  - **syncState()**: Skips re-play for tracks already playing at correct position (drift < 2s).
   - **Periodic Sync Verification** (5 seconds):
     - Checks if local state matches last received GM state
-    - Automatically requests re-sync on mismatch
-    - **Known Issue**: Can enter infinite re-sync loop if `syncState()` doesn't fix mismatch
-  - **Effects System**: 
+    - Only flags mismatch for *active* (playing/paused) players, ignores stopped ones
+    - Max 3 retry attempts before giving up (resets on successful sync)
+    - 10s cooldown between requests
+  - **Effects System**:
     - Identical routing to GM (type-based IDs)
     - Receives effect param/routing/enabled updates via socket
 - **PlaybackQueueManager** (`src/queue/PlaybackQueueManager.ts`):
@@ -92,15 +96,27 @@ trigger: always_on
     - `channel-volume`, `master-volume`: Mix controls
     - `effect-param/routing/enabled`: Effect state
     - `sync-request`: Player → GM request for full re-sync
+  - **broadcastStopAll()**: No syncEnabled guard — stop-all ALWAYS reaches players.
   - **Known Issues**:
-    - `stopAll` broadcast exists but not called by `AudioEngine.stopAll()`
     - No rate limiting on broadcasts (can flood network)
 
+- **PlaybackScheduler** (`src/core/PlaybackScheduler.ts`):
+  - Listens to `trackEnded` / `contextChanged` events from AudioEngine.
+  - Determines next track based on PlaybackContext (playlist/track/queue).
+  - `clearContext()`: Called by `AudioEngine.stopAll()` — sets `_stopped` flag to ignore late 'ended' events.
+  - `setContext()`: Resets `_stopped` flag.
+- **StreamingPlayer** (`src/core/StreamingPlayer.ts`):
+  - Individual track player wrapping `HTMLAudioElement` + `MediaElementAudioSourceNode` (Web Audio API).
+  - `_stopRequested` flag prevents race condition where `play()` promise resolves after `stop()` was called.
+  - `dispose()` clears `onEnded` callback to prevent late event emissions.
+
 ## 5. Key Architecture Dependencies
-- **Core Flow**: `main.ts` initializes `AudioEngine`, `LibraryManager`, and `SocketManager`.
+- **Core Flow**: `main.ts` initializes `AudioEngine`, `LibraryManager`, `SocketManager`, and `PlaybackScheduler`.
+  - `AudioEngine.setScheduler()` / `setSocketManager()` wires references post-construction (avoids circular deps).
 - **UI Architecture**: `AdvancedSoundEngineApp` is a shell that renders `LocalLibraryApp` or `SoundMixerApp` based on the active tab.
 - **Persistence**: `LibraryManager` -> `GlobalStorage` -> `FilePicker` (JSON file).
-- **Audio**: `UI` -> `AudioEngine` (logic) -> `Howler.js` (underlying audio).
+- **Audio**: `UI` -> `AudioEngine` (logic) -> `StreamingPlayer` -> `HTMLAudioElement` + `MediaElementAudioSourceNode` (Web Audio API).
+  - **Note**: Howler.js is NOT used. All audio playback is via native browser APIs.
 
 ## 6. Foundry VTT Specifics
 - **Global Context**: `window.ASE` exposes `engine`, `library`, `queue`, `socket`.
@@ -167,11 +183,12 @@ Defined in `LocalLibraryApp.onTrackModeClick` and stored in `LibraryItem.playbac
 #### Внутренняя реализация
 - **SoundMixerApp**: Передаёт `PlaybackContext` в `AudioEngine.playTrack()` при запуске треков/плейлистов
 - **AudioEngine**: Эмитит событие `contextChanged` и сохраняет контекст
-- **PlaybackScheduler**: 
+- **PlaybackScheduler**:
   - Слушает событие `trackEnded` от AudioEngine
   - Определяет следующий трек на основе контекста
   - Создаёт треки через `createTrack()` перед воспроизведением
   - Очищает контекст после завершения Linear плейлистов или Single треков
+  - `clearContext()` + `_stopped` флаг: вызывается из `AudioEngine.stopAll()`, блокирует обработку поздних `ended` событий
 
 ### Playlist Modes
 Defined in `LocalLibraryApp.onPlaylistModeClick` and stored in `Playlist.playbackMode`.

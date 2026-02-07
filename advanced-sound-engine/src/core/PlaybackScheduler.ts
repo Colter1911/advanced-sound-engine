@@ -17,6 +17,7 @@ export class PlaybackScheduler {
     private library: LibraryManager;
     private queue: PlaybackQueueManager;
     private currentContext: PlaybackContext | null = null;
+    private _stopped: boolean = false;
 
     constructor(engine: AudioEngine, library: LibraryManager, queue: PlaybackQueueManager) {
         this.engine = engine;
@@ -47,7 +48,19 @@ export class PlaybackScheduler {
      */
     setContext(context: PlaybackContext): void {
         this.currentContext = context;
+        this._stopped = false;
         Logger.debug('Playback Context set:', context);
+    }
+
+    /**
+     * Clear the playback context and stop scheduling.
+     * Called by AudioEngine.stopAll() to prevent race conditions
+     * where an 'ended' event fires after stopAll and Scheduler starts the next track.
+     */
+    clearContext(): void {
+        this.currentContext = null;
+        this._stopped = true;
+        Logger.debug('Playback Context cleared (stopAll)');
     }
 
     /**
@@ -55,6 +68,13 @@ export class PlaybackScheduler {
      */
     async handleTrackEnded(trackId: string): Promise<void> {
         Logger.info(`[PlaybackScheduler] Track ended: ${trackId}`);
+
+        // Guard: if stopAll() was called, ignore any late 'ended' events
+        if (this._stopped) {
+            Logger.debug(`[PlaybackScheduler] Ignoring ended event after stopAll for: ${trackId}`);
+            return;
+        }
+
         Logger.info(`[PlaybackScheduler] Current context:`, this.currentContext);
 
         if (!this.currentContext) {

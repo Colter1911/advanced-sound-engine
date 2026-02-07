@@ -47,6 +47,8 @@ export class PlayerAudioEngine {
   private socketManager: any; // Reference to SocketManager for requesting sync
   private lastSyncRequestTime: number = 0;
   private readonly SYNC_REQUEST_COOLDOWN = 10000; // 10 seconds
+  private syncRequestFailCount: number = 0;
+  private readonly MAX_SYNC_RETRIES = 3;
 
   constructor(socketManager?: any) {
     this.ctx = new AudioContext();
@@ -100,56 +102,56 @@ export class PlayerAudioEngine {
   private verifySyncState(): void {
     let needsResync = false;
 
-    // CRITICAL FIX: If sync state is empty, we should have no players
+    // If sync state is empty, check if we have active (non-stopped) players
     if (this.lastSyncState.length === 0) {
-      if (this.players.size > 0) {
-        console.warn('[ASE PLAYER] Sync verification: Have', this.players.size, 'players but sync state is empty');
+      const hasActivePlayers = Array.from(this.players.values()).some(
+        p => p.state === 'playing' || p.state === 'paused'
+      );
+      if (hasActivePlayers) {
+        Logger.warn('Sync verification: Active players exist but sync state is empty');
         needsResync = true;
       } else {
-        console.log('[ASE PLAYER] Sync verification OK (no tracks)');
+        // All players stopped + empty sync state = consistent, no resync needed
         return;
       }
     }
 
-    // Check each expected track
-    for (const expectedTrack of this.lastSyncState) {
-      const player = this.players.get(expectedTrack.id);
+    if (!needsResync) {
+      // Check each expected track
+      for (const expectedTrack of this.lastSyncState) {
+        const player = this.players.get(expectedTrack.id);
 
-      if (!player) {
-        // Missing player
-        if (expectedTrack.isPlaying) {
-          console.warn('[ASE PLAYER] Sync verification: Expected track not found', expectedTrack.id);
-          needsResync = true;
-          break;
+        if (!player) {
+          if (expectedTrack.isPlaying) {
+            Logger.warn(`Sync verification: Expected playing track not found: ${expectedTrack.id}`);
+            needsResync = true;
+            break;
+          }
+          continue;
         }
-        continue;
-      }
 
-      if (player) {
         const actuallyPlaying = player.state === 'playing';
 
-        // Should be playing but isn't
         if (expectedTrack.isPlaying && !actuallyPlaying) {
-          console.warn('[ASE PLAYER] Sync verification: Track should be playing but is', player.state, expectedTrack.id);
+          Logger.warn(`Sync verification: Track should be playing but is ${player.state}: ${expectedTrack.id}`);
           needsResync = true;
           break;
         }
 
-        // Shouldn't be playing but is
         if (!expectedTrack.isPlaying && actuallyPlaying) {
-          console.warn('[ASE PLAYER] Sync verification: Track should be stopped but is playing', expectedTrack.id);
+          Logger.warn(`Sync verification: Track should be stopped but is playing: ${expectedTrack.id}`);
           needsResync = true;
           break;
         }
       }
     }
 
-    // CRITICAL FIX: Check for unexpected tracks that aren't in sync state
-    if (!needsResync) {
+    // Check for unexpected tracks not in sync state
+    if (!needsResync && this.lastSyncState.length > 0) {
       const expectedIds = new Set(this.lastSyncState.map(t => t.id));
       for (const [id, player] of this.players) {
-        if (!expectedIds.has(id)) {
-          console.warn('[ASE PLAYER] Sync verification: Unexpected track exists:', id, 'state:', player.state);
+        if (!expectedIds.has(id) && player.state === 'playing') {
+          Logger.warn(`Sync verification: Unexpected playing track: ${id}`);
           needsResync = true;
           break;
         }
@@ -157,23 +159,30 @@ export class PlayerAudioEngine {
     }
 
     if (needsResync) {
-      // Cooldown check to prevent infinite loop
+      // Cooldown check
       const now = Date.now();
       if (now - this.lastSyncRequestTime < this.SYNC_REQUEST_COOLDOWN) {
-        console.warn('[ASE PLAYER] Sync request on cooldown, skipping');
         return;
       }
 
-      console.log('[ASE PLAYER] Sync verification failed - requesting full sync from GM');
+      // Retry limit — stop requesting after MAX_SYNC_RETRIES consecutive failures
+      this.syncRequestFailCount++;
+      if (this.syncRequestFailCount > this.MAX_SYNC_RETRIES) {
+        Logger.warn(`Sync verification: Exceeded ${this.MAX_SYNC_RETRIES} retries, stopping requests`);
+        return;
+      }
+
+      Logger.info(`Sync verification failed — requesting full sync (attempt ${this.syncRequestFailCount}/${this.MAX_SYNC_RETRIES})`);
       this.lastSyncRequestTime = now;
-      // Trigger a full state request from GM
+
       if (this.socketManager) {
         this.socketManager.requestFullSync();
       } else {
-        console.warn('[ASE PLAYER] Cannot request sync: socketManager not set');
+        Logger.warn('Cannot request sync: socketManager not set');
       }
     } else {
-      console.log('[ASE PLAYER] Sync verification OK');
+      // Reset fail counter on successful verification
+      this.syncRequestFailCount = 0;
     }
   }
 
@@ -428,10 +437,10 @@ export class PlayerAudioEngine {
 
   async syncState(tracks: SyncTrackState[], volumes: ChannelVolumes, effectsState: EffectState[] = []): Promise<void> {
     Logger.debug(`Player: Sync State Received. Tracks=${tracks.length}, Effects=${effectsState?.length || 0}`);
-    Logger.debug('Player: Volumes', volumes);
 
-    // Store last sync state for periodic verification
+    // Store last sync state and reset retry counter (GM responded)
     this.lastSyncState = tracks;
+    this.syncRequestFailCount = 0;
 
     // Set volumes
     this.setAllGMVolumes(volumes);
@@ -509,6 +518,18 @@ export class PlayerAudioEngine {
       if (trackState.isPlaying) {
         const elapsed = (getServerTime() - trackState.startTimestamp) / 1000;
         const adjustedTime = trackState.currentTime + elapsed;
+
+        // Skip re-play if track is already playing at approximately the right position.
+        // This avoids audible glitches from restarting audio that's already correct.
+        if (player.state === 'playing') {
+          const drift = Math.abs(player.getCurrentTime() - adjustedTime);
+          if (drift < 2.0) {
+            Logger.debug(`Player: Track ${trackState.id} already playing, drift=${drift.toFixed(2)}s — skipping re-play`);
+            continue;
+          }
+          Logger.debug(`Player: Track ${trackState.id} drift=${drift.toFixed(2)}s — re-syncing`);
+        }
+
         await player.play(adjustedTime);
       } else {
         player.stop();
@@ -522,32 +543,29 @@ export class PlayerAudioEngine {
   // Sync Off
   // ─────────────────────────────────────────────────────────────
 
-  // Stop all tracks without disposing
+  // Stop all tracks — full cleanup to prevent phantom sound and sync loops
   stopAll(): void {
-    console.log('[ASE PLAYER] Stopping all tracks');
+    Logger.info('Player: Stopping all tracks');
     for (const player of this.players.values()) {
-      if (player.state === 'playing' || player.state === 'paused') {
-        player.stop();
-      }
-    }
-    // CRITICAL FIX: Clear sync state so verification knows nothing should be playing
-    this.lastSyncState = [];
-    console.log('[ASE PLAYER] Cleared lastSyncState after stopAll');
-  }
-
-  // Clear all tracks (stop + dispose)
-  clearAll(): void {
-    console.log('[ASE PLAYER] Clearing all tracks');
-    // CRITICAL FIX: Stop tracks before disposing
-    for (const player of this.players.values()) {
-      player.stop(); // Ensure audio stops immediately
+      player.stop();
       player.dispose();
     }
     this.players.clear();
-    // CRITICAL FIX: Clear sync state
     this.lastSyncState = [];
+    this.syncRequestFailCount = 0;
+    Logger.info('Player: All tracks stopped and cleared');
+  }
+
+  // Clear all tracks (stop + dispose) — used on sync-stop
+  clearAll(): void {
+    for (const player of this.players.values()) {
+      player.stop();
+      player.dispose();
+    }
+    this.players.clear();
+    this.lastSyncState = [];
+    this.syncRequestFailCount = 0;
     Logger.info('Player: all tracks cleared');
-    console.log('[ASE PLAYER] Cleared lastSyncState after clearAll');
   }
 
   // ─────────────────────────────────────────────────────────────

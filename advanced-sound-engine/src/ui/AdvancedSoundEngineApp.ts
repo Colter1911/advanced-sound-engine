@@ -347,10 +347,8 @@ export class AdvancedSoundEngineApp extends HandlebarsApplicationMixin(Applicati
     }
 
     private onGlobalStop(): void {
+        // AudioEngine.stopAll() now handles broadcast + scheduler cleanup internally
         this.engine.stopAll();
-        if (this.socket.syncEnabled) {
-            this.socket.broadcastStopAll();
-        }
         this.render();
     }
 
