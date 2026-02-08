@@ -347,15 +347,32 @@ export class PlaybackScheduler {
                 if (playlistId) {
                     const playlist = this.library.playlists.getPlaylist(playlistId);
                     if (playlist) {
-                        const tracks = [...playlist.items].sort((a, b) => a.order - b.order);
-                        const currentIndex = tracks.findIndex(t => t.libraryItemId === trackId);
+                        // Use queue order if playlist is in the queue, otherwise fall back to library order
+                        const queueItems = this.queue.getItems().filter(i => i.playlistId === playlistId);
+                        let effectiveTracks: { libraryItemId: string, volume?: number }[];
 
-                        if (currentIndex !== -1 && currentIndex < tracks.length - 1) {
+                        if (queueItems.length > 0) {
+                            effectiveTracks = queueItems.map(qi => ({
+                                libraryItemId: qi.libraryItemId,
+                                volume: qi.volume
+                            }));
+                            Logger.debug(`[handleIndividualTrackMode] Using Queue order for playlist ${playlist.name}`);
+                        } else {
+                            effectiveTracks = [...playlist.items].sort((a, b) => a.order - b.order).map(t => ({
+                                libraryItemId: t.libraryItemId,
+                                volume: t.volume
+                            }));
+                            Logger.debug(`[handleIndividualTrackMode] Using Library order for playlist ${playlist.name}`);
+                        }
+
+                        const currentIndex = effectiveTracks.findIndex(t => t.libraryItemId === trackId);
+
+                        if (currentIndex !== -1 && currentIndex < effectiveTracks.length - 1) {
                             Logger.debug(`Track ${track.name} (linear) -> launching next track in playlist`);
                             // Остановить текущий трек перед запуском следующего
                             await this.engine.stopTrack(trackId);
 
-                            const nextItem = tracks[currentIndex + 1];
+                            const nextItem = effectiveTracks[currentIndex + 1];
                             await this.playPlaylistItem(nextItem, playlistId, playlist.playbackMode || 'loop');
                             return;
                         }

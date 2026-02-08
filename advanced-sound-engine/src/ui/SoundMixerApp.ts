@@ -806,6 +806,9 @@ export class SoundMixerApp {
       event.preventDefault();
       event.stopPropagation();
 
+      // Capture position before clearing state
+      const dropPosition = this._dragPosition || 'above';
+
       // Cleanup RAF
       if (this._rafId) {
         cancelAnimationFrame(this._rafId);
@@ -823,10 +826,10 @@ export class SoundMixerApp {
       const draggedId = event.originalEvent!.dataTransfer!.getData('application/x-mixer-favorite-id');
       const draggedType = event.originalEvent!.dataTransfer!.getData('application/x-mixer-favorite-type') as 'track' | 'playlist';
 
-      Logger.info(`[SoundMixerApp] Drop Favorite: ${draggedId} -> ${targetId}`);
+      Logger.info(`[SoundMixerApp] Drop Favorite: ${draggedId} -> ${targetId} (${dropPosition})`);
 
       if (draggedId && draggedType && (draggedId !== targetId || draggedType !== targetType)) {
-        this.handleFavoriteReorder(draggedId, draggedType, targetId, targetType);
+        this.handleFavoriteReorder(draggedId, draggedType, targetId, targetType, dropPosition);
       }
     });
 
@@ -915,6 +918,9 @@ export class SoundMixerApp {
       event.preventDefault();
       event.stopPropagation();
 
+      // Capture position before clearing state
+      const dropPosition = this._dragPosition || 'above';
+
       if (this._rafId) {
         cancelAnimationFrame(this._rafId);
         this._rafId = null;
@@ -928,10 +934,10 @@ export class SoundMixerApp {
       const draggedQueueId = event.originalEvent!.dataTransfer!.getData('application/x-mixer-queue-id');
       const targetQueueId = String($(event.currentTarget).data('queue-id'));
 
-      Logger.info(`[SoundMixerApp] Drop Queue: ${draggedQueueId} -> ${targetQueueId}`);
+      Logger.info(`[SoundMixerApp] Drop Queue: ${draggedQueueId} -> ${targetQueueId} (${dropPosition})`);
 
       if (draggedQueueId && draggedQueueId !== targetQueueId) {
-        this.handleQueueReorder(draggedQueueId, targetQueueId);
+        this.handleQueueReorder(draggedQueueId, targetQueueId, dropPosition);
       }
     });
   }
@@ -940,7 +946,8 @@ export class SoundMixerApp {
     draggedId: string,
     draggedType: 'track' | 'playlist',
     targetId: string,
-    targetType: 'track' | 'playlist'
+    targetType: 'track' | 'playlist',
+    position: 'above' | 'below'
   ): void {
     const favorites = this.libraryManager.getOrderedFavorites();
     const draggedIndex = favorites.findIndex(f => f.id === draggedId && f.type === draggedType);
@@ -949,21 +956,45 @@ export class SoundMixerApp {
     if (draggedIndex === -1 || targetIndex === -1) return;
 
     const [draggedItem] = favorites.splice(draggedIndex, 1);
-    favorites.splice(targetIndex, 0, draggedItem);
+    // After splice, target shifted if dragged was before it
+    let insertIndex: number;
+    if (position === 'above') {
+      insertIndex = draggedIndex < targetIndex ? targetIndex - 1 : targetIndex;
+    } else {
+      insertIndex = draggedIndex < targetIndex ? targetIndex : targetIndex + 1;
+    }
+    // Clamp to valid range after removal
+    insertIndex = Math.max(0, Math.min(insertIndex, favorites.length));
+    favorites.splice(insertIndex, 0, draggedItem);
 
     this.libraryManager.reorderFavorites(favorites);
     this.requestRender();
-    Logger.debug(`[SoundMixerApp] Reordered favorite ${draggedId} to position ${targetIndex}`);
+    Logger.debug(`[SoundMixerApp] Reordered favorite ${draggedId} to position ${insertIndex} (${position})`);
   }
 
-  private handleQueueReorder(draggedQueueId: string, targetQueueId: string): void {
+  private handleQueueReorder(draggedQueueId: string, targetQueueId: string, position: 'above' | 'below'): void {
     const items = this.queueManager.getItems();
+    const draggedIndex = items.findIndex(i => i.id === draggedQueueId);
     const targetIndex = items.findIndex(i => i.id === targetQueueId);
 
-    if (targetIndex === -1) return;
+    if (draggedIndex === -1 || targetIndex === -1) return;
 
-    this.queueManager.moveItem(draggedQueueId, targetIndex);
-    Logger.debug(`[SoundMixerApp] Reordered queue item ${draggedQueueId} to position ${targetIndex}`);
+    // Account for splice behavior: removing an item before the target shifts indices.
+    // After splice(draggedIndex, 1), inserting at newIndex puts the item at:
+    //   - newIndex in the post-removal array
+    //   - If draggedIndex < targetIndex: effective original position = newIndex + 1
+    //   - If draggedIndex > targetIndex: effective original position = newIndex
+    let newIndex: number;
+    if (position === 'above') {
+      // Place before target
+      newIndex = draggedIndex < targetIndex ? targetIndex - 1 : targetIndex;
+    } else {
+      // Place after target
+      newIndex = draggedIndex < targetIndex ? targetIndex : targetIndex + 1;
+    }
+
+    this.queueManager.moveItem(draggedQueueId, newIndex);
+    Logger.debug(`[SoundMixerApp] Reordered queue item ${draggedQueueId} to position ${newIndex} (${position} target ${targetIndex})`);
   }
 
   // ─────────────────────────────────────────────────────────────

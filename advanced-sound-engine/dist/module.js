@@ -4898,6 +4898,7 @@ const _SoundMixerApp = class _SoundMixerApp {
     html.find(".ase-favorite-item").on("drop", (event) => {
       event.preventDefault();
       event.stopPropagation();
+      const dropPosition = this._dragPosition || "above";
       if (this._rafId) {
         cancelAnimationFrame(this._rafId);
         this._rafId = null;
@@ -4910,9 +4911,9 @@ const _SoundMixerApp = class _SoundMixerApp {
       html.find(".ase-favorite-item").removeClass("drag-above drag-below dragging");
       const draggedId = event.originalEvent.dataTransfer.getData("application/x-mixer-favorite-id");
       const draggedType = event.originalEvent.dataTransfer.getData("application/x-mixer-favorite-type");
-      Logger.info(`[SoundMixerApp] Drop Favorite: ${draggedId} -> ${targetId}`);
+      Logger.info(`[SoundMixerApp] Drop Favorite: ${draggedId} -> ${targetId} (${dropPosition})`);
       if (draggedId && draggedType && (draggedId !== targetId || draggedType !== targetType)) {
-        this.handleFavoriteReorder(draggedId, draggedType, targetId, targetType);
+        this.handleFavoriteReorder(draggedId, draggedType, targetId, targetType, dropPosition);
       }
     });
     html.find(".ase-queue-track input, .ase-queue-track button, .ase-queue-track .volume-container, .ase-queue-track .progress-wrapper").on("pointerdown", (e) => {
@@ -4973,6 +4974,7 @@ const _SoundMixerApp = class _SoundMixerApp {
     html.find(".ase-queue-track").on("drop", (event) => {
       event.preventDefault();
       event.stopPropagation();
+      const dropPosition = this._dragPosition || "above";
       if (this._rafId) {
         cancelAnimationFrame(this._rafId);
         this._rafId = null;
@@ -4983,29 +4985,43 @@ const _SoundMixerApp = class _SoundMixerApp {
       html.find(".ase-queue-track").removeClass("drag-above drag-below dragging");
       const draggedQueueId = event.originalEvent.dataTransfer.getData("application/x-mixer-queue-id");
       const targetQueueId = String($(event.currentTarget).data("queue-id"));
-      Logger.info(`[SoundMixerApp] Drop Queue: ${draggedQueueId} -> ${targetQueueId}`);
+      Logger.info(`[SoundMixerApp] Drop Queue: ${draggedQueueId} -> ${targetQueueId} (${dropPosition})`);
       if (draggedQueueId && draggedQueueId !== targetQueueId) {
-        this.handleQueueReorder(draggedQueueId, targetQueueId);
+        this.handleQueueReorder(draggedQueueId, targetQueueId, dropPosition);
       }
     });
   }
-  handleFavoriteReorder(draggedId, draggedType, targetId, targetType) {
+  handleFavoriteReorder(draggedId, draggedType, targetId, targetType, position) {
     const favorites = this.libraryManager.getOrderedFavorites();
     const draggedIndex = favorites.findIndex((f) => f.id === draggedId && f.type === draggedType);
     const targetIndex = favorites.findIndex((f) => f.id === targetId && f.type === targetType);
     if (draggedIndex === -1 || targetIndex === -1) return;
     const [draggedItem] = favorites.splice(draggedIndex, 1);
-    favorites.splice(targetIndex, 0, draggedItem);
+    let insertIndex;
+    if (position === "above") {
+      insertIndex = draggedIndex < targetIndex ? targetIndex - 1 : targetIndex;
+    } else {
+      insertIndex = draggedIndex < targetIndex ? targetIndex : targetIndex + 1;
+    }
+    insertIndex = Math.max(0, Math.min(insertIndex, favorites.length));
+    favorites.splice(insertIndex, 0, draggedItem);
     this.libraryManager.reorderFavorites(favorites);
     this.requestRender();
-    Logger.debug(`[SoundMixerApp] Reordered favorite ${draggedId} to position ${targetIndex}`);
+    Logger.debug(`[SoundMixerApp] Reordered favorite ${draggedId} to position ${insertIndex} (${position})`);
   }
-  handleQueueReorder(draggedQueueId, targetQueueId) {
+  handleQueueReorder(draggedQueueId, targetQueueId, position) {
     const items = this.queueManager.getItems();
+    const draggedIndex = items.findIndex((i) => i.id === draggedQueueId);
     const targetIndex = items.findIndex((i) => i.id === targetQueueId);
-    if (targetIndex === -1) return;
-    this.queueManager.moveItem(draggedQueueId, targetIndex);
-    Logger.debug(`[SoundMixerApp] Reordered queue item ${draggedQueueId} to position ${targetIndex}`);
+    if (draggedIndex === -1 || targetIndex === -1) return;
+    let newIndex;
+    if (position === "above") {
+      newIndex = draggedIndex < targetIndex ? targetIndex - 1 : targetIndex;
+    } else {
+      newIndex = draggedIndex < targetIndex ? targetIndex : targetIndex + 1;
+    }
+    this.queueManager.moveItem(draggedQueueId, newIndex);
+    Logger.debug(`[SoundMixerApp] Reordered queue item ${draggedQueueId} to position ${newIndex} (${position} target ${targetIndex})`);
   }
   // ─────────────────────────────────────────────────────────────
   // Playlist Toggle
@@ -7352,12 +7368,26 @@ const _PlaybackScheduler = class _PlaybackScheduler {
         if (playlistId) {
           const playlist = this.library.playlists.getPlaylist(playlistId);
           if (playlist) {
-            const tracks = [...playlist.items].sort((a, b) => a.order - b.order);
-            const currentIndex = tracks.findIndex((t) => t.libraryItemId === trackId);
-            if (currentIndex !== -1 && currentIndex < tracks.length - 1) {
+            const queueItems = this.queue.getItems().filter((i) => i.playlistId === playlistId);
+            let effectiveTracks;
+            if (queueItems.length > 0) {
+              effectiveTracks = queueItems.map((qi) => ({
+                libraryItemId: qi.libraryItemId,
+                volume: qi.volume
+              }));
+              Logger.debug(`[handleIndividualTrackMode] Using Queue order for playlist ${playlist.name}`);
+            } else {
+              effectiveTracks = [...playlist.items].sort((a, b) => a.order - b.order).map((t) => ({
+                libraryItemId: t.libraryItemId,
+                volume: t.volume
+              }));
+              Logger.debug(`[handleIndividualTrackMode] Using Library order for playlist ${playlist.name}`);
+            }
+            const currentIndex = effectiveTracks.findIndex((t) => t.libraryItemId === trackId);
+            if (currentIndex !== -1 && currentIndex < effectiveTracks.length - 1) {
               Logger.debug(`Track ${track.name} (linear) -> launching next track in playlist`);
               await this.engine.stopTrack(trackId);
-              const nextItem = tracks[currentIndex + 1];
+              const nextItem = effectiveTracks[currentIndex + 1];
               await this.playPlaylistItem(nextItem, playlistId, playlist.playbackMode || "loop");
               return;
             }
