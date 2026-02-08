@@ -10,7 +10,7 @@
       <ul class="ase-list-group" data-section="mixer-favorites">
         {{#each favorites}}
         <li class="ase-list-item ase-favorite-item {{#if isPlaying}}is-playing{{else if isPaused}}is-paused{{/if}}"
-          data-favorite-id="{{id}}" data-favorite-type="{{type}}">
+          data-favorite-id="{{id}}" data-favorite-type="{{type}}" draggable="true">
           <div class="ase-favorite-info">
             {{#if (eq type 'playlist')}}
             <i class="fa-solid fa-list ase-type-icon"></i>
@@ -67,7 +67,7 @@
           {{!-- Show all if not collapsed, otherwise only playing/paused --}}
           <div
             class="ase-track-player-item ase-queue-track {{#if isPlaying}}is-playing{{else if isPaused}}is-paused{{/if}} {{#if shouldBeHidden}}collapsed-hidden{{/if}}"
-            data-queue-id="{{queueId}}" data-item-id="{{libraryItemId}}">
+            data-queue-id="{{queueId}}" data-item-id="{{libraryItemId}}" draggable="true">
 
             {{!-- Row 1: Identity (Icon + Info + Volume + Buttons + Delete) --}}
             <div class="track-identity-row">
