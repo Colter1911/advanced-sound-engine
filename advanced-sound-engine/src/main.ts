@@ -390,8 +390,10 @@ function registerSettings(): void {
 Hooks.once('closeGame', () => {
   mainApp?.close();
   volumePanel?.close();
+  playbackScheduler?.dispose();
   socketManager?.dispose();
   gmEngine?.dispose();
   playerEngine?.dispose();
+  queueManager?.dispose();
   libraryManager?.dispose();
 });

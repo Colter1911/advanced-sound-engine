@@ -27,6 +27,9 @@ export class AdvancedSoundEngineApp extends HandlebarsApplicationMixin(Applicati
     private mixerApp: SoundMixerApp;
     private effectsApp: SoundEffectsApp;
 
+    // Stored callback for cleanup
+    private _onQueueChangeBound!: () => void;
+
     public state: AppState = {
         activeTab: 'library', // Default to library as per user focus
         syncEnabled: false
@@ -87,12 +90,13 @@ export class AdvancedSoundEngineApp extends HandlebarsApplicationMixin(Applicati
         });
 
         // Subscribe to queue changes for UI updates
-        this.queueManager.on('change', () => {
+        this._onQueueChangeBound = () => {
             if (this.state.activeTab === 'mixer') {
                 this.captureScroll();
                 this.render({ parts: ['main'] });
             }
-        });
+        };
+        this.queueManager.on('change', this._onQueueChangeBound);
 
         // Restore Local Volume (UI Preference)
         const savedLocalVol = localStorage.getItem('ase-gm-local-volume');
@@ -219,11 +223,20 @@ export class AdvancedSoundEngineApp extends HandlebarsApplicationMixin(Applicati
     };
 
     /**
-     * V2 Close Hook
+     * V2 Close Hook — cleanup all sub-apps and event subscriptions
      */
     protected override _onClose(options: any): void {
         super._onClose(options);
-        // Any cleanup if needed
+
+        // Dispose sub-apps
+        this.mixerApp.dispose();
+        this.effectsApp.destroy();
+        this.libraryApp.close();
+
+        // Remove queue change subscription
+        this.queueManager.off('change', this._onQueueChangeBound);
+
+        Logger.info('[AdvancedSoundEngineApp] Closed and cleaned up');
     }
 
     // ─────────────────────────────────────────────────────────────

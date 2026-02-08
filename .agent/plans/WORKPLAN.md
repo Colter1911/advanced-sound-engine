@@ -198,15 +198,15 @@ stopAll() не очищает контекст Scheduler
 | 1.2 | ✅ DONE | Feb 2026 | Race condition StreamingPlayer |
 | 1.3 | ✅ DONE | Feb 2026 | Periodic sync verification |
 | 1.4 | ✅ DONE | Feb 2026 | syncState() re-play guard |
-| 2.1 | ⬜ TODO | — | Cleanup ресурсов |
-| 2.2 | ⬜ TODO | — | Rate limiting |
-| 2.3 | ⬜ TODO | — | Версионирование сообщений |
-| 2.4 | ⬜ TODO | — | startTimestamp fix |
+| 2.1 | ✅ DONE | Feb 2026 | Cleanup: _onClose(), dispose() для SoundMixerApp/PlaybackScheduler/QueueManager |
+| 2.2 | ✅ DONE | Feb 2026 | throttledSend(150ms) для seek/volume/channelVol/effectParam |
+| 2.3 | ✅ DONE | Feb 2026 | PROTOCOL_VERSION в SocketMessage + mismatch warnings |
+| 2.4 | ✅ DONE | Feb 2026 | startTimestamp snapshot pattern verified correct, console.log→Logger cleanup |
 | 3.1 | ⬜ TODO | — | Диагностика загрузки |
 | 3.2 | ⬜ TODO | — | Архитектурные изменения |
 | 4.1 | ⬜ TODO | — | Подсчёт треков |
 | 4.2 | ⬜ TODO | — | Лимит на стороне игрока |
-| 5.1 | ⬜ TODO | — | console.log → Logger |
+| 5.1 | 🔄 PARTIAL | Feb 2026 | SocketManager, PlayerAudioEngine, SoundEffectsApp cleaned (остаётся AdvancedSoundEngineApp) |
 | 5.2 | ⬜ TODO | — | Двойной рендер |
 | 5.3 | ⬜ TODO | — | Volume sync guard |
 | 5.4 | ⬜ TODO | — | Убрать any |

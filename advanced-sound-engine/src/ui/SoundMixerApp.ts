@@ -86,6 +86,12 @@ export class SoundMixerApp {
   private volumeThrottleTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
   private static THROTTLE_MS = 200;
 
+  // Stored callbacks for proper cleanup
+  private _onQueueChangeBound: () => void;
+  private _onTrackEndedBound: () => void;
+  private _hookFavoritesId: number = 0;
+  private _hookAutoSwitchId: number = 0;
+
   constructor(
     engine: AudioEngine,
     socket: SocketManager,
@@ -97,19 +103,23 @@ export class SoundMixerApp {
     this.libraryManager = libraryManager;
     this.queueManager = queueManager;
 
+    // Store bound callbacks for cleanup
+    this._onQueueChangeBound = () => this.onQueueChange();
+    this._onTrackEndedBound = () => this.onTrackStateChange();
+
     // Subscribe to queue changes for real-time updates
-    this.queueManager.on('change', () => this.onQueueChange());
+    this.queueManager.on('change', this._onQueueChangeBound);
 
     // Subscribe to track state changes for UI updates
-    this.engine.on('trackEnded', () => this.onTrackStateChange());
+    this.engine.on('trackEnded', this._onTrackEndedBound);
 
     // Listen for external favorite changes (Global Hook)
-    Hooks.on('ase.favoritesChanged' as any, () => {
+    this._hookFavoritesId = Hooks.on('ase.favoritesChanged' as any, () => {
       this.requestRender();
     });
 
     // Listen for automatic track switches from PlaybackScheduler
-    Hooks.on('ase.trackAutoSwitched' as any, () => {
+    this._hookAutoSwitchId = Hooks.on('ase.trackAutoSwitched' as any, () => {
       Logger.debug('[SoundMixerApp] Track auto-switched, re-rendering');
       this.requestRender();
     });
@@ -896,6 +906,40 @@ export class SoundMixerApp {
       clearInterval(this.updateInterval);
       this.updateInterval = null;
     }
+  }
+
+  /**
+   * Full cleanup: stops updates, clears throttle timers, removes all event subscriptions.
+   * Called when the parent window closes.
+   */
+  dispose(): void {
+    this.stopUpdates();
+
+    // Clear all throttle timers
+    for (const timer of this.seekThrottleTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.seekThrottleTimers.clear();
+
+    for (const timer of this.volumeThrottleTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.volumeThrottleTimers.clear();
+
+    // Remove event subscriptions
+    this.queueManager.off('change', this._onQueueChangeBound);
+    this.engine.off('trackEnded', this._onTrackEndedBound);
+
+    // Remove Foundry hooks
+    if (this._hookFavoritesId) {
+      Hooks.off('ase.favoritesChanged' as any, this._hookFavoritesId);
+    }
+    if (this._hookAutoSwitchId) {
+      Hooks.off('ase.trackAutoSwitched' as any, this._hookAutoSwitchId);
+    }
+
+    this.html = null;
+    Logger.debug('[SoundMixerApp] Disposed');
   }
 
   private updateTrackDisplays(): void {

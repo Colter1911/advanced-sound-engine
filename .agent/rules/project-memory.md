@@ -31,6 +31,7 @@ trigger: always_on
 
 ## 3. UI Components & Apps (Foundry VTT)
 - **AdvancedSoundEngineApp** (`src/ui/AdvancedSoundEngineApp.ts`): Main application frame / window manager.
+  - **`_onClose()`**: Disposes all sub-apps (mixerApp, effectsApp, libraryApp) and removes queueManager subscription.
 - **LocalLibraryApp** (`src/ui/LocalLibraryApp.ts`):
   - Library tab controller. Manage tracks, tags, playlists, and file uploads.
   - **Render Delegation**: Delegates `render()` to `window.ASE.openPanel` to maintain unified app state.
@@ -42,6 +43,7 @@ trigger: always_on
     - **⛔ ANTI-PATTERN**: Registering event listeners in `getData()` causes exponential listener accumulation
   - **Cleanup**: `close()` method must clear: queue listeners, debounce timers, and global delegated handlers
 - **SoundMixerApp** (`src/ui/SoundMixerApp.ts`): Mixer tab controller. Manage active playback, volume channels, and syncing.
+  - **`dispose()`**: Full cleanup — stops update interval, clears seek/volume throttle timers, removes queueManager/engine event subscriptions and Foundry hooks (`ase.favoritesChanged`, `ase.trackAutoSwitched`).
 - **PlayerVolumePanel** (`src/ui/PlayerVolumePanel.ts`): Simple volume control for non-GM players.
 
 ## 4. API & Services
@@ -88,6 +90,7 @@ trigger: always_on
   - `removeItem(id)`, `clearQueue()`.
   - `hasItem(libId)`: Checks presence for UI glow.
   - Events: `add`, `remove`, `change`, `active`.
+  - **`dispose()`**: Clears pending save timer and all event listeners.
 - **SocketManager** (`src/sync/SocketManager.ts`):
   - Handles real-time state synchronization between GM and players.
   - **Message Types**: 
@@ -97,14 +100,16 @@ trigger: always_on
     - `effect-param/routing/enabled`: Effect state
     - `sync-request`: Player → GM request for full re-sync
   - **broadcastStopAll()**: No syncEnabled guard — stop-all ALWAYS reaches players.
-  - **Known Issues**:
-    - No rate limiting on broadcasts (can flood network)
+  - **Rate Limiting**: `throttledSend()` (150ms) applied to high-frequency broadcasts: seek, trackVolume, channelVolume, effectParam. First call sends immediately, subsequent calls within cooldown are batched (last value wins).
+  - **Protocol Versioning**: `PROTOCOL_VERSION = 1` — included in every message, receivers log warning on mismatch.
+  - **`dispose()`**: Clears throttle timers and socket listener.
 
 - **PlaybackScheduler** (`src/core/PlaybackScheduler.ts`):
   - Listens to `trackEnded` / `contextChanged` events from AudioEngine.
   - Determines next track based on PlaybackContext (playlist/track/queue).
   - `clearContext()`: Called by `AudioEngine.stopAll()` — sets `_stopped` flag to ignore late 'ended' events.
   - `setContext()`: Resets `_stopped` flag.
+  - **`dispose()`**: Removes `trackEnded`/`contextChanged` listeners from AudioEngine.
 - **StreamingPlayer** (`src/core/StreamingPlayer.ts`):
   - Individual track player wrapping `HTMLAudioElement` + `MediaElementAudioSourceNode` (Web Audio API).
   - `_stopRequested` flag prevents race condition where `play()` promise resolves after `stop()` was called.
@@ -125,7 +130,7 @@ trigger: always_on
   - `ready`: Initialize Managers & Socket.
   - `getSceneControlButtons`: Add "Sound Engine" button to left sidebar.
   - `renderSceneControls`: Bind click listeners (v13 compat).
-  - `closeGame`: Cleanup.
+  - `closeGame`: Full cleanup — disposes `playbackScheduler`, `socketManager`, `gmEngine`/`playerEngine`, `queueManager`, `libraryManager`.
 - **Settings Registered**:
   - `mixerState` (world scope): Internal state.
   - `libraryState` (world scope): Legacy/Fallback storage.

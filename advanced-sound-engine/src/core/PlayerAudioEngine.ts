@@ -492,7 +492,7 @@ export class PlayerAudioEngine {
 
       // CRITICAL FIX: Stop tracks that should not be playing
       if (player && !trackState.isPlaying && player.state === 'playing') {
-        console.log('[ASE PLAYER] Stopping track that should not be playing:', trackState.id);
+        Logger.debug('Player: Stopping track that should not be playing:', trackState.id);
         player.stop();
         continue; // Skip further processing for this track as it's now stopped
       }
