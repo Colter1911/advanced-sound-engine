@@ -715,8 +715,12 @@ export class SoundMixerApp {
     // ── Favorites reordering ──
 
     html.find('.ase-favorite-item[draggable="true"]').on('dragstart', (event: JQuery.DragStartEvent) => {
+      event.stopPropagation();
       const favoriteId = String($(event.currentTarget).data('favorite-id'));
       const favoriteType = String($(event.currentTarget).data('favorite-type'));
+
+      Logger.info(`[SoundMixerApp] DragStart Favorite: ${favoriteId} (${favoriteType})`);
+
       event.originalEvent!.dataTransfer!.effectAllowed = 'move';
       event.originalEvent!.dataTransfer!.setData('application/x-mixer-favorite-id', favoriteId);
       event.originalEvent!.dataTransfer!.setData('application/x-mixer-favorite-type', favoriteType);
@@ -730,15 +734,22 @@ export class SoundMixerApp {
 
     // Favorites visual feedback for insertion position
     html.find('.ase-favorite-item').on('dragover', (event: JQuery.DragOverEvent) => {
-      const hasFavoriteId = event.originalEvent!.dataTransfer!.types.includes('application/x-mixer-favorite-id');
+      // Robust check for types (Array or DOMStringList)
+      const types = event.originalEvent!.dataTransfer!.types;
+      const hasFavoriteId = (types instanceof DOMStringList && types.contains('application/x-mixer-favorite-id')) ||
+        (types instanceof Array && types.includes('application/x-mixer-favorite-id')) ||
+        (Array.from(types).includes('application/x-mixer-favorite-id'));
+
       if (!hasFavoriteId) return;
 
       event.preventDefault();
+      event.stopPropagation(); // Prevent parent handlers
       event.originalEvent!.dataTransfer!.dropEffect = 'move';
 
       const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
       const midY = rect.top + rect.height / 2;
-      const isAbove = event.clientY! < midY;
+      const clientY = event.originalEvent!.clientY ?? event.clientY; // Safe clientY access
+      const isAbove = clientY < midY;
 
       html.find('.ase-favorite-item').removeClass('drag-above drag-below drag-over');
       $(event.currentTarget).addClass(isAbove ? 'drag-above' : 'drag-below');
@@ -750,6 +761,8 @@ export class SoundMixerApp {
 
     html.find('.ase-favorite-item').on('drop', (event: JQuery.DropEvent) => {
       event.preventDefault();
+      event.stopPropagation();
+
       const targetId = String($(event.currentTarget).data('favorite-id'));
       const targetType = String($(event.currentTarget).data('favorite-type')) as 'track' | 'playlist';
 
@@ -757,6 +770,8 @@ export class SoundMixerApp {
 
       const draggedId = event.originalEvent!.dataTransfer!.getData('application/x-mixer-favorite-id');
       const draggedType = event.originalEvent!.dataTransfer!.getData('application/x-mixer-favorite-type') as 'track' | 'playlist';
+
+      Logger.info(`[SoundMixerApp] Drop Favorite: ${draggedId} -> ${targetId}`);
 
       if (draggedId && draggedType && (draggedId !== targetId || draggedType !== targetType)) {
         this.handleFavoriteReorder(draggedId, draggedType, targetId, targetType);
@@ -766,7 +781,11 @@ export class SoundMixerApp {
     // ── Queue track reordering ──
 
     html.find('.ase-queue-track[draggable="true"]').on('dragstart', (event: JQuery.DragStartEvent) => {
+      event.stopPropagation();
       const queueId = String($(event.currentTarget).data('queue-id'));
+
+      Logger.info(`[SoundMixerApp] DragStart Queue: ${queueId}`);
+
       event.originalEvent!.dataTransfer!.effectAllowed = 'move';
       event.originalEvent!.dataTransfer!.setData('application/x-mixer-queue-id', queueId);
       $(event.currentTarget).addClass('dragging');
@@ -778,15 +797,21 @@ export class SoundMixerApp {
     });
 
     html.find('.ase-queue-track').on('dragover', (event: JQuery.DragOverEvent) => {
-      const hasQueueId = event.originalEvent!.dataTransfer!.types.includes('application/x-mixer-queue-id');
+      const types = event.originalEvent!.dataTransfer!.types;
+      const hasQueueId = (types instanceof DOMStringList && types.contains('application/x-mixer-queue-id')) ||
+        (types instanceof Array && types.includes('application/x-mixer-queue-id')) ||
+        (Array.from(types).includes('application/x-mixer-queue-id'));
+
       if (!hasQueueId) return;
 
       event.preventDefault();
+      event.stopPropagation();
       event.originalEvent!.dataTransfer!.dropEffect = 'move';
 
       const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
       const midY = rect.top + rect.height / 2;
-      const isAbove = event.clientY! < midY;
+      const clientY = event.originalEvent!.clientY ?? event.clientY;
+      const isAbove = clientY < midY;
 
       html.find('.ase-queue-track').removeClass('drag-above drag-below drag-over');
       $(event.currentTarget).addClass(isAbove ? 'drag-above' : 'drag-below');
@@ -798,10 +823,14 @@ export class SoundMixerApp {
 
     html.find('.ase-queue-track').on('drop', (event: JQuery.DropEvent) => {
       event.preventDefault();
+      event.stopPropagation();
+
       html.find('.ase-queue-track').removeClass('drag-above drag-below dragging');
 
       const draggedQueueId = event.originalEvent!.dataTransfer!.getData('application/x-mixer-queue-id');
       const targetQueueId = String($(event.currentTarget).data('queue-id'));
+
+      Logger.info(`[SoundMixerApp] Drop Queue: ${draggedQueueId} -> ${targetQueueId}`);
 
       if (draggedQueueId && draggedQueueId !== targetQueueId) {
         this.handleQueueReorder(draggedQueueId, targetQueueId);
