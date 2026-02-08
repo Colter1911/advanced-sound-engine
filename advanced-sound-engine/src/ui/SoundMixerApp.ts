@@ -92,6 +92,12 @@ export class SoundMixerApp {
   private _hookFavoritesId: number = 0;
   private _hookAutoSwitchId: number = 0;
 
+  // Drag-and-Drop State (Optimization with RAF)
+  private _dragTarget: HTMLElement | null = null;
+  private _dragPosition: 'above' | 'below' | null = null;
+  private _rafId: number | null = null;
+  private _pendingDragUpdate: { target: HTMLElement, position: 'above' | 'below' } | null = null;
+
   constructor(
     engine: AudioEngine,
     socket: SocketManager,
@@ -714,6 +720,11 @@ export class SoundMixerApp {
   private setupDragAndDrop(html: JQuery): void {
     // ── Favorites reordering ──
 
+    // Prevent drag from interactive elements
+    html.find('.ase-favorite-item .ase-icons, .ase-favorite-item button, .ase-favorite-item input').on('mousedown', (e) => {
+      e.stopPropagation();
+    });
+
     html.find('.ase-favorite-item[draggable="true"]').on('dragstart', (event: JQuery.DragStartEvent) => {
       event.stopPropagation();
       const favoriteId = String($(event.currentTarget).data('favorite-id'));
@@ -746,22 +757,48 @@ export class SoundMixerApp {
       event.stopPropagation(); // Prevent parent handlers
       event.originalEvent!.dataTransfer!.dropEffect = 'move';
 
+      // Optimize with RequestAnimationFrame
       const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
       const midY = rect.top + rect.height / 2;
-      const clientY = event.originalEvent!.clientY ?? event.clientY; // Safe clientY access
+      const clientY = event.originalEvent!.clientY ?? event.clientY;
       const isAbove = clientY < midY;
+      const newPos = isAbove ? 'above' : 'below';
 
-      html.find('.ase-favorite-item').removeClass('drag-above drag-below drag-over');
-      $(event.currentTarget).addClass(isAbove ? 'drag-above' : 'drag-below');
+      // Store pending update
+      this._pendingDragUpdate = {
+        target: event.currentTarget as HTMLElement,
+        position: newPos
+      };
+
+      // Schedule RAF if not already running
+      if (!this._rafId) {
+        this._rafId = requestAnimationFrame(this._processDragUpdate.bind(this, html, '.ase-favorite-item'));
+      }
     });
 
     html.find('.ase-favorite-item').on('dragleave', (event: JQuery.DragLeaveEvent) => {
-      $(event.currentTarget).removeClass('drag-above drag-below');
+      // If we leave the current target, clear it
+      if (this._dragTarget === event.currentTarget) {
+        this._dragTarget = null;
+        this._dragPosition = null;
+        // If we have a pending update for this target, clear it too, but we might have a new one incoming
+        // Simplest: just remove classes immediately on leave to be responsive
+        $(event.currentTarget).removeClass('drag-above drag-below');
+      }
     });
 
     html.find('.ase-favorite-item').on('drop', (event: JQuery.DropEvent) => {
       event.preventDefault();
       event.stopPropagation();
+
+      // Cleanup RAF
+      if (this._rafId) {
+        cancelAnimationFrame(this._rafId);
+        this._rafId = null;
+      }
+      this._pendingDragUpdate = null;
+      this._dragTarget = null;
+      this._dragPosition = null;
 
       const targetId = String($(event.currentTarget).data('favorite-id'));
       const targetType = String($(event.currentTarget).data('favorite-type')) as 'track' | 'playlist';
@@ -780,9 +817,16 @@ export class SoundMixerApp {
 
     // ── Queue track reordering ──
 
+    // Prevent drag from interactive elements (volume, seek, buttons)
+    html.find('.ase-queue-track input, .ase-queue-track button, .ase-queue-track .volume-container, .ase-queue-track .progress-wrapper').on('mousedown', (e) => {
+      e.stopPropagation();
+      // Note: Do NOT preventDefault() here, or sliders won't work!
+    });
+
     html.find('.ase-queue-track[draggable="true"]').on('dragstart', (event: JQuery.DragStartEvent) => {
       event.stopPropagation();
       const queueId = String($(event.currentTarget).data('queue-id'));
+
 
       Logger.info(`[SoundMixerApp] DragStart Queue: ${queueId}`);
 
@@ -808,22 +852,42 @@ export class SoundMixerApp {
       event.stopPropagation();
       event.originalEvent!.dataTransfer!.dropEffect = 'move';
 
+      // Optimize Queue Drag with RAF
       const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
       const midY = rect.top + rect.height / 2;
       const clientY = event.originalEvent!.clientY ?? event.clientY;
       const isAbove = clientY < midY;
+      const newPos = isAbove ? 'above' : 'below';
 
-      html.find('.ase-queue-track').removeClass('drag-above drag-below drag-over');
-      $(event.currentTarget).addClass(isAbove ? 'drag-above' : 'drag-below');
+      this._pendingDragUpdate = {
+        target: event.currentTarget as HTMLElement,
+        position: newPos
+      };
+
+      if (!this._rafId) {
+        this._rafId = requestAnimationFrame(this._processDragUpdate.bind(this, html, '.ase-queue-track'));
+      }
     });
 
     html.find('.ase-queue-track').on('dragleave', (event: JQuery.DragLeaveEvent) => {
-      $(event.currentTarget).removeClass('drag-above drag-below');
+      if (this._dragTarget === event.currentTarget) {
+        this._dragTarget = null;
+        this._dragPosition = null;
+        $(event.currentTarget).removeClass('drag-above drag-below');
+      }
     });
 
     html.find('.ase-queue-track').on('drop', (event: JQuery.DropEvent) => {
       event.preventDefault();
       event.stopPropagation();
+
+      if (this._rafId) {
+        cancelAnimationFrame(this._rafId);
+        this._rafId = null;
+      }
+      this._pendingDragUpdate = null;
+      this._dragTarget = null;
+      this._dragPosition = null;
 
       html.find('.ase-queue-track').removeClass('drag-above drag-below dragging');
 
@@ -1182,5 +1246,32 @@ export class SoundMixerApp {
     }
 
     Logger.info(`Effect ${effectId} ${newState ? 'enabled' : 'disabled'}`);
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // RAF Processor for Drag Events
+  // ─────────────────────────────────────────────────────────────
+
+  private _processDragUpdate(html: JQuery, selector: string): void {
+    this._rafId = null; // Reset ID so new frames can be requested
+
+    if (!this._pendingDragUpdate) return;
+
+    const { target, position } = this._pendingDragUpdate;
+
+    // Avoid redundant DOM updates
+    if (this._dragTarget === target && this._dragPosition === position) {
+      return;
+    }
+
+    // Apply update
+    this._dragTarget = target;
+    this._dragPosition = position;
+
+    // Clean all
+    html.find(selector).removeClass('drag-above drag-below drag-over');
+
+    // Apply new class
+    $(target).addClass(position === 'above' ? 'drag-above' : 'drag-below');
   }
 }

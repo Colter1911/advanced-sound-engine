@@ -141,12 +141,33 @@ export class PlaybackScheduler {
         // Трек наследует режим плейлиста
         Logger.debug(`Track ${track.name} inherits playlist mode`);
         const mode = (playlist.playbackMode || 'loop') as PlaylistPlaybackMode;
-        Logger.debug(`Playlist mode: ${mode}, current index: ${currentIndex}/${tracks.length}`);
+
+        // ─── QUEUE SYNC FIX ───
+        // Check if this playlist exists in the Queue. If so, use the Queue's order.
+        const queueItems = this.queue.getItems().filter(i => i.playlistId === playlistId);
+        let effectiveTracks: { libraryItemId: string, volume?: number }[] = tracks;
+        let effectiveIndex = currentIndex;
+
+        if (queueItems.length > 0) {
+            // Map QueueItems to a structure compatible with our logic
+            effectiveTracks = queueItems.map(qi => ({
+                libraryItemId: qi.libraryItemId,
+                volume: qi.volume
+            }));
+
+            // Recalculate index based on Queue Order
+            effectiveIndex = effectiveTracks.findIndex(t => t.libraryItemId === endedTrackId);
+            Logger.debug(`Using Queue order for playlist ${playlist.name}. Index: ${effectiveIndex}/${effectiveTracks.length}`);
+        } else {
+            Logger.debug(`Using Library order for playlist ${playlist.name} (not in queue). Index: ${currentIndex}/${tracks.length}`);
+        }
+
+        Logger.debug(`Playlist mode: ${mode}, current index: ${effectiveIndex}/${effectiveTracks.length}`);
 
         switch (mode) {
             case 'linear':
-                if (currentIndex < tracks.length - 1) {
-                    const nextItem = tracks[currentIndex + 1];
+                if (effectiveIndex < effectiveTracks.length - 1) {
+                    const nextItem = effectiveTracks[effectiveIndex + 1];
                     // Остановить текущий трек перед запуском следующего
                     await this.engine.stopTrack(endedTrackId);
                     await this.playPlaylistItem(nextItem, playlistId, playlist.playbackMode);
@@ -158,28 +179,28 @@ export class PlaybackScheduler {
                 }
                 break;
             case 'loop':
-                let nextIndex = currentIndex + 1;
-                if (nextIndex >= tracks.length) {
+                let nextIndex = effectiveIndex + 1;
+                if (nextIndex >= effectiveTracks.length) {
                     nextIndex = 0; // Loop back to start
                 }
                 // Остановить текущий трек перед запуском следующего
                 await this.engine.stopTrack(endedTrackId);
-                await this.playPlaylistItem(tracks[nextIndex], playlistId, playlist.playbackMode);
+                await this.playPlaylistItem(effectiveTracks[nextIndex], playlistId, playlist.playbackMode);
                 break;
             case 'random':
                 // Остановить текущий трек перед запуском следующего
                 await this.engine.stopTrack(endedTrackId);
 
-                // Simple random: pick any other track. 
-                if (tracks.length > 1) {
+                // Simple random: pick any other track from EFFECTIVE list
+                if (effectiveTracks.length > 1) {
                     let randomIndex;
                     do {
-                        randomIndex = Math.floor(Math.random() * tracks.length);
-                    } while (randomIndex === currentIndex && tracks.length > 1); // Avoid repeat if possible
-                    await this.playPlaylistItem(tracks[randomIndex], playlistId, playlist.playbackMode);
+                        randomIndex = Math.floor(Math.random() * effectiveTracks.length);
+                    } while (randomIndex === effectiveIndex && effectiveTracks.length > 1);
+                    await this.playPlaylistItem(effectiveTracks[randomIndex], playlistId, playlist.playbackMode);
                 } else {
                     // If only 1 track, repeat it
-                    await this.playPlaylistItem(tracks[0], playlistId, playlist.playbackMode);
+                    await this.playPlaylistItem(effectiveTracks[0], playlistId, playlist.playbackMode);
                 }
                 break;
         }

@@ -4361,6 +4361,11 @@ const _SoundMixerApp = class _SoundMixerApp {
     __publicField(this, "_onTrackEndedBound");
     __publicField(this, "_hookFavoritesId", 0);
     __publicField(this, "_hookAutoSwitchId", 0);
+    // Drag-and-Drop State (Optimization with RAF)
+    __publicField(this, "_dragTarget", null);
+    __publicField(this, "_dragPosition", null);
+    __publicField(this, "_rafId", null);
+    __publicField(this, "_pendingDragUpdate", null);
     this.engine = engine;
     this.socket = socket;
     this.libraryManager = libraryManager2;
@@ -4834,6 +4839,9 @@ const _SoundMixerApp = class _SoundMixerApp {
   // Drag and Drop
   // ─────────────────────────────────────────────────────────────
   setupDragAndDrop(html) {
+    html.find(".ase-favorite-item .ase-icons, .ase-favorite-item button, .ase-favorite-item input").on("mousedown", (e) => {
+      e.stopPropagation();
+    });
     html.find('.ase-favorite-item[draggable="true"]').on("dragstart", (event) => {
       event.stopPropagation();
       const favoriteId = String($(event.currentTarget).data("favorite-id"));
@@ -4859,15 +4867,32 @@ const _SoundMixerApp = class _SoundMixerApp {
       const midY = rect.top + rect.height / 2;
       const clientY = event.originalEvent.clientY ?? event.clientY;
       const isAbove = clientY < midY;
-      html.find(".ase-favorite-item").removeClass("drag-above drag-below drag-over");
-      $(event.currentTarget).addClass(isAbove ? "drag-above" : "drag-below");
+      const newPos = isAbove ? "above" : "below";
+      this._pendingDragUpdate = {
+        target: event.currentTarget,
+        position: newPos
+      };
+      if (!this._rafId) {
+        this._rafId = requestAnimationFrame(this._processDragUpdate.bind(this, html, ".ase-favorite-item"));
+      }
     });
     html.find(".ase-favorite-item").on("dragleave", (event) => {
-      $(event.currentTarget).removeClass("drag-above drag-below");
+      if (this._dragTarget === event.currentTarget) {
+        this._dragTarget = null;
+        this._dragPosition = null;
+        $(event.currentTarget).removeClass("drag-above drag-below");
+      }
     });
     html.find(".ase-favorite-item").on("drop", (event) => {
       event.preventDefault();
       event.stopPropagation();
+      if (this._rafId) {
+        cancelAnimationFrame(this._rafId);
+        this._rafId = null;
+      }
+      this._pendingDragUpdate = null;
+      this._dragTarget = null;
+      this._dragPosition = null;
       const targetId = String($(event.currentTarget).data("favorite-id"));
       const targetType = String($(event.currentTarget).data("favorite-type"));
       html.find(".ase-favorite-item").removeClass("drag-above drag-below dragging");
@@ -4877,6 +4902,9 @@ const _SoundMixerApp = class _SoundMixerApp {
       if (draggedId && draggedType && (draggedId !== targetId || draggedType !== targetType)) {
         this.handleFavoriteReorder(draggedId, draggedType, targetId, targetType);
       }
+    });
+    html.find(".ase-queue-track input, .ase-queue-track button, .ase-queue-track .volume-container, .ase-queue-track .progress-wrapper").on("mousedown", (e) => {
+      e.stopPropagation();
     });
     html.find('.ase-queue-track[draggable="true"]').on("dragstart", (event) => {
       event.stopPropagation();
@@ -4901,15 +4929,32 @@ const _SoundMixerApp = class _SoundMixerApp {
       const midY = rect.top + rect.height / 2;
       const clientY = event.originalEvent.clientY ?? event.clientY;
       const isAbove = clientY < midY;
-      html.find(".ase-queue-track").removeClass("drag-above drag-below drag-over");
-      $(event.currentTarget).addClass(isAbove ? "drag-above" : "drag-below");
+      const newPos = isAbove ? "above" : "below";
+      this._pendingDragUpdate = {
+        target: event.currentTarget,
+        position: newPos
+      };
+      if (!this._rafId) {
+        this._rafId = requestAnimationFrame(this._processDragUpdate.bind(this, html, ".ase-queue-track"));
+      }
     });
     html.find(".ase-queue-track").on("dragleave", (event) => {
-      $(event.currentTarget).removeClass("drag-above drag-below");
+      if (this._dragTarget === event.currentTarget) {
+        this._dragTarget = null;
+        this._dragPosition = null;
+        $(event.currentTarget).removeClass("drag-above drag-below");
+      }
     });
     html.find(".ase-queue-track").on("drop", (event) => {
       event.preventDefault();
       event.stopPropagation();
+      if (this._rafId) {
+        cancelAnimationFrame(this._rafId);
+        this._rafId = null;
+      }
+      this._pendingDragUpdate = null;
+      this._dragTarget = null;
+      this._dragPosition = null;
       html.find(".ase-queue-track").removeClass("drag-above drag-below dragging");
       const draggedQueueId = event.originalEvent.dataTransfer.getData("application/x-mixer-queue-id");
       const targetQueueId = String($(event.currentTarget).data("queue-id"));
@@ -5175,6 +5220,21 @@ const _SoundMixerApp = class _SoundMixerApp {
       $btn.removeClass("active");
     }
     Logger.info(`Effect ${effectId} ${newState ? "enabled" : "disabled"}`);
+  }
+  // ─────────────────────────────────────────────────────────────
+  // RAF Processor for Drag Events
+  // ─────────────────────────────────────────────────────────────
+  _processDragUpdate(html, selector) {
+    this._rafId = null;
+    if (!this._pendingDragUpdate) return;
+    const { target, position } = this._pendingDragUpdate;
+    if (this._dragTarget === target && this._dragPosition === position) {
+      return;
+    }
+    this._dragTarget = target;
+    this._dragPosition = position;
+    html.find(selector).removeClass("drag-above drag-below drag-over");
+    $(target).addClass(position === "above" ? "drag-above" : "drag-below");
   }
 };
 __name(_SoundMixerApp, "SoundMixerApp");
@@ -7111,11 +7171,24 @@ const _PlaybackScheduler = class _PlaybackScheduler {
     }
     Logger.debug(`Track ${track.name} inherits playlist mode`);
     const mode = playlist.playbackMode || "loop";
-    Logger.debug(`Playlist mode: ${mode}, current index: ${currentIndex}/${tracks.length}`);
+    const queueItems = this.queue.getItems().filter((i) => i.playlistId === playlistId);
+    let effectiveTracks = tracks;
+    let effectiveIndex = currentIndex;
+    if (queueItems.length > 0) {
+      effectiveTracks = queueItems.map((qi) => ({
+        libraryItemId: qi.libraryItemId,
+        volume: qi.volume
+      }));
+      effectiveIndex = effectiveTracks.findIndex((t) => t.libraryItemId === endedTrackId);
+      Logger.debug(`Using Queue order for playlist ${playlist.name}. Index: ${effectiveIndex}/${effectiveTracks.length}`);
+    } else {
+      Logger.debug(`Using Library order for playlist ${playlist.name} (not in queue). Index: ${currentIndex}/${tracks.length}`);
+    }
+    Logger.debug(`Playlist mode: ${mode}, current index: ${effectiveIndex}/${effectiveTracks.length}`);
     switch (mode) {
       case "linear":
-        if (currentIndex < tracks.length - 1) {
-          const nextItem = tracks[currentIndex + 1];
+        if (effectiveIndex < effectiveTracks.length - 1) {
+          const nextItem = effectiveTracks[effectiveIndex + 1];
           await this.engine.stopTrack(endedTrackId);
           await this.playPlaylistItem(nextItem, playlistId, playlist.playbackMode);
         } else {
@@ -7125,23 +7198,23 @@ const _PlaybackScheduler = class _PlaybackScheduler {
         }
         break;
       case "loop":
-        let nextIndex = currentIndex + 1;
-        if (nextIndex >= tracks.length) {
+        let nextIndex = effectiveIndex + 1;
+        if (nextIndex >= effectiveTracks.length) {
           nextIndex = 0;
         }
         await this.engine.stopTrack(endedTrackId);
-        await this.playPlaylistItem(tracks[nextIndex], playlistId, playlist.playbackMode);
+        await this.playPlaylistItem(effectiveTracks[nextIndex], playlistId, playlist.playbackMode);
         break;
       case "random":
         await this.engine.stopTrack(endedTrackId);
-        if (tracks.length > 1) {
+        if (effectiveTracks.length > 1) {
           let randomIndex;
           do {
-            randomIndex = Math.floor(Math.random() * tracks.length);
-          } while (randomIndex === currentIndex && tracks.length > 1);
-          await this.playPlaylistItem(tracks[randomIndex], playlistId, playlist.playbackMode);
+            randomIndex = Math.floor(Math.random() * effectiveTracks.length);
+          } while (randomIndex === effectiveIndex && effectiveTracks.length > 1);
+          await this.playPlaylistItem(effectiveTracks[randomIndex], playlistId, playlist.playbackMode);
         } else {
-          await this.playPlaylistItem(tracks[0], playlistId, playlist.playbackMode);
+          await this.playPlaylistItem(effectiveTracks[0], playlistId, playlist.playbackMode);
         }
         break;
     }

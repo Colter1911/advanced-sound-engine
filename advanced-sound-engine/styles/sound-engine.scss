@@ -720,12 +720,43 @@
   background: rgba(255, 100, 0, 0.1);
 }
 
+// Stable Drag Indicators using Pseudo-elements (No Layout Shift)
 .ase-list-item.drag-above {
-  border-top: 2px solid var(--ase-border-accent);
+  position: relative;
+  z-index: 10;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: -2px;
+    /* Center on the edge */
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: var(--ase-accent-main);
+    box-shadow: 0 0 10px rgba(255, 100, 0, 0.8);
+    z-index: 100;
+    pointer-events: none;
+  }
 }
 
 .ase-list-item.drag-below {
-  border-bottom: 2px solid var(--ase-border-accent);
+  position: relative;
+  z-index: 10;
+
+  &::after {
+    content: '';
+    position: absolute;
+    bottom: -2px;
+    /* Center on the edge */
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: var(--ase-accent-main);
+    box-shadow: 0 0 10px rgba(255, 100, 0, 0.8);
+    z-index: 100;
+    pointer-events: none;
+  }
 }
 
 /* --- Content Area --- */
@@ -1572,6 +1603,46 @@
 
   // Hide tracks when playlist is collapsed (unless playing/paused)
   // CRITICAL: High specificity to override .ase-mixer-workspace .ase-queue-track
+
+  // Drag & Drop Visuals for Queue Tracks (Stable)
+  &.drag-above {
+    position: relative;
+    z-index: 100;
+    // Removing transforms to avoid coordinate confusion
+    transform: none !important;
+
+    &::before {
+      content: '';
+      position: absolute;
+      top: -2px;
+      left: 0;
+      right: 0;
+      height: 4px;
+      background: var(--ase-accent-main);
+      box-shadow: 0 0 15px rgba(255, 100, 0, 0.6);
+      z-index: 200;
+      pointer-events: none;
+    }
+  }
+
+  &.drag-below {
+    position: relative;
+    z-index: 100;
+    transform: none !important;
+
+    &::after {
+      content: '';
+      position: absolute;
+      bottom: -2px;
+      left: 0;
+      right: 0;
+      height: 4px;
+      background: var(--ase-accent-main);
+      box-shadow: 0 0 15px rgba(255, 100, 0, 0.6);
+      z-index: 200;
+      pointer-events: none;
+    }
+  }
 }
 
 // CRITICAL: Must have higher specificity than .ase-mixer-workspace .ase-queue-track (0,2,0)
