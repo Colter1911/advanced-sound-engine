@@ -350,6 +350,9 @@ export class SoundMixerApp {
 
     // Effects controls
     html.find('[data-action="toggle-effect"]').on('click', (e) => this.onToggleEffect(e));
+
+    // Drag and Drop
+    this.setupDragAndDrop(html);
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -702,6 +705,138 @@ export class SoundMixerApp {
       }
     }
     this.requestRender();
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // Drag and Drop
+  // ─────────────────────────────────────────────────────────────
+
+  private setupDragAndDrop(html: JQuery): void {
+    // ── Favorites reordering ──
+
+    html.find('.ase-favorite-item[draggable="true"]').on('dragstart', (event: JQuery.DragStartEvent) => {
+      const favoriteId = String($(event.currentTarget).data('favorite-id'));
+      const favoriteType = String($(event.currentTarget).data('favorite-type'));
+      event.originalEvent!.dataTransfer!.effectAllowed = 'move';
+      event.originalEvent!.dataTransfer!.setData('application/x-mixer-favorite-id', favoriteId);
+      event.originalEvent!.dataTransfer!.setData('application/x-mixer-favorite-type', favoriteType);
+      $(event.currentTarget).addClass('dragging');
+    });
+
+    html.find('.ase-favorite-item[draggable="true"]').on('dragend', (event: JQuery.DragEndEvent) => {
+      $(event.currentTarget).removeClass('dragging');
+      html.find('.ase-favorite-item').removeClass('drag-over drag-above drag-below');
+    });
+
+    // Favorites visual feedback for insertion position
+    html.find('.ase-favorite-item').on('dragover', (event: JQuery.DragOverEvent) => {
+      const hasFavoriteId = event.originalEvent!.dataTransfer!.types.includes('application/x-mixer-favorite-id');
+      if (!hasFavoriteId) return;
+
+      event.preventDefault();
+      event.originalEvent!.dataTransfer!.dropEffect = 'move';
+
+      const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+      const midY = rect.top + rect.height / 2;
+      const isAbove = event.clientY! < midY;
+
+      html.find('.ase-favorite-item').removeClass('drag-above drag-below drag-over');
+      $(event.currentTarget).addClass(isAbove ? 'drag-above' : 'drag-below');
+    });
+
+    html.find('.ase-favorite-item').on('dragleave', (event: JQuery.DragLeaveEvent) => {
+      $(event.currentTarget).removeClass('drag-above drag-below');
+    });
+
+    html.find('.ase-favorite-item').on('drop', (event: JQuery.DropEvent) => {
+      event.preventDefault();
+      const targetId = String($(event.currentTarget).data('favorite-id'));
+      const targetType = String($(event.currentTarget).data('favorite-type')) as 'track' | 'playlist';
+
+      html.find('.ase-favorite-item').removeClass('drag-above drag-below dragging');
+
+      const draggedId = event.originalEvent!.dataTransfer!.getData('application/x-mixer-favorite-id');
+      const draggedType = event.originalEvent!.dataTransfer!.getData('application/x-mixer-favorite-type') as 'track' | 'playlist';
+
+      if (draggedId && draggedType && (draggedId !== targetId || draggedType !== targetType)) {
+        this.handleFavoriteReorder(draggedId, draggedType, targetId, targetType);
+      }
+    });
+
+    // ── Queue track reordering ──
+
+    html.find('.ase-queue-track[draggable="true"]').on('dragstart', (event: JQuery.DragStartEvent) => {
+      const queueId = String($(event.currentTarget).data('queue-id'));
+      event.originalEvent!.dataTransfer!.effectAllowed = 'move';
+      event.originalEvent!.dataTransfer!.setData('application/x-mixer-queue-id', queueId);
+      $(event.currentTarget).addClass('dragging');
+    });
+
+    html.find('.ase-queue-track[draggable="true"]').on('dragend', (event: JQuery.DragEndEvent) => {
+      $(event.currentTarget).removeClass('dragging');
+      html.find('.ase-queue-track').removeClass('drag-over drag-above drag-below');
+    });
+
+    html.find('.ase-queue-track').on('dragover', (event: JQuery.DragOverEvent) => {
+      const hasQueueId = event.originalEvent!.dataTransfer!.types.includes('application/x-mixer-queue-id');
+      if (!hasQueueId) return;
+
+      event.preventDefault();
+      event.originalEvent!.dataTransfer!.dropEffect = 'move';
+
+      const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+      const midY = rect.top + rect.height / 2;
+      const isAbove = event.clientY! < midY;
+
+      html.find('.ase-queue-track').removeClass('drag-above drag-below drag-over');
+      $(event.currentTarget).addClass(isAbove ? 'drag-above' : 'drag-below');
+    });
+
+    html.find('.ase-queue-track').on('dragleave', (event: JQuery.DragLeaveEvent) => {
+      $(event.currentTarget).removeClass('drag-above drag-below');
+    });
+
+    html.find('.ase-queue-track').on('drop', (event: JQuery.DropEvent) => {
+      event.preventDefault();
+      html.find('.ase-queue-track').removeClass('drag-above drag-below dragging');
+
+      const draggedQueueId = event.originalEvent!.dataTransfer!.getData('application/x-mixer-queue-id');
+      const targetQueueId = String($(event.currentTarget).data('queue-id'));
+
+      if (draggedQueueId && draggedQueueId !== targetQueueId) {
+        this.handleQueueReorder(draggedQueueId, targetQueueId);
+      }
+    });
+  }
+
+  private handleFavoriteReorder(
+    draggedId: string,
+    draggedType: 'track' | 'playlist',
+    targetId: string,
+    targetType: 'track' | 'playlist'
+  ): void {
+    const favorites = this.libraryManager.getOrderedFavorites();
+    const draggedIndex = favorites.findIndex(f => f.id === draggedId && f.type === draggedType);
+    const targetIndex = favorites.findIndex(f => f.id === targetId && f.type === targetType);
+
+    if (draggedIndex === -1 || targetIndex === -1) return;
+
+    const [draggedItem] = favorites.splice(draggedIndex, 1);
+    favorites.splice(targetIndex, 0, draggedItem);
+
+    this.libraryManager.reorderFavorites(favorites);
+    this.requestRender();
+    Logger.debug(`[SoundMixerApp] Reordered favorite ${draggedId} to position ${targetIndex}`);
+  }
+
+  private handleQueueReorder(draggedQueueId: string, targetQueueId: string): void {
+    const items = this.queueManager.getItems();
+    const targetIndex = items.findIndex(i => i.id === targetQueueId);
+
+    if (targetIndex === -1) return;
+
+    this.queueManager.moveItem(draggedQueueId, targetIndex);
+    Logger.debug(`[SoundMixerApp] Reordered queue item ${draggedQueueId} to position ${targetIndex}`);
   }
 
   // ─────────────────────────────────────────────────────────────
