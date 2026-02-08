@@ -33,6 +33,7 @@ const _StreamingPlayer = class _StreamingPlayer {
     __publicField(this, "_state", "stopped");
     __publicField(this, "_volume", 1);
     __publicField(this, "_ready", false);
+    __publicField(this, "_stopRequested", false);
     __publicField(this, "onEnded");
     this.id = id;
     this.ctx = ctx;
@@ -115,13 +116,22 @@ const _StreamingPlayer = class _StreamingPlayer {
       Logger.warn(`Track ${this.id} not ready`);
       return;
     }
+    this._stopRequested = false;
     try {
       this.audio.currentTime = Math.max(0, Math.min(offset, this.audio.duration || 0));
       this.audio.loop = false;
       await this.audio.play();
+      if (this._stopRequested) {
+        Logger.debug(`Track ${this.id} play resolved but stop was requested — staying stopped`);
+        return;
+      }
       this._state = "playing";
       Logger.debug(`Track ${this.id} playing from ${offset.toFixed(2)}s`);
     } catch (error) {
+      if ((error == null ? void 0 : error.name) === "AbortError") {
+        Logger.debug(`Track ${this.id} play aborted (stop was called)`);
+        return;
+      }
       Logger.error(`Failed to play ${this.id}:`, error);
     }
   }
@@ -132,6 +142,7 @@ const _StreamingPlayer = class _StreamingPlayer {
     Logger.debug(`Track ${this.id} paused at ${this.audio.currentTime.toFixed(2)}s`);
   }
   stop() {
+    this._stopRequested = true;
     this.audio.pause();
     this.audio.currentTime = 0;
     this._state = "stopped";
@@ -169,8 +180,10 @@ const _StreamingPlayer = class _StreamingPlayer {
   }
   dispose() {
     var _a;
+    this._stopRequested = true;
     this.audio.pause();
     this.audio.src = "";
+    this.onEnded = void 0;
     (_a = this.sourceNode) == null ? void 0 : _a.disconnect();
     this.gainNode.disconnect();
     this.outputNode.disconnect();
@@ -756,7 +769,8 @@ const _AudioEngine = class _AudioEngine extends SimpleEventEmitter {
     __publicField(this, "channelGains");
     __publicField(this, "players", /* @__PURE__ */ new Map());
     __publicField(this, "_activeContext", null);
-    // Effects System
+    __publicField(this, "_scheduler", null);
+    __publicField(this, "_socketManager", null);
     // Effects System
     __publicField(this, "effects", /* @__PURE__ */ new Map());
     // Sends: Channel -> EffectId -> GainNode
@@ -820,6 +834,16 @@ const _AudioEngine = class _AudioEngine extends SimpleEventEmitter {
         this.sends[group].set(effectId, sendGain);
       });
     });
+  }
+  /**
+   * Wire up references after construction to avoid circular dependencies.
+   * Called from main.ts after all managers are created.
+   */
+  setScheduler(scheduler) {
+    this._scheduler = scheduler;
+  }
+  setSocketManager(socketManager2) {
+    this._socketManager = socketManager2;
   }
   // ─────────────────────────────────────────────────────────────
   // Persistence (GM only)
@@ -956,9 +980,15 @@ const _AudioEngine = class _AudioEngine extends SimpleEventEmitter {
     this.scheduleSave();
   }
   stopAll() {
+    var _a, _b;
+    (_a = this._scheduler) == null ? void 0 : _a.clearContext();
+    this._activeContext = null;
     for (const player of this.players.values()) {
       player.stop();
     }
+    (_b = this._socketManager) == null ? void 0 : _b.broadcastStopAll();
+    this.scheduleSave();
+    Logger.info("All tracks stopped");
   }
   // ─────────────────────────────────────────────────────────────
   // Volume Control
@@ -1162,7 +1192,6 @@ const _AudioEngine = class _AudioEngine extends SimpleEventEmitter {
 __name(_AudioEngine, "AudioEngine");
 let AudioEngine = _AudioEngine;
 const _PlayerAudioEngine = class _PlayerAudioEngine {
-  // 10 seconds
   constructor(socketManager2) {
     __publicField(this, "ctx");
     __publicField(this, "masterGain");
@@ -1195,6 +1224,9 @@ const _PlayerAudioEngine = class _PlayerAudioEngine {
     // Reference to SocketManager for requesting sync
     __publicField(this, "lastSyncRequestTime", 0);
     __publicField(this, "SYNC_REQUEST_COOLDOWN", 1e4);
+    // 10 seconds
+    __publicField(this, "syncRequestFailCount", 0);
+    __publicField(this, "MAX_SYNC_RETRIES", 3);
     this.ctx = new AudioContext();
     this.socketManager = socketManager2;
     this.startSyncVerification();
@@ -1230,43 +1262,45 @@ const _PlayerAudioEngine = class _PlayerAudioEngine {
   verifySyncState() {
     let needsResync = false;
     if (this.lastSyncState.length === 0) {
-      if (this.players.size > 0) {
-        console.warn("[ASE PLAYER] Sync verification: Have", this.players.size, "players but sync state is empty");
+      const hasActivePlayers = Array.from(this.players.values()).some(
+        (p) => p.state === "playing" || p.state === "paused"
+      );
+      if (hasActivePlayers) {
+        Logger.warn("Sync verification: Active players exist but sync state is empty");
         needsResync = true;
       } else {
-        console.log("[ASE PLAYER] Sync verification OK (no tracks)");
         return;
       }
     }
-    for (const expectedTrack of this.lastSyncState) {
-      const player = this.players.get(expectedTrack.id);
-      if (!player) {
-        if (expectedTrack.isPlaying) {
-          console.warn("[ASE PLAYER] Sync verification: Expected track not found", expectedTrack.id);
-          needsResync = true;
-          break;
+    if (!needsResync) {
+      for (const expectedTrack of this.lastSyncState) {
+        const player = this.players.get(expectedTrack.id);
+        if (!player) {
+          if (expectedTrack.isPlaying) {
+            Logger.warn(`Sync verification: Expected playing track not found: ${expectedTrack.id}`);
+            needsResync = true;
+            break;
+          }
+          continue;
         }
-        continue;
-      }
-      if (player) {
         const actuallyPlaying = player.state === "playing";
         if (expectedTrack.isPlaying && !actuallyPlaying) {
-          console.warn("[ASE PLAYER] Sync verification: Track should be playing but is", player.state, expectedTrack.id);
+          Logger.warn(`Sync verification: Track should be playing but is ${player.state}: ${expectedTrack.id}`);
           needsResync = true;
           break;
         }
         if (!expectedTrack.isPlaying && actuallyPlaying) {
-          console.warn("[ASE PLAYER] Sync verification: Track should be stopped but is playing", expectedTrack.id);
+          Logger.warn(`Sync verification: Track should be stopped but is playing: ${expectedTrack.id}`);
           needsResync = true;
           break;
         }
       }
     }
-    if (!needsResync) {
+    if (!needsResync && this.lastSyncState.length > 0) {
       const expectedIds = new Set(this.lastSyncState.map((t) => t.id));
       for (const [id, player] of this.players) {
-        if (!expectedIds.has(id)) {
-          console.warn("[ASE PLAYER] Sync verification: Unexpected track exists:", id, "state:", player.state);
+        if (!expectedIds.has(id) && player.state === "playing") {
+          Logger.warn(`Sync verification: Unexpected playing track: ${id}`);
           needsResync = true;
           break;
         }
@@ -1275,18 +1309,22 @@ const _PlayerAudioEngine = class _PlayerAudioEngine {
     if (needsResync) {
       const now = Date.now();
       if (now - this.lastSyncRequestTime < this.SYNC_REQUEST_COOLDOWN) {
-        console.warn("[ASE PLAYER] Sync request on cooldown, skipping");
         return;
       }
-      console.log("[ASE PLAYER] Sync verification failed - requesting full sync from GM");
+      this.syncRequestFailCount++;
+      if (this.syncRequestFailCount > this.MAX_SYNC_RETRIES) {
+        Logger.warn(`Sync verification: Exceeded ${this.MAX_SYNC_RETRIES} retries, stopping requests`);
+        return;
+      }
+      Logger.info(`Sync verification failed — requesting full sync (attempt ${this.syncRequestFailCount}/${this.MAX_SYNC_RETRIES})`);
       this.lastSyncRequestTime = now;
       if (this.socketManager) {
         this.socketManager.requestFullSync();
       } else {
-        console.warn("[ASE PLAYER] Cannot request sync: socketManager not set");
+        Logger.warn("Cannot request sync: socketManager not set");
       }
     } else {
-      console.log("[ASE PLAYER] Sync verification OK");
+      this.syncRequestFailCount = 0;
     }
   }
   dispose() {
@@ -1483,8 +1521,8 @@ const _PlayerAudioEngine = class _PlayerAudioEngine {
   // ─────────────────────────────────────────────────────────────
   async syncState(tracks, volumes, effectsState = []) {
     Logger.debug(`Player: Sync State Received. Tracks=${tracks.length}, Effects=${(effectsState == null ? void 0 : effectsState.length) || 0}`);
-    Logger.debug("Player: Volumes", volumes);
     this.lastSyncState = tracks;
+    this.syncRequestFailCount = 0;
     this.setAllGMVolumes(volumes);
     Logger.debug(`Player: GM Gain set to ${this.gmGain.gain.value}`);
     if (effectsState && effectsState.length > 0) {
@@ -1515,7 +1553,7 @@ const _PlayerAudioEngine = class _PlayerAudioEngine {
     for (const trackState of tracks) {
       let player = this.players.get(trackState.id);
       if (player && !trackState.isPlaying && player.state === "playing") {
-        console.log("[ASE PLAYER] Stopping track that should not be playing:", trackState.id);
+        Logger.debug("Player: Stopping track that should not be playing:", trackState.id);
         player.stop();
         continue;
       }
@@ -1536,6 +1574,14 @@ const _PlayerAudioEngine = class _PlayerAudioEngine {
       if (trackState.isPlaying) {
         const elapsed = (getServerTime() - trackState.startTimestamp) / 1e3;
         const adjustedTime = trackState.currentTime + elapsed;
+        if (player.state === "playing") {
+          const drift = Math.abs(player.getCurrentTime() - adjustedTime);
+          if (drift < 2) {
+            Logger.debug(`Player: Track ${trackState.id} already playing, drift=${drift.toFixed(2)}s — skipping re-play`);
+            continue;
+          }
+          Logger.debug(`Player: Track ${trackState.id} drift=${drift.toFixed(2)}s — re-syncing`);
+        }
         await player.play(adjustedTime);
       } else {
         player.stop();
@@ -1546,28 +1592,28 @@ const _PlayerAudioEngine = class _PlayerAudioEngine {
   // ─────────────────────────────────────────────────────────────
   // Sync Off
   // ─────────────────────────────────────────────────────────────
-  // Stop all tracks without disposing
+  // Stop all tracks — full cleanup to prevent phantom sound and sync loops
   stopAll() {
-    console.log("[ASE PLAYER] Stopping all tracks");
-    for (const player of this.players.values()) {
-      if (player.state === "playing" || player.state === "paused") {
-        player.stop();
-      }
-    }
-    this.lastSyncState = [];
-    console.log("[ASE PLAYER] Cleared lastSyncState after stopAll");
-  }
-  // Clear all tracks (stop + dispose)
-  clearAll() {
-    console.log("[ASE PLAYER] Clearing all tracks");
+    Logger.info("Player: Stopping all tracks");
     for (const player of this.players.values()) {
       player.stop();
       player.dispose();
     }
     this.players.clear();
     this.lastSyncState = [];
+    this.syncRequestFailCount = 0;
+    Logger.info("Player: All tracks stopped and cleared");
+  }
+  // Clear all tracks (stop + dispose) — used on sync-stop
+  clearAll() {
+    for (const player of this.players.values()) {
+      player.stop();
+      player.dispose();
+    }
+    this.players.clear();
+    this.lastSyncState = [];
+    this.syncRequestFailCount = 0;
     Logger.info("Player: all tracks cleared");
-    console.log("[ASE PLAYER] Cleared lastSyncState after clearAll");
   }
   // ─────────────────────────────────────────────────────────────
   // Audio Context
@@ -1590,6 +1636,8 @@ const _SocketManager = class _SocketManager {
     __publicField(this, "socket", null);
     __publicField(this, "_syncEnabled", false);
     __publicField(this, "isGM", false);
+    __publicField(this, "throttleTimers", /* @__PURE__ */ new Map());
+    __publicField(this, "throttlePending", /* @__PURE__ */ new Map());
   }
   initializeAsGM(engine) {
     var _a;
@@ -1636,11 +1684,14 @@ const _SocketManager = class _SocketManager {
   handleGMMessage(message) {
     var _a;
     if (message.senderId === ((_a = game.user) == null ? void 0 : _a.id)) return;
+    if (message.version && message.version !== _SocketManager.PROTOCOL_VERSION) {
+      Logger.warn(`Protocol mismatch: received v${message.version}, expected v${_SocketManager.PROTOCOL_VERSION}. Player may need to refresh.`);
+    }
     if (message.type === "player-ready" && this._syncEnabled) {
       this.sendStateTo(message.senderId);
     }
     if (message.type === "sync-request" && this._syncEnabled) {
-      console.log("[ASE GM] Received sync request from player:", message.senderId);
+      Logger.debug("Received sync request from player:", message.senderId);
       this.sendStateTo(message.senderId);
     }
   }
@@ -1651,6 +1702,9 @@ const _SocketManager = class _SocketManager {
     var _a;
     if (message.senderId === ((_a = game.user) == null ? void 0 : _a.id)) return;
     if (!this.playerEngine) return;
+    if (message.version && message.version !== _SocketManager.PROTOCOL_VERSION) {
+      Logger.warn(`Protocol mismatch: received v${message.version}, expected v${_SocketManager.PROTOCOL_VERSION}. Try refreshing the page.`);
+    }
     Logger.debug(`Player received: ${message.type}`, message.payload);
     switch (message.type) {
       case "sync-start":
@@ -1720,7 +1774,8 @@ const _SocketManager = class _SocketManager {
       type,
       payload,
       senderId: ((_a = game.user) == null ? void 0 : _a.id) ?? "",
-      timestamp: getServerTime()
+      timestamp: getServerTime(),
+      version: _SocketManager.PROTOCOL_VERSION
     };
     if (targetUserId) {
       this.socket.emit(SOCKET_NAME, message, { recipients: [targetUserId] });
@@ -1728,6 +1783,24 @@ const _SocketManager = class _SocketManager {
       this.socket.emit(SOCKET_NAME, message);
     }
     Logger.debug(`Sent: ${type}`, payload);
+  }
+  /**
+   * Throttle a send by key — ensures high-frequency broadcasts (seek, volume, effect params)
+   * don't flood the socket. The last value always gets sent.
+   */
+  throttledSend(key, type, payload) {
+    this.throttlePending.set(key, () => this.send(type, payload));
+    if (this.throttleTimers.has(key)) return;
+    this.send(type, payload);
+    this.throttlePending.delete(key);
+    this.throttleTimers.set(key, setTimeout(() => {
+      this.throttleTimers.delete(key);
+      const pending = this.throttlePending.get(key);
+      if (pending) {
+        this.throttlePending.delete(key);
+        pending();
+      }
+    }, _SocketManager.THROTTLE_MS));
   }
   getCurrentSyncState() {
     if (!this.gmEngine) {
@@ -1803,51 +1876,56 @@ const _SocketManager = class _SocketManager {
       isPlaying,
       seekTimestamp: getServerTime()
     };
-    this.send("track-seek", payload);
+    this.throttledSend(`seek:${trackId}`, "track-seek", payload);
   }
   broadcastTrackVolume(trackId, volume) {
     if (!this._syncEnabled) return;
     const payload = { trackId, volume };
-    this.send("track-volume", payload);
+    this.throttledSend(`vol:${trackId}`, "track-volume", payload);
   }
   broadcastChannelVolume(channel, volume) {
     if (!this._syncEnabled) return;
     const payload = { channel, volume };
-    this.send("channel-volume", payload);
+    this.throttledSend(`chvol:${channel}`, "channel-volume", payload);
   }
   broadcastStopAll() {
-    if (!this._syncEnabled) return;
     this.send("stop-all", {});
   }
   dispose() {
     var _a;
+    for (const timer of this.throttleTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.throttleTimers.clear();
+    this.throttlePending.clear();
     (_a = this.socket) == null ? void 0 : _a.off(SOCKET_NAME);
   }
   // Effects
   broadcastEffectParam(effectId, paramId, value) {
     if (!this._syncEnabled) return;
-    console.log("[ASE GM] Broadcasting effect param:", effectId, paramId, value);
-    this.send("effect-param", { effectId, paramId, value });
+    this.throttledSend(`fx:${effectId}:${paramId}`, "effect-param", { effectId, paramId, value });
   }
   broadcastEffectRouting(effectId, channel, active) {
     if (!this._syncEnabled) return;
-    console.log("[ASE GM] Broadcasting effect routing:", effectId, channel, active);
     this.send("effect-routing", { effectId, channel, active });
   }
   broadcastEffectEnabled(effectId, enabled) {
     if (!this._syncEnabled) return;
-    console.log("[ASE GM] Broadcasting effect enabled:", effectId, enabled);
     this.send("effect-enabled", { effectId, enabled });
   }
   // ─────────────────────────────────────────────────────────────
   // Player Methods (request sync from GM)
   // ─────────────────────────────────────────────────────────────
   requestFullSync() {
-    console.log("[ASE PLAYER] Requesting full sync from GM");
+    Logger.debug("Requesting full sync from GM");
     this.send("sync-request", {});
   }
 };
 __name(_SocketManager, "SocketManager");
+// Protocol version — bump when message format changes
+__publicField(_SocketManager, "PROTOCOL_VERSION", 1);
+// Rate limiting for high-frequency broadcasts
+__publicField(_SocketManager, "THROTTLE_MS", 150);
 let SocketManager = _SocketManager;
 const MODULE_ID$4 = "advanced-sound-engine";
 const _PlayerVolumePanel = class _PlayerVolumePanel extends Application {
@@ -1940,10 +2018,8 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     if ((_a = window.ASE) == null ? void 0 : _a.openPanel) {
       if (this.parentApp) {
         if (options == null ? void 0 : options.resetScroll) {
-          Logger.debug("[LocalLibraryApp] Resetting scroll before render");
           this.parentApp.resetScroll("library");
         } else {
-          Logger.debug("[LocalLibraryApp] Capturing scroll before render");
           this.parentApp.captureScroll();
         }
       }
@@ -4280,16 +4356,23 @@ const _SoundMixerApp = class _SoundMixerApp {
     // Throttle for socket broadcasts
     __publicField(this, "seekThrottleTimers", /* @__PURE__ */ new Map());
     __publicField(this, "volumeThrottleTimers", /* @__PURE__ */ new Map());
+    // Stored callbacks for proper cleanup
+    __publicField(this, "_onQueueChangeBound");
+    __publicField(this, "_onTrackEndedBound");
+    __publicField(this, "_hookFavoritesId", 0);
+    __publicField(this, "_hookAutoSwitchId", 0);
     this.engine = engine;
     this.socket = socket;
     this.libraryManager = libraryManager2;
     this.queueManager = queueManager2;
-    this.queueManager.on("change", () => this.onQueueChange());
-    this.engine.on("trackEnded", () => this.onTrackStateChange());
-    Hooks.on("ase.favoritesChanged", () => {
+    this._onQueueChangeBound = () => this.onQueueChange();
+    this._onTrackEndedBound = () => this.onTrackStateChange();
+    this.queueManager.on("change", this._onQueueChangeBound);
+    this.engine.on("trackEnded", this._onTrackEndedBound);
+    this._hookFavoritesId = Hooks.on("ase.favoritesChanged", () => {
       this.requestRender();
     });
-    Hooks.on("ase.trackAutoSwitched", () => {
+    this._hookAutoSwitchId = Hooks.on("ase.trackAutoSwitched", () => {
       Logger.debug("[SoundMixerApp] Track auto-switched, re-rendering");
       this.requestRender();
     });
@@ -4902,6 +4985,31 @@ const _SoundMixerApp = class _SoundMixerApp {
       this.updateInterval = null;
     }
   }
+  /**
+   * Full cleanup: stops updates, clears throttle timers, removes all event subscriptions.
+   * Called when the parent window closes.
+   */
+  dispose() {
+    this.stopUpdates();
+    for (const timer of this.seekThrottleTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.seekThrottleTimers.clear();
+    for (const timer of this.volumeThrottleTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.volumeThrottleTimers.clear();
+    this.queueManager.off("change", this._onQueueChangeBound);
+    this.engine.off("trackEnded", this._onTrackEndedBound);
+    if (this._hookFavoritesId) {
+      Hooks.off("ase.favoritesChanged", this._hookFavoritesId);
+    }
+    if (this._hookAutoSwitchId) {
+      Hooks.off("ase.trackAutoSwitched", this._hookAutoSwitchId);
+    }
+    this.html = null;
+    Logger.debug("[SoundMixerApp] Disposed");
+  }
   updateTrackDisplays() {
     if (!this.html) return;
     this.html.find(".ase-queue-track").each((_, el) => {
@@ -5217,7 +5325,7 @@ const _SoundEffectsApp = class _SoundEffectsApp {
   }
   activateListeners(html) {
     this.html = html;
-    console.log("AudioSoundEngine | SoundEffectsApp | View Loaded");
+    Logger.debug("SoundEffectsApp: View Loaded");
     html.off("click", ".ase-effect-toggle").on("click", ".ase-effect-toggle", (e) => this.onToggleEnable(e));
     html.off("click", '[data-action="toggle-route"]').on("click", '[data-action="toggle-route"]', (e) => this.onToggleRoute(e));
     html.find(".ase-param-slider").on("input", (e) => this.onParamChange(e));
@@ -5383,6 +5491,8 @@ const _AdvancedSoundEngineApp = class _AdvancedSoundEngineApp extends Handlebars
     __publicField(this, "libraryApp");
     __publicField(this, "mixerApp");
     __publicField(this, "effectsApp");
+    // Stored callback for cleanup
+    __publicField(this, "_onQueueChangeBound");
     __publicField(this, "state", {
       activeTab: "library",
       // Default to library as per user focus
@@ -5425,12 +5535,13 @@ const _AdvancedSoundEngineApp = class _AdvancedSoundEngineApp extends Handlebars
         this.render({ parts: ["main"] });
       }
     });
-    this.queueManager.on("change", () => {
+    this._onQueueChangeBound = () => {
       if (this.state.activeTab === "mixer") {
         this.captureScroll();
         this.render({ parts: ["main"] });
       }
-    });
+    };
+    this.queueManager.on("change", this._onQueueChangeBound);
     const savedLocalVol = localStorage.getItem("ase-gm-local-volume");
     if (savedLocalVol !== null) {
       this.engine.setLocalVolume(parseFloat(savedLocalVol));
@@ -5514,10 +5625,15 @@ const _AdvancedSoundEngineApp = class _AdvancedSoundEngineApp extends Handlebars
     this.restoreScroll();
   }
   /**
-   * V2 Close Hook
+   * V2 Close Hook — cleanup all sub-apps and event subscriptions
    */
   _onClose(options) {
     super._onClose(options);
+    this.mixerApp.dispose();
+    this.effectsApp.destroy();
+    this.libraryApp.close();
+    this.queueManager.off("change", this._onQueueChangeBound);
+    Logger.info("[AdvancedSoundEngineApp] Closed and cleaned up");
   }
   // ─────────────────────────────────────────────────────────────
   // Event Handlers
@@ -5538,7 +5654,6 @@ const _AdvancedSoundEngineApp = class _AdvancedSoundEngineApp extends Handlebars
     const targetTab = tabName || this.state.activeTab;
     const map = this.scrollStates[targetTab];
     if (!map) return;
-    Logger.debug(`[SmartScroll] Resetting scroll for ${targetTab}`);
     for (const selector of Object.keys(map)) {
       map[selector] = 0;
     }
@@ -5552,15 +5667,11 @@ const _AdvancedSoundEngineApp = class _AdvancedSoundEngineApp extends Handlebars
     const html = $(this.element);
     const map = this.scrollStates[activeTab];
     if (!map) return;
-    Logger.debug(`[SmartScroll] Capturing for ${activeTab}...`);
     for (const selector of Object.keys(map)) {
       const el = html.find(selector);
       if (el.length) {
         const scrollTop = el.scrollTop() || 0;
         map[selector] = scrollTop;
-        if (scrollTop > 0) Logger.debug(`[SmartScroll] Captured ${selector}: ${scrollTop}`);
-      } else {
-        Logger.debug(`[SmartScroll] Selector not found: ${selector}`);
       }
     }
   }
@@ -5573,18 +5684,10 @@ const _AdvancedSoundEngineApp = class _AdvancedSoundEngineApp extends Handlebars
     const html = $(this.element);
     const map = this.scrollStates[activeTab];
     if (!map) return;
-    Logger.debug(`[SmartScroll] Restoring for ${activeTab}...`);
     for (const [selector, scrollTop] of Object.entries(map)) {
       const el = html.find(selector);
       if (el.length) {
-        const currentScroll = el.scrollTop();
-        Logger.debug(`[SmartScroll] Restoring ${selector}. Stored: ${scrollTop}, Current: ${currentScroll}`);
         el.scrollTop(scrollTop);
-        if (Math.abs((el.scrollTop() || 0) - scrollTop) > 1) {
-          Logger.warn(`[SmartScroll] Failed to restore ${selector}. Wanted: ${scrollTop}, Got: ${el.scrollTop()}`);
-        }
-      } else {
-        Logger.debug(`[SmartScroll] Selector not found for restoration: ${selector}`);
       }
     }
   }
@@ -5630,9 +5733,6 @@ const _AdvancedSoundEngineApp = class _AdvancedSoundEngineApp extends Handlebars
   }
   onGlobalStop() {
     this.engine.stopAll();
-    if (this.socket.syncEnabled) {
-      this.socket.broadcastStopAll();
-    }
     this.render();
   }
   onVolumeInput(event) {
@@ -6757,6 +6857,17 @@ const _PlaybackQueueManager = class _PlaybackQueueManager {
   // ─────────────────────────────────────────────────────────────
   // Event System
   // ─────────────────────────────────────────────────────────────
+  /**
+   * Dispose: clear pending save timer and all event listeners
+   */
+  dispose() {
+    if (this.saveTimeout !== null) {
+      window.clearTimeout(this.saveTimeout);
+      this.saveTimeout = null;
+    }
+    this.eventListeners.clear();
+    Logger.debug("PlaybackQueueManager disposed");
+  }
   on(event, callback) {
     if (!this.eventListeners.has(event)) {
       this.eventListeners.set(event, /* @__PURE__ */ new Set());
@@ -6780,31 +6891,58 @@ const _PlaybackScheduler = class _PlaybackScheduler {
     __publicField(this, "library");
     __publicField(this, "queue");
     __publicField(this, "currentContext", null);
+    __publicField(this, "_stopped", false);
+    // Stored callbacks for proper cleanup
+    __publicField(this, "_onTrackEndedBound");
+    __publicField(this, "_onContextChangedBound");
     this.engine = engine;
     this.library = library;
     this.queue = queue;
+    this._onTrackEndedBound = (trackId) => this.handleTrackEnded(trackId);
+    this._onContextChangedBound = (context) => this.setContext(context);
     this.setupListeners();
   }
   setupListeners() {
-    this.engine.on("trackEnded", (trackId) => {
-      this.handleTrackEnded(trackId);
-    });
-    this.engine.on("contextChanged", (context) => {
-      this.setContext(context);
-    });
+    this.engine.on("trackEnded", this._onTrackEndedBound);
+    this.engine.on("contextChanged", this._onContextChangedBound);
+  }
+  /**
+   * Dispose: remove all engine event listeners
+   */
+  dispose() {
+    this.engine.off("trackEnded", this._onTrackEndedBound);
+    this.engine.off("contextChanged", this._onContextChangedBound);
+    this.currentContext = null;
+    this._stopped = true;
+    Logger.debug("[PlaybackScheduler] Disposed");
   }
   /**
    * Set the current playback context (e.g., user clicked "Play" on a playlist)
    */
   setContext(context) {
     this.currentContext = context;
+    this._stopped = false;
     Logger.debug("Playback Context set:", context);
+  }
+  /**
+   * Clear the playback context and stop scheduling.
+   * Called by AudioEngine.stopAll() to prevent race conditions
+   * where an 'ended' event fires after stopAll and Scheduler starts the next track.
+   */
+  clearContext() {
+    this.currentContext = null;
+    this._stopped = true;
+    Logger.debug("Playback Context cleared (stopAll)");
   }
   /**
    * Handle track ending
    */
   async handleTrackEnded(trackId) {
     Logger.info(`[PlaybackScheduler] Track ended: ${trackId}`);
+    if (this._stopped) {
+      Logger.debug(`[PlaybackScheduler] Ignoring ended event after stopAll for: ${trackId}`);
+      return;
+    }
     Logger.info(`[PlaybackScheduler] Current context:`, this.currentContext);
     if (!this.currentContext) {
       Logger.warn("[PlaybackScheduler] No playback context available - auto-progression disabled");
@@ -7088,6 +7226,7 @@ let gmEngine = null;
 let mainApp = null;
 let libraryManager = null;
 let queueManager = null;
+let playbackScheduler = null;
 let playerEngine = null;
 let volumePanel = null;
 let socketManager = null;
@@ -7253,7 +7392,9 @@ async function initializeGM() {
   gmEngine = new AudioEngine();
   socketManager.initializeAsGM(gmEngine);
   await gmEngine.loadSavedState();
-  new PlaybackScheduler(gmEngine, libraryManager, queueManager);
+  playbackScheduler = new PlaybackScheduler(gmEngine, libraryManager, queueManager);
+  gmEngine.setScheduler(playbackScheduler);
+  gmEngine.setSocketManager(socketManager);
   Logger.info("PlaybackScheduler initialized");
 }
 __name(initializeGM, "initializeGM");
@@ -7342,9 +7483,11 @@ __name(registerSettings, "registerSettings");
 Hooks.once("closeGame", () => {
   mainApp == null ? void 0 : mainApp.close();
   volumePanel == null ? void 0 : volumePanel.close();
+  playbackScheduler == null ? void 0 : playbackScheduler.dispose();
   socketManager == null ? void 0 : socketManager.dispose();
   gmEngine == null ? void 0 : gmEngine.dispose();
   playerEngine == null ? void 0 : playerEngine.dispose();
+  queueManager == null ? void 0 : queueManager.dispose();
   libraryManager == null ? void 0 : libraryManager.dispose();
 });
 //# sourceMappingURL=module.js.map

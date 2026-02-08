@@ -259,6 +259,18 @@ export class PlaybackQueueManager {
     // Event System
     // ─────────────────────────────────────────────────────────────
 
+    /**
+     * Dispose: clear pending save timer and all event listeners
+     */
+    dispose(): void {
+        if (this.saveTimeout !== null) {
+            window.clearTimeout(this.saveTimeout);
+            this.saveTimeout = null;
+        }
+        this.eventListeners.clear();
+        Logger.debug('PlaybackQueueManager disposed');
+    }
+
     on(event: QueueEventType, callback: QueueEventCallback): void {
         if (!this.eventListeners.has(event)) {
             this.eventListeners.set(event, new Set());

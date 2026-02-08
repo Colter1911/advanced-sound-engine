@@ -17,29 +17,37 @@ export class PlaybackScheduler {
     private library: LibraryManager;
     private queue: PlaybackQueueManager;
     private currentContext: PlaybackContext | null = null;
+    private _stopped: boolean = false;
+
+    // Stored callbacks for proper cleanup
+    private _onTrackEndedBound: (trackId: string) => void;
+    private _onContextChangedBound: (context: PlaybackContext) => void;
 
     constructor(engine: AudioEngine, library: LibraryManager, queue: PlaybackQueueManager) {
         this.engine = engine;
         this.library = library;
         this.queue = queue;
+
+        this._onTrackEndedBound = (trackId: string) => this.handleTrackEnded(trackId);
+        this._onContextChangedBound = (context: PlaybackContext) => this.setContext(context);
+
         this.setupListeners();
     }
 
     private setupListeners(): void {
-        // We need AudioEngine to emit 'trackEnded'. 
-        // Since AudioEngine extends EventTarget or similar, we'll hook into it.
-        // For now, assuming AudioEngine has an event emitter or we inject this listener.
-        // If AudioEngine doesn't support events yet, we will need to modify it.
+        this.engine.on('trackEnded', this._onTrackEndedBound);
+        this.engine.on('contextChanged', this._onContextChangedBound);
+    }
 
-        // Placeholder for event subscription
-        // this.engine.on('trackEnded', this.handleTrackEnded.bind(this));
-        this.engine.on('trackEnded', (trackId: string) => {
-            this.handleTrackEnded(trackId);
-        });
-
-        this.engine.on('contextChanged', (context: PlaybackContext) => {
-            this.setContext(context);
-        });
+    /**
+     * Dispose: remove all engine event listeners
+     */
+    dispose(): void {
+        this.engine.off('trackEnded', this._onTrackEndedBound);
+        this.engine.off('contextChanged', this._onContextChangedBound);
+        this.currentContext = null;
+        this._stopped = true;
+        Logger.debug('[PlaybackScheduler] Disposed');
     }
 
     /**
@@ -47,7 +55,19 @@ export class PlaybackScheduler {
      */
     setContext(context: PlaybackContext): void {
         this.currentContext = context;
+        this._stopped = false;
         Logger.debug('Playback Context set:', context);
+    }
+
+    /**
+     * Clear the playback context and stop scheduling.
+     * Called by AudioEngine.stopAll() to prevent race conditions
+     * where an 'ended' event fires after stopAll and Scheduler starts the next track.
+     */
+    clearContext(): void {
+        this.currentContext = null;
+        this._stopped = true;
+        Logger.debug('Playback Context cleared (stopAll)');
     }
 
     /**
@@ -55,6 +75,13 @@ export class PlaybackScheduler {
      */
     async handleTrackEnded(trackId: string): Promise<void> {
         Logger.info(`[PlaybackScheduler] Track ended: ${trackId}`);
+
+        // Guard: if stopAll() was called, ignore any late 'ended' events
+        if (this._stopped) {
+            Logger.debug(`[PlaybackScheduler] Ignoring ended event after stopAll for: ${trackId}`);
+            return;
+        }
+
         Logger.info(`[PlaybackScheduler] Current context:`, this.currentContext);
 
         if (!this.currentContext) {

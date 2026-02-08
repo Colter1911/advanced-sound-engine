@@ -29,6 +29,14 @@ export class SocketManager {
   private _syncEnabled: boolean = false;
   private isGM: boolean = false;
 
+  // Protocol version — bump when message format changes
+  static readonly PROTOCOL_VERSION = 1;
+
+  // Rate limiting for high-frequency broadcasts
+  private static THROTTLE_MS = 150;
+  private throttleTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
+  private throttlePending: Map<string, () => void> = new Map();
+
   constructor() { }
 
   initializeAsGM(engine: AudioEngine): void {
@@ -89,6 +97,10 @@ export class SocketManager {
   private handleGMMessage(message: SocketMessage): void {
     if (message.senderId === game.user?.id) return;
 
+    if (message.version && message.version !== SocketManager.PROTOCOL_VERSION) {
+      Logger.warn(`Protocol mismatch: received v${message.version}, expected v${SocketManager.PROTOCOL_VERSION}. Player may need to refresh.`);
+    }
+
     if (message.type === 'player-ready' && this._syncEnabled) {
       // Send current state to newly joined player
       this.sendStateTo(message.senderId);
@@ -96,7 +108,7 @@ export class SocketManager {
 
     if (message.type === 'sync-request' && this._syncEnabled) {
       // Player is requesting full sync (likely due to detected mismatch)
-      console.log('[ASE GM] Received sync request from player:', message.senderId);
+      Logger.debug('Received sync request from player:', message.senderId);
       this.sendStateTo(message.senderId);
     }
   }
@@ -108,6 +120,10 @@ export class SocketManager {
   private async handlePlayerMessage(message: SocketMessage): Promise<void> {
     if (message.senderId === game.user?.id) return;
     if (!this.playerEngine) return;
+
+    if (message.version && message.version !== SocketManager.PROTOCOL_VERSION) {
+      Logger.warn(`Protocol mismatch: received v${message.version}, expected v${SocketManager.PROTOCOL_VERSION}. Try refreshing the page.`);
+    }
 
     Logger.debug(`Player received: ${message.type}`, message.payload);
 
@@ -195,7 +211,8 @@ export class SocketManager {
       type,
       payload,
       senderId: game.user?.id ?? '',
-      timestamp: getServerTime()
+      timestamp: getServerTime(),
+      version: SocketManager.PROTOCOL_VERSION
     };
 
     if (targetUserId) {
@@ -205,6 +222,33 @@ export class SocketManager {
     }
 
     Logger.debug(`Sent: ${type}`, payload);
+  }
+
+  /**
+   * Throttle a send by key — ensures high-frequency broadcasts (seek, volume, effect params)
+   * don't flood the socket. The last value always gets sent.
+   */
+  private throttledSend(key: string, type: SocketMessageType, payload: unknown): void {
+    // Store the latest payload to send
+    this.throttlePending.set(key, () => this.send(type, payload));
+
+    // If already waiting, skip (the pending fn will fire with latest value)
+    if (this.throttleTimers.has(key)) return;
+
+    // Send immediately on first call
+    this.send(type, payload);
+    this.throttlePending.delete(key);
+
+    // Set cooldown timer
+    this.throttleTimers.set(key, setTimeout(() => {
+      this.throttleTimers.delete(key);
+      // If there's a pending update, send it now
+      const pending = this.throttlePending.get(key);
+      if (pending) {
+        this.throttlePending.delete(key);
+        pending();
+      }
+    }, SocketManager.THROTTLE_MS));
   }
 
   private getCurrentSyncState(): SyncStatePayload {
@@ -299,31 +343,37 @@ export class SocketManager {
       isPlaying,
       seekTimestamp: getServerTime()
     };
-    this.send('track-seek', payload);
+    this.throttledSend(`seek:${trackId}`, 'track-seek', payload);
   }
 
   broadcastTrackVolume(trackId: string, volume: number): void {
     if (!this._syncEnabled) return;
 
     const payload: TrackVolumePayload = { trackId, volume };
-    this.send('track-volume', payload);
+    this.throttledSend(`vol:${trackId}`, 'track-volume', payload);
   }
-
-
 
   broadcastChannelVolume(channel: TrackGroup | 'master', volume: number): void {
     if (!this._syncEnabled) return;
 
     const payload: ChannelVolumePayload = { channel, volume };
-    this.send('channel-volume', payload);
+    this.throttledSend(`chvol:${channel}`, 'channel-volume', payload);
   }
 
   broadcastStopAll(): void {
-    if (!this._syncEnabled) return;
+    // No syncEnabled guard — stop-all MUST always reach players,
+    // even if sync was just toggled off. This prevents phantom sound.
     this.send('stop-all', {});
   }
 
   dispose(): void {
+    // Clear all throttle timers
+    for (const timer of this.throttleTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.throttleTimers.clear();
+    this.throttlePending.clear();
+
     this.socket?.off(SOCKET_NAME);
   }
 
@@ -331,19 +381,16 @@ export class SocketManager {
 
   broadcastEffectParam(effectId: string, paramId: string, value: any): void {
     if (!this._syncEnabled) return;
-    console.log('[ASE GM] Broadcasting effect param:', effectId, paramId, value);
-    this.send('effect-param', { effectId, paramId, value } as EffectParamPayload);
+    this.throttledSend(`fx:${effectId}:${paramId}`, 'effect-param', { effectId, paramId, value } as EffectParamPayload);
   }
 
   broadcastEffectRouting(effectId: string, channel: TrackGroup, active: boolean): void {
     if (!this._syncEnabled) return;
-    console.log('[ASE GM] Broadcasting effect routing:', effectId, channel, active);
     this.send('effect-routing', { effectId, channel, active } as EffectRoutingPayload);
   }
 
   broadcastEffectEnabled(effectId: string, enabled: boolean): void {
     if (!this._syncEnabled) return;
-    console.log('[ASE GM] Broadcasting effect enabled:', effectId, enabled);
     this.send('effect-enabled', { effectId, enabled } as any);
   }
   // ─────────────────────────────────────────────────────────────
@@ -351,7 +398,7 @@ export class SocketManager {
   // ─────────────────────────────────────────────────────────────
 
   requestFullSync(): void {
-    console.log('[ASE PLAYER] Requesting full sync from GM');
+    Logger.debug('Requesting full sync from GM');
     this.send('sync-request', {});
   }
 }
