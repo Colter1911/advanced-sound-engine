@@ -56,3 +56,10 @@ If you create a NEW reusable resource (Utility, Hook, Interface):
   ```
 * Update `project-memory.md` with new components/patterns
 * Update `WORKPLAN.md` status table when completing tasks
+
+# 🚀 Git Workflow Strict Rules
+
+## ⚠️ MANDATORY GIT FLAGS
+1. **Merge:** ALWAYS use `git merge --no-edit [branch]`
+   * **Reason:** The agent terminal is non-interactive. Standard merge opens Vim/Nano and freezes the agent.
+   * **Violation:** FAILURE TO USE `--no-edit` IS A CRITICAL ERROR.
