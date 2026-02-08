@@ -11,6 +11,9 @@
         {{#each favorites}}
         <li class="ase-list-item ase-favorite-item {{#if isPlaying}}is-playing{{else if isPaused}}is-paused{{/if}}"
           data-favorite-id="{{id}}" data-favorite-type="{{type}}" draggable="true">
+          <div class="drag-handle drag-handle-sm" title="Drag to reorder">
+            <i class="fa-solid fa-grip-vertical"></i>
+          </div>
           <div class="ase-favorite-info">
             {{#if (eq type 'playlist')}}
             <i class="fa-solid fa-list ase-type-icon"></i>
@@ -69,8 +72,13 @@
             class="ase-track-player-item ase-queue-track {{#if isPlaying}}is-playing{{else if isPaused}}is-paused{{/if}} {{#if shouldBeHidden}}collapsed-hidden{{/if}}"
             data-queue-id="{{queueId}}" data-item-id="{{libraryItemId}}" draggable="true">
 
-            {{!-- Row 1: Identity (Icon + Info + Volume + Buttons + Delete) --}}
+            {{!-- Row 1: Identity (Handle + Icon + Info + Volume + Buttons + Delete) --}}
             <div class="track-identity-row">
+              {{!-- Drag Handle --}}
+              <div class="drag-handle" title="Drag to reorder">
+                <i class="fa-solid fa-grip-vertical"></i>
+              </div>
+
               {{!-- Track Icon --}}
               <div class="track-icon">
                 {{#if (eq group 'music')}}

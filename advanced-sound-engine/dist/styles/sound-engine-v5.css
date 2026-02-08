@@ -638,13 +638,40 @@
   cursor: pointer;
 }
 
+.drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  flex-shrink: 0;
+  color: #444;
+  cursor: grab;
+  transition: color 0.15s ease;
+  font-size: 14px;
+  user-select: none;
+}
+.drag-handle:hover {
+  color: var(--ase-accent-main);
+}
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+.drag-handle-sm {
+  width: 14px;
+  font-size: 11px;
+  margin-right: -4px;
+}
+
 .ase-list-item.dragging {
-  opacity: 0.5;
-  background: #000;
+  opacity: 0.4;
+  background: #0a0a0a;
+  border-color: transparent !important;
+  box-shadow: none !important;
 }
 
 .ase-list-item.drag-over {
-  background: rgba(255, 100, 0, 0.1);
+  background: rgba(255, 100, 0, 0.06);
 }
 
 .ase-list-item.drag-above {
@@ -655,13 +682,24 @@
   content: "";
   position: absolute;
   top: -2px;
-  /* Center on the edge */
-  left: 0;
+  left: 8px;
   right: 0;
-  height: 4px;
+  height: 2px;
   background: var(--ase-accent-main);
-  box-shadow: 0 0 10px rgba(255, 100, 0, 0.8);
   z-index: 100;
+  pointer-events: none;
+}
+.ase-list-item.drag-above::after {
+  content: "";
+  position: absolute;
+  top: -5px;
+  left: 2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 2px solid var(--ase-accent-main);
+  background: #0d0d0d;
+  z-index: 101;
   pointer-events: none;
 }
 
@@ -669,17 +707,28 @@
   position: relative;
   z-index: 10;
 }
-.ase-list-item.drag-below::after {
+.ase-list-item.drag-below::before {
   content: "";
   position: absolute;
   bottom: -2px;
-  /* Center on the edge */
-  left: 0;
+  left: 8px;
   right: 0;
-  height: 4px;
+  height: 2px;
   background: var(--ase-accent-main);
-  box-shadow: 0 0 10px rgba(255, 100, 0, 0.8);
   z-index: 100;
+  pointer-events: none;
+}
+.ase-list-item.drag-below::after {
+  content: "";
+  position: absolute;
+  bottom: -5px;
+  left: 2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 2px solid var(--ase-accent-main);
+  background: #0d0d0d;
+  z-index: 101;
   pointer-events: none;
 }
 
@@ -1452,6 +1501,13 @@
   border-color: #facc15;
   box-shadow: 0 0 10px rgba(250, 204, 21, 0.15);
 }
+.ase-queue-track.dragging {
+  opacity: 0.35;
+  background: #0a0a0a !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
 .ase-queue-track.drag-above {
   position: relative;
   z-index: 100;
@@ -1460,13 +1516,26 @@
 .ase-queue-track.drag-above::before {
   content: "";
   position: absolute;
-  top: -2px;
-  left: 0;
+  top: -5px;
+  left: 16px;
   right: 0;
-  height: 4px;
+  height: 2px;
   background: var(--ase-accent-main);
-  box-shadow: 0 0 15px rgba(255, 100, 0, 0.6);
+  box-shadow: 0 1px 6px rgba(255, 100, 0, 0.4);
   z-index: 200;
+  pointer-events: none;
+}
+.ase-queue-track.drag-above::after {
+  content: "";
+  position: absolute;
+  top: -9px;
+  left: 8px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--ase-accent-main);
+  background: #111;
+  z-index: 201;
   pointer-events: none;
 }
 .ase-queue-track.drag-below {
@@ -1474,16 +1543,29 @@
   z-index: 100;
   transform: none !important;
 }
+.ase-queue-track.drag-below::before {
+  content: "";
+  position: absolute;
+  bottom: -5px;
+  left: 16px;
+  right: 0;
+  height: 2px;
+  background: var(--ase-accent-main);
+  box-shadow: 0 1px 6px rgba(255, 100, 0, 0.4);
+  z-index: 200;
+  pointer-events: none;
+}
 .ase-queue-track.drag-below::after {
   content: "";
   position: absolute;
-  bottom: -2px;
-  left: 0;
-  right: 0;
-  height: 4px;
-  background: var(--ase-accent-main);
-  box-shadow: 0 0 15px rgba(255, 100, 0, 0.6);
-  z-index: 200;
+  bottom: -9px;
+  left: 8px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--ase-accent-main);
+  background: #111;
+  z-index: 201;
   pointer-events: none;
 }
 
@@ -1501,6 +1583,10 @@
   display: flex;
   align-items: center;
   gap: 12px;
+}
+.track-identity-row .drag-handle {
+  margin-left: -6px;
+  margin-right: -4px;
 }
 .track-identity-row .track-icon {
   width: 36px;

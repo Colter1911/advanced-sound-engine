@@ -720,9 +720,15 @@ export class SoundMixerApp {
   private setupDragAndDrop(html: JQuery): void {
     // ── Favorites reordering ──
 
-    // Prevent drag from interactive elements
-    html.find('.ase-favorite-item .ase-icons, .ase-favorite-item button, .ase-favorite-item input').on('mousedown', (e) => {
+    // Prevent drag from interactive elements (buttons/icons in favorites)
+    html.find('.ase-favorite-item .ase-icons, .ase-favorite-item button, .ase-favorite-item input').on('pointerdown', (e) => {
       e.stopPropagation();
+      const $item = $(e.currentTarget).closest('.ase-favorite-item');
+      $item.attr('draggable', 'false');
+    });
+
+    html.find('.ase-list-group[data-section="mixer-favorites"]').on('pointerup pointercancel', () => {
+      html.find('.ase-favorite-item').attr('draggable', 'true');
     });
 
     html.find('.ase-favorite-item[draggable="true"]').on('dragstart', (event: JQuery.DragStartEvent) => {
@@ -739,6 +745,15 @@ export class SoundMixerApp {
     });
 
     html.find('.ase-favorite-item[draggable="true"]').on('dragend', (event: JQuery.DragEndEvent) => {
+      // Cancel any pending RAF to prevent stale class application
+      if (this._rafId) {
+        cancelAnimationFrame(this._rafId);
+        this._rafId = null;
+      }
+      this._pendingDragUpdate = null;
+      this._dragTarget = null;
+      this._dragPosition = null;
+
       $(event.currentTarget).removeClass('dragging');
       html.find('.ase-favorite-item').removeClass('drag-over drag-above drag-below');
     });
@@ -818,9 +833,16 @@ export class SoundMixerApp {
     // ── Queue track reordering ──
 
     // Prevent drag from interactive elements (volume, seek, buttons)
-    html.find('.ase-queue-track input, .ase-queue-track button, .ase-queue-track .volume-container, .ase-queue-track .progress-wrapper').on('mousedown', (e) => {
+    // stopPropagation alone doesn't block native HTML5 drag - we must disable draggable attribute
+    html.find('.ase-queue-track input, .ase-queue-track button, .ase-queue-track .volume-container, .ase-queue-track .progress-wrapper').on('pointerdown', (e) => {
       e.stopPropagation();
-      // Note: Do NOT preventDefault() here, or sliders won't work!
+      const $track = $(e.currentTarget).closest('.ase-queue-track');
+      $track.attr('draggable', 'false');
+    });
+
+    // Restore draggable on pointer release (delegated to track list container)
+    html.find('.ase-track-player-list').on('pointerup pointercancel', () => {
+      html.find('.ase-queue-track').attr('draggable', 'true');
     });
 
     html.find('.ase-queue-track[draggable="true"]').on('dragstart', (event: JQuery.DragStartEvent) => {
@@ -836,8 +858,20 @@ export class SoundMixerApp {
     });
 
     html.find('.ase-queue-track[draggable="true"]').on('dragend', (event: JQuery.DragEndEvent) => {
+      // Cancel any pending RAF to prevent stale class application
+      if (this._rafId) {
+        cancelAnimationFrame(this._rafId);
+        this._rafId = null;
+      }
+      this._pendingDragUpdate = null;
+      this._dragTarget = null;
+      this._dragPosition = null;
+
       $(event.currentTarget).removeClass('dragging');
       html.find('.ase-queue-track').removeClass('drag-over drag-above drag-below');
+
+      // Restore draggable in case it was disabled by slider interaction
+      $(event.currentTarget).attr('draggable', 'true');
     });
 
     html.find('.ase-queue-track').on('dragover', (event: JQuery.DragOverEvent) => {

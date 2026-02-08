@@ -4839,8 +4839,13 @@ const _SoundMixerApp = class _SoundMixerApp {
   // Drag and Drop
   // ─────────────────────────────────────────────────────────────
   setupDragAndDrop(html) {
-    html.find(".ase-favorite-item .ase-icons, .ase-favorite-item button, .ase-favorite-item input").on("mousedown", (e) => {
+    html.find(".ase-favorite-item .ase-icons, .ase-favorite-item button, .ase-favorite-item input").on("pointerdown", (e) => {
       e.stopPropagation();
+      const $item = $(e.currentTarget).closest(".ase-favorite-item");
+      $item.attr("draggable", "false");
+    });
+    html.find('.ase-list-group[data-section="mixer-favorites"]').on("pointerup pointercancel", () => {
+      html.find(".ase-favorite-item").attr("draggable", "true");
     });
     html.find('.ase-favorite-item[draggable="true"]').on("dragstart", (event) => {
       event.stopPropagation();
@@ -4853,6 +4858,13 @@ const _SoundMixerApp = class _SoundMixerApp {
       $(event.currentTarget).addClass("dragging");
     });
     html.find('.ase-favorite-item[draggable="true"]').on("dragend", (event) => {
+      if (this._rafId) {
+        cancelAnimationFrame(this._rafId);
+        this._rafId = null;
+      }
+      this._pendingDragUpdate = null;
+      this._dragTarget = null;
+      this._dragPosition = null;
       $(event.currentTarget).removeClass("dragging");
       html.find(".ase-favorite-item").removeClass("drag-over drag-above drag-below");
     });
@@ -4903,8 +4915,13 @@ const _SoundMixerApp = class _SoundMixerApp {
         this.handleFavoriteReorder(draggedId, draggedType, targetId, targetType);
       }
     });
-    html.find(".ase-queue-track input, .ase-queue-track button, .ase-queue-track .volume-container, .ase-queue-track .progress-wrapper").on("mousedown", (e) => {
+    html.find(".ase-queue-track input, .ase-queue-track button, .ase-queue-track .volume-container, .ase-queue-track .progress-wrapper").on("pointerdown", (e) => {
       e.stopPropagation();
+      const $track = $(e.currentTarget).closest(".ase-queue-track");
+      $track.attr("draggable", "false");
+    });
+    html.find(".ase-track-player-list").on("pointerup pointercancel", () => {
+      html.find(".ase-queue-track").attr("draggable", "true");
     });
     html.find('.ase-queue-track[draggable="true"]').on("dragstart", (event) => {
       event.stopPropagation();
@@ -4915,8 +4932,16 @@ const _SoundMixerApp = class _SoundMixerApp {
       $(event.currentTarget).addClass("dragging");
     });
     html.find('.ase-queue-track[draggable="true"]').on("dragend", (event) => {
+      if (this._rafId) {
+        cancelAnimationFrame(this._rafId);
+        this._rafId = null;
+      }
+      this._pendingDragUpdate = null;
+      this._dragTarget = null;
+      this._dragPosition = null;
       $(event.currentTarget).removeClass("dragging");
       html.find(".ase-queue-track").removeClass("drag-over drag-above drag-below");
+      $(event.currentTarget).attr("draggable", "true");
     });
     html.find(".ase-queue-track").on("dragover", (event) => {
       const types = event.originalEvent.dataTransfer.types;
