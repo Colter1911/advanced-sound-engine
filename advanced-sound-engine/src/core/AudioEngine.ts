@@ -7,6 +7,8 @@ import { generateUUID } from '@utils/uuid';
 import { validateAudioFile } from '@utils/audio-validation';
 // import { EventEmitter } from '@pixi/utils'; // REMOVED: Using global PIXI.utils.EventEmitter to fix build
 import type { PlaybackContext } from './PlaybackScheduler';
+import type { PlaybackScheduler } from './PlaybackScheduler';
+import type { SocketManager } from '../sync/SocketManager';
 
 // Effects
 import { AudioEffect } from './effects/AudioEffect';
@@ -84,8 +86,9 @@ export class AudioEngine extends SimpleEventEmitter {
   private channelGains: Record<TrackGroup, GainNode>;
   private players: Map<string, StreamingPlayer> = new Map();
   private _activeContext: PlaybackContext | null = null;
+  private _scheduler: PlaybackScheduler | null = null;
+  private _socketManager: SocketManager | null = null;
 
-  // Effects System
   // Effects System
   private effects: Map<string, AudioEffect> = new Map();
   // Sends: Channel -> EffectId -> GainNode
@@ -180,6 +183,18 @@ export class AudioEngine extends SimpleEventEmitter {
         this.sends[group].set(effectId, sendGain);
       });
     });
+  }
+
+  /**
+   * Wire up references after construction to avoid circular dependencies.
+   * Called from main.ts after all managers are created.
+   */
+  setScheduler(scheduler: PlaybackScheduler): void {
+    this._scheduler = scheduler;
+  }
+
+  setSocketManager(socketManager: SocketManager): void {
+    this._socketManager = socketManager;
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -354,9 +369,24 @@ export class AudioEngine extends SimpleEventEmitter {
 
 
   stopAll(): void {
+    // 1. Clear scheduler context FIRST to prevent race conditions
+    //    where a late 'ended' event triggers the next track
+    this._scheduler?.clearContext();
+    this._activeContext = null;
+
+    // 2. Stop all local players
     for (const player of this.players.values()) {
       player.stop();
     }
+
+    // 3. Broadcast to players — ALWAYS, regardless of syncEnabled.
+    //    Players must receive stop-all even if sync was just toggled off.
+    this._socketManager?.broadcastStopAll();
+
+    // 4. Persist state
+    this.scheduleSave();
+
+    Logger.info('All tracks stopped');
   }
 
   // ─────────────────────────────────────────────────────────────

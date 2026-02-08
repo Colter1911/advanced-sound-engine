@@ -5,182 +5,88 @@ trigger: always_on
 # Project Codebase Memory
 
 ## 1. Global Types & Domain Models
-- **LibraryItem** (`src/types/library.ts`): Represents a sound file in the library.
-  - Key fields: `id`, `url`, `name`, `tags`, `group`, `duration`, `favorite`.
-- **Playlist** (`src/types/library.ts`): Collection of ordered tracks.
-  - Key fields: `id`, `name`, `items` (PlaylistItem[]), `favorite`.
-- **TrackGroup** (`src/types/audio.ts`): Audio channel union type.
-  - Values: `'music' | 'ambience' | 'sfx'`.
-- **QueueItem** (`src/types/queue.ts`): Item in the active playback queue.
-  - Key fields: `id`, `libraryItemId`, `state` (playing/paused/stopped), `volume`, `loop`.
+- **LibraryItem** (`src/types/library.ts`): Sound file. Fields: `id`, `url`, `name`, `tags`, `group`, `duration`, `favorite`.
+- **Playlist** (`src/types/library.ts`): Ordered tracks. Fields: `id`, `name`, `items` (PlaylistItem[]), `favorite`.
+- **TrackGroup** (`src/types/audio.ts`): `'music' | 'ambience' | 'sfx'`.
+- **QueueItem** (`src/types/queue.ts`): Queue entry. Fields: `id`, `libraryItemId`, `state`, `volume`, `loop`.
 - **PlaybackMode**: `'single' | 'linear' | 'loop' | 'random' | 'inherit'`.
-  - **Context Rules**:
-    - **Playlist Context**: Enforces playlist mode (Loop/Linear/Random).
-    - **Track Context**: Enforces track mode.
-    - **Inherit**: Track uses playlist mode if active, else Loop.
+  - Playlist Context → enforces playlist mode; Track Context → track mode; Inherit → uses playlist mode or Loop.
 
-## 2. Shared Utilities & Helpers
-- **Logger** (`src/utils/logger.ts`):
-  - `info/warn/error(message, ...args)`: Standardized logging with module prefix.
-- **UUID** (`src/utils/uuid.ts`):
-  - `generateUUID()`: Returns v4 UUID string.
-- **Audio Validation** (`src/utils/audio-validation.ts`):
-  - `validateAudioFile(url)`: Checks extension and format validity.
-- **Throttle** (`src/utils/throttle.ts`):
-  - `debounce(fn, ms)`: Prevents excessive function calls (used for saving).
+## 2. Shared Utilities
+- **Logger** (`src/utils/logger.ts`): `info/warn/error/debug(message, ...args)` with module prefix.
+- **UUID** (`src/utils/uuid.ts`): `generateUUID()` → v4 UUID string.
+- **Audio Validation** (`src/utils/audio-validation.ts`): `validateAudioFile(url)`.
+- **Throttle** (`src/utils/throttle.ts`): `debounce(fn, ms)`.
 
-## 3. UI Components & Apps (Foundry VTT)
-- **AdvancedSoundEngineApp** (`src/ui/AdvancedSoundEngineApp.ts`): Main application frame / window manager.
-- **LocalLibraryApp** (`src/ui/LocalLibraryApp.ts`):
-  - Library tab controller. Manage tracks, tags, playlists, and file uploads.
-  - **Render Delegation**: Delegates `render()` to `window.ASE.openPanel` to maintain unified app state.
-  - **Bypass**: Uses `render(false, { renderContext: 'queue-update' })` for background UI updates (e.g. queue glow).
-  - **🚨 CRITICAL Event Listener Patterns**:
-    - **Namespaced Events**: All listeners use `.ase-library` namespace for proper cleanup (`html.off('.ase-library')`)
-    - **Global Delegated Handlers**: Register ONCE via `_listenersInitialized` flag on `document` level, NOT on `html`
-    - **Queue Listener**: Registered in `activateListeners()` with 50ms debounce, **NEVER in `getData()`**
-    - **⛔ ANTI-PATTERN**: Registering event listeners in `getData()` causes exponential listener accumulation
-  - **Cleanup**: `close()` method must clear: queue listeners, debounce timers, and global delegated handlers
-- **SoundMixerApp** (`src/ui/SoundMixerApp.ts`): Mixer tab controller. Manage active playback, volume channels, and syncing.
-- **PlayerVolumePanel** (`src/ui/PlayerVolumePanel.ts`): Simple volume control for non-GM players.
+## 3. UI Components & Apps
+- **AdvancedSoundEngineApp** (`src/ui/AdvancedSoundEngineApp.ts`): Main window/shell. Renders LocalLibraryApp or SoundMixerApp by active tab.
+  - `_onClose()`: Disposes all sub-apps and removes queueManager subscription.
+- **LocalLibraryApp** (`src/ui/LocalLibraryApp.ts`): Library tab. Tracks, tags, playlists, uploads.
+  - Render Delegation: `window.ASE.openPanel` for unified state. Bypass via `render(false, { renderContext: 'queue-update' })`.
+  - **Event Listener Rules**: Namespaced `.ase-library`; global handlers register ONCE via `_listenersInitialized`; queue listener in `activateListeners()` with 50ms debounce, NEVER in `getData()`.
+  - `close()` clears: queue listeners, debounce timers, global handlers.
+- **SoundMixerApp** (`src/ui/SoundMixerApp.ts`): Mixer tab. Playback, volume, sync.
+  - `dispose()`: Clears interval, throttle timers, queueManager/engine subscriptions, Foundry hooks.
+- **PlayerVolumePanel** (`src/ui/PlayerVolumePanel.ts`): Non-GM volume control.
 
 ## 4. API & Services
-- **LibraryManager** (`src/library/LibraryManager.ts`):
-  - Manages in-memory state of tracks and playlists.
-  - `addItem(url, ...)`: process and add file.
-  - `updateItem()`, `remoteItem()`, `getItem()`.
-  - `addCustomTag()`, `deleteTag()`.
-  - Handles persistence via `GlobalStorage` or `settings`.
-- **GlobalStorage** (`src/storage/GlobalStorage.ts`):
-  - Manages cross-world persistence via `Data/ase_library/library.json`.
-  - `load()`, `save()`.
-  - `deletePhysicalFile()`: Helper to delete files from disk.
-- **AudioEngine** (`src/core/AudioEngine.ts`):
-  - GM-side audio controller.
-  - `playTrack()`, `stopTrack()`, `setChannelVolume()`.
-  - **Effects System (Type-Based IDs)**:
-    - Effects identified by `type` ('reverb', 'delay', 'filter', 'compressor', 'distortion')
-    - **Insert Effects**: Filter, Distortion, Compressor (mutes dry signal when active + routed)
-    - **Send Effects**: Reverb, Delay (mixes with dry signal)
-    - Effect routing per channel (music/ambience/sfx)
-    - Effect state synchronized to players via socket
-  - **Known Issues**:
-    - `stopAll()` doesn't broadcast to players
-    - Track limit enforcement doesn't prevent player-side playback
-    - Can freeze with 7-8+ simultaneous tracks
-- **PlayerAudioEngine** (`src/core/PlayerAudioEngine.ts`):
-  - Player-side audio controller (receive-only).
-  - Mirrors GM state based on socket messages.
-  - **Periodic Sync Verification** (5 seconds):
-    - Checks if local state matches last received GM state
-    - Automatically requests re-sync on mismatch
-    - **Known Issue**: Can enter infinite re-sync loop if `syncState()` doesn't fix mismatch
-  - **Effects System**: 
-    - Identical routing to GM (type-based IDs)
-    - Receives effect param/routing/enabled updates via socket
-- **PlaybackQueueManager** (`src/queue/PlaybackQueueManager.ts`):
-  - Manages the list of active/queued tracks (Session-level, non-persisted).
-  - `addItem(libId, opts)`, `addPlaylist(id, items)`.
-  - `removeItem(id)`, `clearQueue()`.
-  - `hasItem(libId)`: Checks presence for UI glow.
-  - Events: `add`, `remove`, `change`, `active`.
-- **SocketManager** (`src/sync/SocketManager.ts`):
-  - Handles real-time state synchronization between GM and players.
-  - **Message Types**: 
-    - `sync-start/stop/state`: Full state sync
-    - `track-play/pause/stop/seek/volume/loop`: Individual track controls
-    - `channel-volume`, `master-volume`: Mix controls
-    - `effect-param/routing/enabled`: Effect state
-    - `sync-request`: Player → GM request for full re-sync
-  - **Known Issues**:
-    - `stopAll` broadcast exists but not called by `AudioEngine.stopAll()`
-    - No rate limiting on broadcasts (can flood network)
+- **LibraryManager** (`src/library/LibraryManager.ts`): In-memory tracks/playlists state. `addItem()`, `updateItem()`, `getItem()`, `addCustomTag()`, `deleteTag()`. Persists via GlobalStorage.
+- **GlobalStorage** (`src/storage/GlobalStorage.ts`): Cross-world persistence via `Data/ase_library/library.json`. `load()`, `save()`, `deletePhysicalFile()`.
+- **AudioEngine** (`src/core/AudioEngine.ts`): GM-side audio controller.
+  - `playTrack()`, `stopTrack()`, `setChannelVolume()`, `stopAll()`.
+  - `setScheduler()` / `setSocketManager()`: Post-construction wiring (avoids circular deps).
+  - **stopAll()** is atomic: clears Scheduler context → stops players → broadcasts stop-all → saves.
+  - **Effects**: Type-based IDs ('reverb','delay','filter','compressor','distortion'). Insert (Filter/Distortion/Compressor) mute dry; Send (Reverb/Delay) mix with dry. Per-channel routing. Synced via socket.
+  - **Known Issues**: Track limit not enforced player-side; freezes at 7-8+ HTMLAudioElements.
+- **PlayerAudioEngine** (`src/core/PlayerAudioEngine.ts`): Player-side (receive-only). Mirrors GM state via socket.
+  - `stopAll()`: Fully disposes + clears all players (prevents phantom sound).
+  - `syncState()`: Skips re-play for drift < 2s. Effects routing identical to GM.
+  - Periodic Sync (5s): Checks active players vs last GM state. Max 3 retries, 10s cooldown.
+- **PlaybackQueueManager** (`src/queue/PlaybackQueueManager.ts`): Active/queued tracks list.
+  - `addItem()`, `addPlaylist()`, `removeItem()`, `clearQueue()`, `hasItem()`.
+  - Events: `add`, `remove`, `change`, `active`. `dispose()` clears save timer + listeners.
+- **SocketManager** (`src/sync/SocketManager.ts`): GM↔Player real-time sync.
+  - Messages: `sync-start/stop/state`, `track-play/pause/stop/seek/volume`, `channel-volume`, `stop-all`, `effect-param/routing/enabled`, `sync-request`.
+  - `broadcastStopAll()`: No syncEnabled guard — ALWAYS reaches players.
+  - Rate Limiting: `throttledSend()` 150ms for seek/volume/channelVol/effectParam (first immediate, then last-value-wins).
+  - Protocol: `PROTOCOL_VERSION = 1` in every message, warn on mismatch.
+  - `dispose()`: Clears throttle timers + socket listener.
+- **PlaybackScheduler** (`src/core/PlaybackScheduler.ts`): Track progression logic.
+  - Listens `trackEnded` / `contextChanged` from AudioEngine. Determines next track by PlaybackContext.
+  - `clearContext()`: From `stopAll()`, sets `_stopped` flag. `setContext()`: Resets flag.
+  - `dispose()`: Removes engine listeners.
+- **StreamingPlayer** (`src/core/StreamingPlayer.ts`): HTMLAudioElement + MediaElementAudioSourceNode wrapper.
+  - `_stopRequested` flag prevents play()/stop() race condition.
+  - `dispose()` clears `onEnded` callback.
 
-## 5. Key Architecture Dependencies
-- **Core Flow**: `main.ts` initializes `AudioEngine`, `LibraryManager`, and `SocketManager`.
-- **UI Architecture**: `AdvancedSoundEngineApp` is a shell that renders `LocalLibraryApp` or `SoundMixerApp` based on the active tab.
-- **Persistence**: `LibraryManager` -> `GlobalStorage` -> `FilePicker` (JSON file).
-- **Audio**: `UI` -> `AudioEngine` (logic) -> `Howler.js` (underlying audio).
+## 5. Architecture
+- **Core Flow**: `main.ts` → `AudioEngine`, `LibraryManager`, `SocketManager`, `PlaybackScheduler`.
+  - `AudioEngine.setScheduler()` / `setSocketManager()` wires post-construction.
+- **Persistence**: LibraryManager → GlobalStorage → FilePicker (JSON).
+- **Audio**: UI → AudioEngine → StreamingPlayer → HTMLAudioElement + Web Audio API. Howler.js NOT used.
 
 ## 6. Foundry VTT Specifics
-- **Global Context**: `window.ASE` exposes `engine`, `library`, `queue`, `socket`.
-- **Hooks Registered**:
-  - `init`: Register settings & Handlebars helpers.
-  - `ready`: Initialize Managers & Socket.
-  - `getSceneControlButtons`: Add "Sound Engine" button to left sidebar.
-  - `renderSceneControls`: Bind click listeners (v13 compat).
-  - `closeGame`: Cleanup.
-- **Settings Registered**:
-  - `mixerState` (world scope): Internal state.
-  - `libraryState` (world scope): Legacy/Fallback storage.
-  - `maxSimultaneousTracks` (world scope): Configurable limit (1-32).
+- **Global**: `window.ASE` exposes `engine`, `library`, `queue`, `socket`.
+- **Hooks**: `init` (settings), `ready` (managers/socket), `getSceneControlButtons` / `renderSceneControls` (sidebar button), `closeGame` (full disposal chain).
+- **Settings**: `mixerState`, `libraryState` (world), `maxSimultaneousTracks` (1-32).
 
-## 7. Visual Style Standards (Foundry V13)
-> **Reference Point**: Use this section as the single source of truth for all UI/UX decisions.
+## 7. Visual Style Standards
+- **Layout**: 1440x1050. Sidebar (left, nav/lists) + Main (right, content) + Footer.
+- **Colors**: Dark/Gold theme. BG `#111111`, Panels `rgba(0,0,0,0.4)`, Borders Gold `#bd8e34`, Accents Cyan `#22d3ee` / Red `#ef4444`.
+- **Borders**: 1px solid Gold, 4px radius, inner glow + drop shadow.
+- **Typography**: Headers `Modesto Condensed`/`Signika` 13-14px uppercase. Body `Signika`/`Roboto` 11-12px.
+- **Elements**: Dropdowns dark+gold. Buttons ghost→hover fill. Primary gold+glow.
 
-### 🪟 Window Layout
-- **Dimensions**: Default `1440x1050` (fixed aspect ratio for generic screens).
-- **Structure**:
-  - **Sidebar**: Left column for navigation/lists (Favorites, Playlists).
-  - **Main**: Right column for content/details.
-  - **Footer**: Bottom generic section for controls.
+## 8. Playback Modes
+### Track Modes (`LibraryItem.playbackMode`)
+- **Inherit** (default): Uses playlist mode, or "single" if solo. **Loop**: Repeat. **Single**: Play once, stop. **Linear/Random**: Queue-based.
 
-### 🎨 Colors & Themes
-- **Palette** (Dark/Gold Theme):
-  - **Background**: `var(--bg-app)` / `#111111` (Deep dark).
-  - **Panels**: `var(--bg-panel)` / `rgba(0, 0, 0, 0.4)` (Semi-transparent).
-  - **Borders**: **Gold/Bronze** (`#bd8e34` / `var(--ase-border-gold)`).
-  - **Accents**: Cyan (`#22d3ee`) for active states, Red (`#ef4444`) for danger.
-  - **Shadows**: `box-shadow: 0 0 10px rgba(0, 0, 0, 0.5)` for depth.
+### Playlist Modes (`Playlist.playbackMode`)
+- **Loop** (default): Restart from beginning. **Linear**: Play once, stop. **Random**: Shuffle.
 
-### 🖼 Borders & Frames
-- **Sidebar Blocks** (`.ase-sidebar-section`):
-  - **Style**: Explicit 1px solid Gold border.
-  - **Radius**: `4px` rounded corners.
-  - **Effect**: Inner black glow + Outer drop shadow.
-- **Mixer Groups** (`.ase-mixer-group`):
-  - Same Gold border style to unify "zones".
+### Implementation Flow
+SoundMixerApp → `AudioEngine.playTrack(id, offset, context)` → emits `contextChanged` → PlaybackScheduler listens `trackEnded`, determines next track via context. Creates tracks via `createTrack()`. Clears context after Linear/Single completion.
 
-### 🔤 Typography
-- **Families**:
-  - Headers: `Modesto Condensed` (Foundry Default) or `Signika`.
-  - Body: `Signika`, `Roboto`.
-- **Sizes**:
-  - Headers: `13-14px`, Uppercase, Bold/600.
-  - Controls: `11-12px`.
-
-### 🧩 UI Elements
-- **Dropdowns**: Dark background (`#000`), Gold border, White text.
-- **Buttons**:
-  - **Icons**: Ghost style (transparent bg) -> Hover fill.
-  - **Primary**: Gold border, localized glow.
-
-## 8. Playback Modes Implementation
-### Track Modes
-Defined in `LocalLibraryApp.onTrackModeClick` and stored in `LibraryItem.playbackMode`.
-- **Inherit (Default)** (`inherit`): Uses the playback mode of the playlist it belongs to, or "single" if played individually.
-- **Loop** (`loop`): Repeats the track indefinitely.
-- **Single** (`single`): Plays once and stops.
-- **Linear** (`linear`): (Conceptually for multi-file tracks, acts as Single for simple files).
-- **Random** (`random`): (Conceptually for multi-file tracks).
-
-#### Внутренняя реализация
-- **SoundMixerApp**: Передаёт `PlaybackContext` в `AudioEngine.playTrack()` при запуске треков/плейлистов
-- **AudioEngine**: Эмитит событие `contextChanged` и сохраняет контекст
-- **PlaybackScheduler**: 
-  - Слушает событие `trackEnded` от AudioEngine
-  - Определяет следующий трек на основе контекста
-  - Создаёт треки через `createTrack()` перед воспроизведением
-  - Очищает контекст после завершения Linear плейлистов или Single треков
-
-### Playlist Modes
-Defined in `LocalLibraryApp.onPlaylistModeClick` and stored in `Playlist.playbackMode`.
-- **Loop (Default)** (`loop`): Plays through the playlist and restarts from the beginning.
-- **Linear** (`linear`): Plays through the playlist once and stops.
-- **Random** (`random`): Shuffles the playlist order.
-
-### UI Integration (`LocalLibraryApp.ts`)
-- **Events**: Delegated click listeners on `[data-action="track-mode-dropdown"]` and `[data-action="playlist-mode-dropdown"]`.
-- **View Data**: `getItemViewData` and `getPlaylistViewData` **MUST** explicitly map `playbackMode` to the view object for the Handlebars template to render the correct icon.
-- **Icons**: FontAwesome icons are dynamically selected in `library.hbs` based on the mode value.
-
+### UI (`LocalLibraryApp.ts`)
+- Delegated clicks on `[data-action="track-mode-dropdown"]` / `[data-action="playlist-mode-dropdown"]`.
+- View data MUST map `playbackMode` explicitly for Handlebars icons.

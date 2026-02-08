@@ -86,7 +86,7 @@ export class SoundEffectsApp {
     activateListeners(html: JQuery): void {
         this.html = html;
 
-        console.log("AudioSoundEngine | SoundEffectsApp | View Loaded");
+        Logger.debug('SoundEffectsApp: View Loaded');
 
         // Event Delegation for Enable Toggle
         // IMPORTANT: Unbind first to prevent conflicting multiple listeners on root element re-renders

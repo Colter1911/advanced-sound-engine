@@ -15,6 +15,7 @@ export class StreamingPlayer {
   private _state: PlaybackState = 'stopped';
   private _volume: number = 1;
   private _ready: boolean = false;
+  private _stopRequested: boolean = false;
 
   public onEnded?: () => void;
 
@@ -129,14 +130,29 @@ export class StreamingPlayer {
       return;
     }
 
+    // Reset stop flag at the start of play
+    this._stopRequested = false;
+
     try {
       this.audio.currentTime = Math.max(0, Math.min(offset, this.audio.duration || 0));
       // Loop is disabled - PlaybackScheduler handles progression
       this.audio.loop = false;
       await this.audio.play();
+
+      // Guard: if stop() was called during the async play(), don't overwrite state
+      if (this._stopRequested) {
+        Logger.debug(`Track ${this.id} play resolved but stop was requested — staying stopped`);
+        return;
+      }
+
       this._state = 'playing';
       Logger.debug(`Track ${this.id} playing from ${offset.toFixed(2)}s`);
     } catch (error) {
+      // AbortError is expected when stop() interrupts play()
+      if ((error as DOMException)?.name === 'AbortError') {
+        Logger.debug(`Track ${this.id} play aborted (stop was called)`);
+        return;
+      }
       Logger.error(`Failed to play ${this.id}:`, error);
     }
   }
@@ -150,6 +166,8 @@ export class StreamingPlayer {
   }
 
   stop(): void {
+    // Set flag BEFORE pause — prevents pending play() promise from overwriting state
+    this._stopRequested = true;
     this.audio.pause();
     this.audio.currentTime = 0;
     this._state = 'stopped';
@@ -194,8 +212,10 @@ export class StreamingPlayer {
   }
 
   dispose(): void {
+    this._stopRequested = true;
     this.audio.pause();
     this.audio.src = '';
+    this.onEnded = undefined;
     this.sourceNode?.disconnect();
     this.gainNode.disconnect();
     this.outputNode.disconnect();

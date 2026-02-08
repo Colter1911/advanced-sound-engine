@@ -1,8 +1,11 @@
 /**
- * Get current server time (for sync calculations)
+ * Get current server time (for sync calculations).
+ * Uses Date.now() since Foundry VTT's game.time.serverTime
+ * represents world time in seconds, not real-time clock.
+ * For audio sync, all participants use Date.now() and
+ * compensate for network latency via startTimestamp.
  */
 export function getServerTime(): number {
-  // Foundry's game.time.serverTime учитывает offset
   return Date.now();
 }
 

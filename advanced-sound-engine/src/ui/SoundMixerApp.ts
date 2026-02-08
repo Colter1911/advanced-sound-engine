@@ -86,6 +86,18 @@ export class SoundMixerApp {
   private volumeThrottleTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
   private static THROTTLE_MS = 200;
 
+  // Stored callbacks for proper cleanup
+  private _onQueueChangeBound: () => void;
+  private _onTrackEndedBound: () => void;
+  private _hookFavoritesId: number = 0;
+  private _hookAutoSwitchId: number = 0;
+
+  // Drag-and-Drop State (Optimization with RAF)
+  private _dragTarget: HTMLElement | null = null;
+  private _dragPosition: 'above' | 'below' | null = null;
+  private _rafId: number | null = null;
+  private _pendingDragUpdate: { target: HTMLElement, position: 'above' | 'below' } | null = null;
+
   constructor(
     engine: AudioEngine,
     socket: SocketManager,
@@ -97,19 +109,23 @@ export class SoundMixerApp {
     this.libraryManager = libraryManager;
     this.queueManager = queueManager;
 
+    // Store bound callbacks for cleanup
+    this._onQueueChangeBound = () => this.onQueueChange();
+    this._onTrackEndedBound = () => this.onTrackStateChange();
+
     // Subscribe to queue changes for real-time updates
-    this.queueManager.on('change', () => this.onQueueChange());
+    this.queueManager.on('change', this._onQueueChangeBound);
 
     // Subscribe to track state changes for UI updates
-    this.engine.on('trackEnded', () => this.onTrackStateChange());
+    this.engine.on('trackEnded', this._onTrackEndedBound);
 
     // Listen for external favorite changes (Global Hook)
-    Hooks.on('ase.favoritesChanged' as any, () => {
+    this._hookFavoritesId = Hooks.on('ase.favoritesChanged' as any, () => {
       this.requestRender();
     });
 
     // Listen for automatic track switches from PlaybackScheduler
-    Hooks.on('ase.trackAutoSwitched' as any, () => {
+    this._hookAutoSwitchId = Hooks.on('ase.trackAutoSwitched' as any, () => {
       Logger.debug('[SoundMixerApp] Track auto-switched, re-rendering');
       this.requestRender();
     });
@@ -340,6 +356,9 @@ export class SoundMixerApp {
 
     // Effects controls
     html.find('[data-action="toggle-effect"]').on('click', (e) => this.onToggleEffect(e));
+
+    // Drag and Drop
+    this.setupDragAndDrop(html);
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -695,6 +714,259 @@ export class SoundMixerApp {
   }
 
   // ─────────────────────────────────────────────────────────────
+  // Drag and Drop
+  // ─────────────────────────────────────────────────────────────
+
+  private setupDragAndDrop(html: JQuery): void {
+    // ── Favorites reordering ──
+
+    // Prevent drag from interactive elements (buttons/icons in favorites)
+    html.find('.ase-favorite-item .ase-icons, .ase-favorite-item button, .ase-favorite-item input').on('pointerdown', (e) => {
+      e.stopPropagation();
+      const $item = $(e.currentTarget).closest('.ase-favorite-item');
+      $item.attr('draggable', 'false');
+    });
+
+    html.find('.ase-list-group[data-section="mixer-favorites"]').on('pointerup pointercancel', () => {
+      html.find('.ase-favorite-item').attr('draggable', 'true');
+    });
+
+    html.find('.ase-favorite-item[draggable="true"]').on('dragstart', (event: JQuery.DragStartEvent) => {
+      event.stopPropagation();
+      const favoriteId = String($(event.currentTarget).data('favorite-id'));
+      const favoriteType = String($(event.currentTarget).data('favorite-type'));
+
+      Logger.info(`[SoundMixerApp] DragStart Favorite: ${favoriteId} (${favoriteType})`);
+
+      event.originalEvent!.dataTransfer!.effectAllowed = 'move';
+      event.originalEvent!.dataTransfer!.setData('application/x-mixer-favorite-id', favoriteId);
+      event.originalEvent!.dataTransfer!.setData('application/x-mixer-favorite-type', favoriteType);
+      $(event.currentTarget).addClass('dragging');
+    });
+
+    html.find('.ase-favorite-item[draggable="true"]').on('dragend', (event: JQuery.DragEndEvent) => {
+      // Cancel any pending RAF to prevent stale class application
+      if (this._rafId) {
+        cancelAnimationFrame(this._rafId);
+        this._rafId = null;
+      }
+      this._pendingDragUpdate = null;
+      this._dragTarget = null;
+      this._dragPosition = null;
+
+      $(event.currentTarget).removeClass('dragging');
+      html.find('.ase-favorite-item').removeClass('drag-over drag-above drag-below');
+    });
+
+    // Favorites visual feedback for insertion position
+    html.find('.ase-favorite-item').on('dragover', (event: JQuery.DragOverEvent) => {
+      // Robust check for types (Array or DOMStringList)
+      const types = event.originalEvent!.dataTransfer!.types;
+      const hasFavoriteId = (types instanceof DOMStringList && types.contains('application/x-mixer-favorite-id')) ||
+        (types instanceof Array && types.includes('application/x-mixer-favorite-id')) ||
+        (Array.from(types).includes('application/x-mixer-favorite-id'));
+
+      if (!hasFavoriteId) return;
+
+      event.preventDefault();
+      event.stopPropagation(); // Prevent parent handlers
+      event.originalEvent!.dataTransfer!.dropEffect = 'move';
+
+      // Optimize with RequestAnimationFrame
+      const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+      const midY = rect.top + rect.height / 2;
+      const clientY = event.originalEvent!.clientY ?? event.clientY;
+      const isAbove = clientY < midY;
+      const newPos = isAbove ? 'above' : 'below';
+
+      // Store pending update
+      this._pendingDragUpdate = {
+        target: event.currentTarget as HTMLElement,
+        position: newPos
+      };
+
+      // Schedule RAF if not already running
+      if (!this._rafId) {
+        this._rafId = requestAnimationFrame(this._processDragUpdate.bind(this, html, '.ase-favorite-item'));
+      }
+    });
+
+    html.find('.ase-favorite-item').on('dragleave', (event: JQuery.DragLeaveEvent) => {
+      // If we leave the current target, clear it
+      if (this._dragTarget === event.currentTarget) {
+        this._dragTarget = null;
+        this._dragPosition = null;
+        // If we have a pending update for this target, clear it too, but we might have a new one incoming
+        // Simplest: just remove classes immediately on leave to be responsive
+        $(event.currentTarget).removeClass('drag-above drag-below');
+      }
+    });
+
+    html.find('.ase-favorite-item').on('drop', (event: JQuery.DropEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      // Cleanup RAF
+      if (this._rafId) {
+        cancelAnimationFrame(this._rafId);
+        this._rafId = null;
+      }
+      this._pendingDragUpdate = null;
+      this._dragTarget = null;
+      this._dragPosition = null;
+
+      const targetId = String($(event.currentTarget).data('favorite-id'));
+      const targetType = String($(event.currentTarget).data('favorite-type')) as 'track' | 'playlist';
+
+      html.find('.ase-favorite-item').removeClass('drag-above drag-below dragging');
+
+      const draggedId = event.originalEvent!.dataTransfer!.getData('application/x-mixer-favorite-id');
+      const draggedType = event.originalEvent!.dataTransfer!.getData('application/x-mixer-favorite-type') as 'track' | 'playlist';
+
+      Logger.info(`[SoundMixerApp] Drop Favorite: ${draggedId} -> ${targetId}`);
+
+      if (draggedId && draggedType && (draggedId !== targetId || draggedType !== targetType)) {
+        this.handleFavoriteReorder(draggedId, draggedType, targetId, targetType);
+      }
+    });
+
+    // ── Queue track reordering ──
+
+    // Prevent drag from interactive elements (volume, seek, buttons)
+    // stopPropagation alone doesn't block native HTML5 drag - we must disable draggable attribute
+    html.find('.ase-queue-track input, .ase-queue-track button, .ase-queue-track .volume-container, .ase-queue-track .progress-wrapper').on('pointerdown', (e) => {
+      e.stopPropagation();
+      const $track = $(e.currentTarget).closest('.ase-queue-track');
+      $track.attr('draggable', 'false');
+    });
+
+    // Restore draggable on pointer release (delegated to track list container)
+    html.find('.ase-track-player-list').on('pointerup pointercancel', () => {
+      html.find('.ase-queue-track').attr('draggable', 'true');
+    });
+
+    html.find('.ase-queue-track[draggable="true"]').on('dragstart', (event: JQuery.DragStartEvent) => {
+      event.stopPropagation();
+      const queueId = String($(event.currentTarget).data('queue-id'));
+
+
+      Logger.info(`[SoundMixerApp] DragStart Queue: ${queueId}`);
+
+      event.originalEvent!.dataTransfer!.effectAllowed = 'move';
+      event.originalEvent!.dataTransfer!.setData('application/x-mixer-queue-id', queueId);
+      $(event.currentTarget).addClass('dragging');
+    });
+
+    html.find('.ase-queue-track[draggable="true"]').on('dragend', (event: JQuery.DragEndEvent) => {
+      // Cancel any pending RAF to prevent stale class application
+      if (this._rafId) {
+        cancelAnimationFrame(this._rafId);
+        this._rafId = null;
+      }
+      this._pendingDragUpdate = null;
+      this._dragTarget = null;
+      this._dragPosition = null;
+
+      $(event.currentTarget).removeClass('dragging');
+      html.find('.ase-queue-track').removeClass('drag-over drag-above drag-below');
+
+      // Restore draggable in case it was disabled by slider interaction
+      $(event.currentTarget).attr('draggable', 'true');
+    });
+
+    html.find('.ase-queue-track').on('dragover', (event: JQuery.DragOverEvent) => {
+      const types = event.originalEvent!.dataTransfer!.types;
+      const hasQueueId = (types instanceof DOMStringList && types.contains('application/x-mixer-queue-id')) ||
+        (types instanceof Array && types.includes('application/x-mixer-queue-id')) ||
+        (Array.from(types).includes('application/x-mixer-queue-id'));
+
+      if (!hasQueueId) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      event.originalEvent!.dataTransfer!.dropEffect = 'move';
+
+      // Optimize Queue Drag with RAF
+      const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+      const midY = rect.top + rect.height / 2;
+      const clientY = event.originalEvent!.clientY ?? event.clientY;
+      const isAbove = clientY < midY;
+      const newPos = isAbove ? 'above' : 'below';
+
+      this._pendingDragUpdate = {
+        target: event.currentTarget as HTMLElement,
+        position: newPos
+      };
+
+      if (!this._rafId) {
+        this._rafId = requestAnimationFrame(this._processDragUpdate.bind(this, html, '.ase-queue-track'));
+      }
+    });
+
+    html.find('.ase-queue-track').on('dragleave', (event: JQuery.DragLeaveEvent) => {
+      if (this._dragTarget === event.currentTarget) {
+        this._dragTarget = null;
+        this._dragPosition = null;
+        $(event.currentTarget).removeClass('drag-above drag-below');
+      }
+    });
+
+    html.find('.ase-queue-track').on('drop', (event: JQuery.DropEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      if (this._rafId) {
+        cancelAnimationFrame(this._rafId);
+        this._rafId = null;
+      }
+      this._pendingDragUpdate = null;
+      this._dragTarget = null;
+      this._dragPosition = null;
+
+      html.find('.ase-queue-track').removeClass('drag-above drag-below dragging');
+
+      const draggedQueueId = event.originalEvent!.dataTransfer!.getData('application/x-mixer-queue-id');
+      const targetQueueId = String($(event.currentTarget).data('queue-id'));
+
+      Logger.info(`[SoundMixerApp] Drop Queue: ${draggedQueueId} -> ${targetQueueId}`);
+
+      if (draggedQueueId && draggedQueueId !== targetQueueId) {
+        this.handleQueueReorder(draggedQueueId, targetQueueId);
+      }
+    });
+  }
+
+  private handleFavoriteReorder(
+    draggedId: string,
+    draggedType: 'track' | 'playlist',
+    targetId: string,
+    targetType: 'track' | 'playlist'
+  ): void {
+    const favorites = this.libraryManager.getOrderedFavorites();
+    const draggedIndex = favorites.findIndex(f => f.id === draggedId && f.type === draggedType);
+    const targetIndex = favorites.findIndex(f => f.id === targetId && f.type === targetType);
+
+    if (draggedIndex === -1 || targetIndex === -1) return;
+
+    const [draggedItem] = favorites.splice(draggedIndex, 1);
+    favorites.splice(targetIndex, 0, draggedItem);
+
+    this.libraryManager.reorderFavorites(favorites);
+    this.requestRender();
+    Logger.debug(`[SoundMixerApp] Reordered favorite ${draggedId} to position ${targetIndex}`);
+  }
+
+  private handleQueueReorder(draggedQueueId: string, targetQueueId: string): void {
+    const items = this.queueManager.getItems();
+    const targetIndex = items.findIndex(i => i.id === targetQueueId);
+
+    if (targetIndex === -1) return;
+
+    this.queueManager.moveItem(draggedQueueId, targetIndex);
+    Logger.debug(`[SoundMixerApp] Reordered queue item ${draggedQueueId} to position ${targetIndex}`);
+  }
+
+  // ─────────────────────────────────────────────────────────────
   // Playlist Toggle
   // ─────────────────────────────────────────────────────────────
 
@@ -898,6 +1170,40 @@ export class SoundMixerApp {
     }
   }
 
+  /**
+   * Full cleanup: stops updates, clears throttle timers, removes all event subscriptions.
+   * Called when the parent window closes.
+   */
+  dispose(): void {
+    this.stopUpdates();
+
+    // Clear all throttle timers
+    for (const timer of this.seekThrottleTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.seekThrottleTimers.clear();
+
+    for (const timer of this.volumeThrottleTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.volumeThrottleTimers.clear();
+
+    // Remove event subscriptions
+    this.queueManager.off('change', this._onQueueChangeBound);
+    this.engine.off('trackEnded', this._onTrackEndedBound);
+
+    // Remove Foundry hooks
+    if (this._hookFavoritesId) {
+      Hooks.off('ase.favoritesChanged' as any, this._hookFavoritesId);
+    }
+    if (this._hookAutoSwitchId) {
+      Hooks.off('ase.trackAutoSwitched' as any, this._hookAutoSwitchId);
+    }
+
+    this.html = null;
+    Logger.debug('[SoundMixerApp] Disposed');
+  }
+
   private updateTrackDisplays(): void {
     if (!this.html) return;
 
@@ -974,5 +1280,32 @@ export class SoundMixerApp {
     }
 
     Logger.info(`Effect ${effectId} ${newState ? 'enabled' : 'disabled'}`);
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // RAF Processor for Drag Events
+  // ─────────────────────────────────────────────────────────────
+
+  private _processDragUpdate(html: JQuery, selector: string): void {
+    this._rafId = null; // Reset ID so new frames can be requested
+
+    if (!this._pendingDragUpdate) return;
+
+    const { target, position } = this._pendingDragUpdate;
+
+    // Avoid redundant DOM updates
+    if (this._dragTarget === target && this._dragPosition === position) {
+      return;
+    }
+
+    // Apply update
+    this._dragTarget = target;
+    this._dragPosition = position;
+
+    // Clean all
+    html.find(selector).removeClass('drag-above drag-below drag-over');
+
+    // Apply new class
+    $(target).addClass(position === 'above' ? 'drag-above' : 'drag-below');
   }
 }
