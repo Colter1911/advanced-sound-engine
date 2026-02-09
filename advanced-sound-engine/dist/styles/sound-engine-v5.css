@@ -606,6 +606,9 @@
 .ase-list-item .ase-icons i.ase-mode-icon {
   color: var(--ase-text-muted);
   font-size: 13px;
+  width: 14px;
+  text-align: center;
+  display: inline-block;
 }
 .ase-list-item .ase-icons i.ase-mode-icon:hover {
   color: var(--ase-text-highlight);
@@ -2454,6 +2457,25 @@
  * Mixer-Specific Styles
  * ----------------------------------------------------------- */
 /* Mixer Favorites Panel - Full Height */
+.ase-mixer-workspace .btn-icon [data-action=track-mode-dropdown] i.btn-icon i.fa-solid, .ase-mixer-workspace .btn-icon [data-action=track-mode-dropdown] i i.fa-solid,
+.ase-mixer-workspace .btn-icon[data-action=playlist-mode-dropdown] i.btn-icon i.fa-solid,
+.ase-mixer-workspace .btn-icon[data-action=playlist-mode-dropdown] i i.fa-solid,
+.ase-mixer-workspace [data-action=track-mode-dropdown].btn-icon i.fa-solid,
+.ase-mixer-workspace [data-action=track-mode-dropdown] i.fa-solid,
+.ase-mixer-workspace [data-action=playlist-mode-dropdown].btn-icon i.fa-solid,
+.ase-mixer-workspace [data-action=playlist-mode-dropdown] i.fa-solid,
+.ase-mixer-workspace [data-action=favorite-mode-dropdown].btn-icon i.fa-solid,
+.ase-mixer-workspace [data-action=favorite-mode-dropdown] i.fa-solid {
+  width: 14px;
+  text-align: center;
+  display: inline-block;
+}
+.ase-mixer-workspace .playback-buttons .btn-icon[data-action=track-mode-dropdown],
+.ase-mixer-workspace .ase-playlist-header-controls .btn-icon[data-action=playlist-mode-dropdown] {
+  min-width: 28px;
+  text-align: center;
+  justify-content: center;
+}
 .ase-mixer-workspace .ase-mixer-favorites {
   flex: 1;
   max-height: none;

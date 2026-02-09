@@ -29,6 +29,8 @@ interface FavoriteViewData {
   isPlaying: boolean;
   isPaused: boolean;
   inQueue: boolean;
+  playbackMode: string;          // Track: inherit/loop/single/linear/random, Playlist: loop/linear/random
+  isFavorite: boolean;           // Always true in favorites, but needed for star state
 }
 
 interface EffectViewData {
@@ -169,19 +171,33 @@ export class SoundMixerApp {
             isPlaying: player?.state === 'playing',
             isPaused: player?.state === 'paused',
             inQueue,
+            playbackMode: item.playbackMode || 'inherit',
+            isFavorite: true,
           });
         }
       } else if (fav.type === 'playlist') {
         const playlist = this.libraryManager.playlists.getPlaylist(fav.id);
         if (playlist) {
+          // Check if any track in the playlist is playing/paused
+          const playlistTracks = this.libraryManager.playlists.getPlaylistTracks(fav.id);
+          let isPlaying = false;
+          let isPaused = false;
+          for (const pt of playlistTracks) {
+            const player = this.engine.getTrack(pt.libraryItemId);
+            if (player?.state === 'playing') isPlaying = true;
+            if (player?.state === 'paused') isPaused = true;
+          }
+
           favorites.push({
             id: playlist.id,
             name: playlist.name,
             type: 'playlist',
             group: undefined,
-            isPlaying: false, // Playlists don't have individual play state
-            isPaused: false,
+            isPlaying,
+            isPaused: !isPlaying && isPaused,
             inQueue,
+            playbackMode: playlist.playbackMode || 'loop',
+            isFavorite: true,
           });
         }
       }
@@ -312,6 +328,8 @@ export class SoundMixerApp {
     html.find('[data-action="pause-favorite"]').on('click', (e) => this.onPauseFavorite(e));
     html.find('[data-action="stop-favorite"]').on('click', (e) => this.onStopFavorite(e));
     html.find('[data-action="add-to-queue-from-favorite"]').on('click', (e) => this.onAddToQueueFromFavorite(e));
+    html.find('[data-action="favorite-mode-dropdown"]').on('click', (e) => this.onFavoriteModeClick(e));
+    html.find('[data-action="toggle-mixer-favorite"]').on('click', (e) => this.onToggleMixerFavorite(e));
 
     // Queue controls
     html.find('[data-action="play-queue"]').on('click', (e) => this.onPlayQueueItem(e));
@@ -457,6 +475,15 @@ export class SoundMixerApp {
 
     if (type === 'track') {
       this.pauseTrack(id);
+    } else {
+      // Pause all playing tracks in playlist
+      const tracks = this.libraryManager.playlists.getPlaylistTracks(id);
+      for (const track of tracks) {
+        const player = this.engine.getTrack(track.libraryItemId);
+        if (player?.state === 'playing') {
+          this.pauseTrack(track.libraryItemId);
+        }
+      }
     }
     this.requestRender();
   }
@@ -473,6 +500,63 @@ export class SoundMixerApp {
     } else {
       // Stop all tracks in playlist
       this.stopPlaylist(id);
+    }
+    this.requestRender();
+  }
+
+  private onFavoriteModeClick(event: JQuery.ClickEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const btn = $(event.currentTarget);
+    const id = btn.data('favorite-id') as string;
+    const type = btn.data('favorite-type') as 'track' | 'playlist';
+
+    if (type === 'track') {
+      const item = this.libraryManager.getItem(id);
+      if (!item) return;
+
+      const modes: { label: string, value: string, icon: string }[] = [
+        { label: 'Inherit (Default)', value: 'inherit', icon: 'fa-arrow-turn-down' },
+        { label: 'Loop', value: 'loop', icon: 'fa-repeat' },
+        { label: 'Single', value: 'single', icon: 'fa-arrow-right-to-line' },
+        { label: 'Linear', value: 'linear', icon: 'fa-arrow-right' },
+        { label: 'Random', value: 'random', icon: 'fa-shuffle' }
+      ];
+
+      this.showModeContextMenu(event, modes, (mode) => {
+        this.libraryManager.updateItem(id, { playbackMode: mode as any });
+        this.requestRender();
+      });
+    } else {
+      const playlist = this.libraryManager.playlists.getPlaylist(id);
+      if (!playlist) return;
+
+      const modes: { label: string, value: string, icon: string }[] = [
+        { label: 'Loop (Default)', value: 'loop', icon: 'fa-repeat' },
+        { label: 'Linear', value: 'linear', icon: 'fa-arrow-right' },
+        { label: 'Random', value: 'random', icon: 'fa-shuffle' }
+      ];
+
+      this.showModeContextMenu(event, modes, (mode) => {
+        this.libraryManager.playlists.updatePlaylist(id, { playbackMode: mode as any });
+        this.requestRender();
+      });
+    }
+  }
+
+  private onToggleMixerFavorite(event: JQuery.ClickEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const btn = $(event.currentTarget);
+    const id = btn.data('favorite-id') as string;
+    const type = btn.data('favorite-type') as 'track' | 'playlist';
+
+    if (type === 'track') {
+      this.libraryManager.toggleFavorite(id);
+    } else {
+      this.libraryManager.playlists.togglePlaylistFavorite(id);
     }
     this.requestRender();
   }
@@ -1460,6 +1544,62 @@ export class SoundMixerApp {
       } else {
         $headerIcon.removeClass('fa-pause').addClass('fa-play');
         $headerBtn.attr('data-action', 'play-playlist').attr('title', 'Play');
+      }
+    });
+
+    // Update favorites play/pause button state
+    this.html.find('.ase-favorite-item').each((_, el) => {
+      const $fav = $(el);
+      const favId = $fav.data('favorite-id') as string;
+      const favType = $fav.data('favorite-type') as string;
+
+      let isPlaying = false;
+      let isPaused = false;
+
+      if (favType === 'track') {
+        const player = this.engine.getTrack(favId);
+        isPlaying = player?.state === 'playing';
+        isPaused = player?.state === 'paused';
+      } else {
+        // Playlist: check all tracks
+        const tracks = this.libraryManager.playlists.getPlaylistTracks(favId);
+        for (const pt of tracks) {
+          const player = this.engine.getTrack(pt.libraryItemId);
+          if (player?.state === 'playing') isPlaying = true;
+          if (player?.state === 'paused') isPaused = true;
+        }
+        // Only show paused if nothing is playing
+        if (isPlaying) isPaused = false;
+      }
+
+      // Update play/pause button
+      const $btn = $fav.find('[data-action="play-favorite"], [data-action="pause-favorite"]');
+      const $icon = $btn.find('i').length ? $btn.find('i') : $btn;
+
+      if (isPlaying) {
+        $fav.removeClass('is-paused').addClass('is-playing');
+        if ($icon.is('i')) {
+          $icon.removeClass('fa-play').addClass('fa-pause');
+        } else {
+          $btn.removeClass('fa-play').addClass('fa-pause');
+        }
+        $btn.attr('data-action', 'pause-favorite').attr('title', 'Pause');
+      } else if (isPaused) {
+        $fav.removeClass('is-playing').addClass('is-paused');
+        if ($icon.is('i')) {
+          $icon.removeClass('fa-pause').addClass('fa-play');
+        } else {
+          $btn.removeClass('fa-pause').addClass('fa-play');
+        }
+        $btn.attr('data-action', 'play-favorite').attr('title', 'Play');
+      } else {
+        $fav.removeClass('is-playing is-paused');
+        if ($icon.is('i')) {
+          $icon.removeClass('fa-pause').addClass('fa-play');
+        } else {
+          $btn.removeClass('fa-pause').addClass('fa-play');
+        }
+        $btn.attr('data-action', 'play-favorite').attr('title', 'Play');
       }
     });
   }

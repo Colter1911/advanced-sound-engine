@@ -663,8 +663,11 @@
 
   // Ensure Playlist Mode icon matches Play icon color explicitly
   i.ase-mode-icon {
-    color: var(--ase-text-muted); // Default match for play button
+    color: var(--ase-text-muted);
     font-size: 13px;
+    width: 14px;
+    text-align: center;
+    display: inline-block;
 
     &:hover {
       color: var(--ase-text-highlight);
@@ -2748,6 +2751,31 @@
 
 /* Mixer Favorites Panel - Full Height */
 .ase-mixer-workspace {
+
+  // Fixed-size mode button across all mixer contexts (prevents layout shift)
+  .btn-icon [data-action="track-mode-dropdown"] i,
+  .btn-icon[data-action="playlist-mode-dropdown"] i,
+  [data-action="track-mode-dropdown"],
+  [data-action="playlist-mode-dropdown"],
+  [data-action="favorite-mode-dropdown"] {
+    &.btn-icon,
+    & {
+      i.fa-solid {
+        width: 14px;
+        text-align: center;
+        display: inline-block;
+      }
+    }
+  }
+
+  // Global fixed-width for mode buttons in playback-buttons and header controls
+  .playback-buttons .btn-icon[data-action="track-mode-dropdown"],
+  .ase-playlist-header-controls .btn-icon[data-action="playlist-mode-dropdown"] {
+    min-width: 28px;
+    text-align: center;
+    justify-content: center;
+  }
+
   .ase-mixer-favorites {
     flex: 1;
     max-height: none;
