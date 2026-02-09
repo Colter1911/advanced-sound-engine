@@ -42,6 +42,12 @@ interface QueuePlaylistViewData {
   name: string;
   collapsed: boolean;
   tracks: QueueTrackViewData[];
+  activeTrackCount: number;      // playing + paused tracks
+  totalTrackCount: number;       // total tracks in group
+  hasPlayingTracks: boolean;     // true if any track is playing
+  hasPausedTracks: boolean;      // true if any track is paused
+  playbackMode: string;          // playlist mode or 'loop' for ungrouped
+  isUngrouped: boolean;          // true if id is null
 }
 
 interface QueueTrackViewData {
@@ -214,21 +220,36 @@ export class SoundMixerApp {
     const playlists: QueuePlaylistViewData[] = [];
 
     for (const [playlistId, items] of groups) {
-      // Get playlist name
+      // Get playlist name and mode
       let name = 'Ungrouped';
+      let playbackMode = 'loop'; // Default for ungrouped
+      const isUngrouped = !playlistId;
+
       if (playlistId) {
         const playlist = this.libraryManager.playlists.getPlaylist(playlistId);
         name = playlist?.name ?? 'Unknown Playlist';
+        playbackMode = playlist?.playbackMode ?? 'loop';
       }
 
       const collapsed = playlistId ? this.collapsedPlaylists.has(playlistId) : this.ungroupedCollapsed;
       const tracks = items.map(queueItem => this.getQueueTrackViewData(queueItem, collapsed));
+
+      // Compute active track counts
+      const activeTrackCount = tracks.filter(t => t.isPlaying || t.isPaused).length;
+      const hasPlayingTracks = tracks.some(t => t.isPlaying);
+      const hasPausedTracks = tracks.some(t => t.isPaused);
 
       playlists.push({
         id: playlistId,
         name,
         collapsed: playlistId ? this.collapsedPlaylists.has(playlistId) : this.ungroupedCollapsed,
         tracks,
+        activeTrackCount,
+        totalTrackCount: tracks.length,
+        hasPlayingTracks,
+        hasPausedTracks,
+        playbackMode,
+        isUngrouped,
       });
     }
 
@@ -303,6 +324,13 @@ export class SoundMixerApp {
 
     // Playlist collapse/expand
     html.find('[data-action="toggle-playlist"]').on('click', (e) => this.onTogglePlaylist(e));
+
+    // Playlist header controls
+    html.find('[data-action="play-playlist"]').on('click', (e) => this.onPlayPlaylistHeader(e));
+    html.find('[data-action="pause-playlist"]').on('click', (e) => this.onPausePlaylistHeader(e));
+    html.find('[data-action="stop-playlist"]').on('click', (e) => this.onStopPlaylistHeader(e));
+    html.find('[data-action="playlist-mode-dropdown"]').on('click', (e) => this.onPlaylistModeClick(e));
+    html.find('[data-action="remove-playlist"]').on('click', (e) => this.onRemovePlaylistFromQueue(e));
 
     // Track controls
     html.find('[data-action="seek"]').on('input', (e) => this.onSeek(e));
@@ -1025,6 +1053,130 @@ export class SoundMixerApp {
   }
 
   // ─────────────────────────────────────────────────────────────
+  // Playlist Header Controls
+  // ─────────────────────────────────────────────────────────────
+
+  private getPlaylistHeaderInfo(event: JQuery.ClickEvent): { playlistId: string | null, $playlist: JQuery } | null {
+    event.preventDefault();
+    event.stopPropagation();
+    const $playlist = $(event.currentTarget).closest('.ase-queue-playlist');
+    const rawId = $playlist.data('playlist-id');
+    const playlistId = (rawId === undefined || rawId === null || rawId === '') ? null : String(rawId);
+    return { playlistId, $playlist };
+  }
+
+  private getQueueItemsForGroup(playlistId: string | null): QueueItem[] {
+    return this.queueManager.getItems().filter(item => {
+      const itemPlaylistId = item.playlistId ?? null;
+      return itemPlaylistId === playlistId;
+    });
+  }
+
+  private async onPlayPlaylistHeader(event: JQuery.ClickEvent): Promise<void> {
+    const info = this.getPlaylistHeaderInfo(event);
+    if (!info) return;
+    const { playlistId } = info;
+
+    const groupItems = this.getQueueItemsForGroup(playlistId);
+    if (!groupItems.length) return;
+
+    // Check if any tracks are paused — resume all paused
+    const pausedItems = groupItems.filter(item => {
+      const player = this.engine.getTrack(item.libraryItemId);
+      return player?.state === 'paused';
+    });
+
+    if (pausedItems.length > 0) {
+      // Resume all paused tracks
+      for (const item of pausedItems) {
+        const context: PlaybackContext = playlistId
+          ? { type: 'playlist', id: playlistId, playbackMode: this.libraryManager.playlists.getPlaylist(playlistId)?.playbackMode || 'loop' }
+          : { type: 'track', playbackMode: this.libraryManager.getItem(item.libraryItemId)?.playbackMode || 'loop' };
+        await this.playTrack(item.libraryItemId, context);
+      }
+    } else {
+      // Nothing paused — play from beginning (first track)
+      const firstItem = groupItems[0];
+      const context: PlaybackContext = playlistId
+        ? { type: 'playlist', id: playlistId, playbackMode: this.libraryManager.playlists.getPlaylist(playlistId)?.playbackMode || 'loop' }
+        : { type: 'track', playbackMode: this.libraryManager.getItem(firstItem.libraryItemId)?.playbackMode || 'loop' };
+      await this.playTrack(firstItem.libraryItemId, context);
+    }
+    this.requestRender();
+  }
+
+  private onPausePlaylistHeader(event: JQuery.ClickEvent): void {
+    const info = this.getPlaylistHeaderInfo(event);
+    if (!info) return;
+    const { playlistId } = info;
+
+    const groupItems = this.getQueueItemsForGroup(playlistId);
+    for (const item of groupItems) {
+      const player = this.engine.getTrack(item.libraryItemId);
+      if (player?.state === 'playing') {
+        this.pauseTrack(item.libraryItemId);
+      }
+    }
+    this.requestRender();
+  }
+
+  private onStopPlaylistHeader(event: JQuery.ClickEvent): void {
+    const info = this.getPlaylistHeaderInfo(event);
+    if (!info) return;
+    const { playlistId } = info;
+
+    const groupItems = this.getQueueItemsForGroup(playlistId);
+    for (const item of groupItems) {
+      const player = this.engine.getTrack(item.libraryItemId);
+      if (player?.state === 'playing' || player?.state === 'paused') {
+        this.stopTrack(item.libraryItemId);
+      }
+    }
+    this.requestRender();
+  }
+
+  private onPlaylistModeClick(event: JQuery.ClickEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const btn = $(event.currentTarget);
+    const playlistId = btn.data('playlist-id') as string;
+    if (!playlistId) return;
+
+    const playlist = this.libraryManager.playlists.getPlaylist(playlistId);
+    if (!playlist) return;
+
+    const modes: { label: string, value: string, icon: string }[] = [
+      { label: 'Loop (Default)', value: 'loop', icon: 'fa-repeat' },
+      { label: 'Linear', value: 'linear', icon: 'fa-arrow-right' },
+      { label: 'Random', value: 'random', icon: 'fa-shuffle' }
+    ];
+
+    this.showModeContextMenu(event, modes, (mode) => {
+      this.libraryManager.playlists.updatePlaylist(playlistId, { playbackMode: mode as any });
+      this.requestRender();
+    });
+  }
+
+  private onRemovePlaylistFromQueue(event: JQuery.ClickEvent): void {
+    const info = this.getPlaylistHeaderInfo(event);
+    if (!info) return;
+    const { playlistId } = info;
+
+    const groupItems = this.getQueueItemsForGroup(playlistId);
+
+    // Stop all tracks first, then remove from queue
+    for (const item of groupItems) {
+      const player = this.engine.getTrack(item.libraryItemId);
+      if (player?.state === 'playing' || player?.state === 'paused') {
+        this.stopTrack(item.libraryItemId);
+      }
+      this.queueManager.removeItem(item.id);
+    }
+    this.requestRender();
+  }
+
+  // ─────────────────────────────────────────────────────────────
   // Track Controls
   // ─────────────────────────────────────────────────────────────
 
@@ -1272,6 +1424,42 @@ export class SoundMixerApp {
           $playPauseIcon.removeClass('fa-pause').addClass('fa-play');
           $playPauseBtn.attr('data-action', 'play-queue').attr('title', 'Play');
         }
+      }
+    });
+
+    // Update playlist header states (play/pause button + track counts)
+    this.html.find('.ase-queue-playlist').each((_, el) => {
+      const $playlist = $(el);
+      const $tracks = $playlist.find('.ase-queue-track');
+      let activeCount = 0;
+      let hasPlaying = false;
+
+      $tracks.each((_, trackEl) => {
+        const $track = $(trackEl);
+        const itemId = $track.data('item-id') as string;
+        const player = this.engine.getTrack(itemId);
+        if (player?.state === 'playing') {
+          activeCount++;
+          hasPlaying = true;
+        } else if (player?.state === 'paused') {
+          activeCount++;
+        }
+      });
+
+      // Update track count display
+      const totalCount = $tracks.length;
+      $playlist.find('.ase-playlist-count').text(`(${activeCount}/${totalCount} tracks)`);
+
+      // Update play/pause button on header
+      const $headerBtn = $playlist.find('.ase-playlist-header-controls').find('[data-action="play-playlist"], [data-action="pause-playlist"]');
+      const $headerIcon = $headerBtn.find('i');
+
+      if (hasPlaying) {
+        $headerIcon.removeClass('fa-play').addClass('fa-pause');
+        $headerBtn.attr('data-action', 'pause-playlist').attr('title', 'Pause All');
+      } else {
+        $headerIcon.removeClass('fa-pause').addClass('fa-play');
+        $headerBtn.attr('data-action', 'play-playlist').attr('title', 'Play');
       }
     });
   }
