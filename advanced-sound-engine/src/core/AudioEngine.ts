@@ -1,20 +1,13 @@
 import type { TrackConfig, TrackState, MixerState, TrackGroup, ChannelVolumes } from '@t/audio';
-import type { EffectState, EffectType, EffectParam } from '@t/effects';
+import type { EffectType, ChannelChain, EffectState } from '@t/effects';
+import { DEFAULT_CHAIN_ORDER, DEFAULT_MIX } from '@t/effects';
 import { StreamingPlayer } from './StreamingPlayer';
+import { EffectChain } from './effects/EffectChain';
 import { Logger } from '@utils/logger';
 import { getServerTime } from '@utils/time';
 import { generateUUID } from '@utils/uuid';
 import { validateAudioFile } from '@utils/audio-validation';
-// import { EventEmitter } from '@pixi/utils'; // REMOVED: Using global PIXI.utils.EventEmitter to fix build
 import type { PlaybackContext } from './PlaybackScheduler';
-
-// Effects
-import { AudioEffect } from './effects/AudioEffect';
-import { ReverbEffect } from './effects/ReverbEffect';
-import { DelayEffect } from './effects/DelayEffect';
-import { FilterEffect } from './effects/FilterEffect';
-import { CompressorEffect } from './effects/CompressorEffect';
-import { DistortionEffect } from './effects/DistortionEffect';
 
 const MODULE_ID = 'advanced-sound-engine';
 
@@ -40,14 +33,12 @@ class SimpleEventEmitter {
       this.off(event, onceWrapper);
       fn.apply(this, args);
     };
-    // Store original fn to allow removal before triggering
     (onceWrapper as any)._original = fn;
     return this.on(event, onceWrapper);
   }
 
   emit(event: string, ...args: any[]) {
     if (this.listeners[event]) {
-      // Clone to allow removal during emission
       [...this.listeners[event]].forEach(fn => fn.apply(this, args));
       return true;
     }
@@ -80,22 +71,13 @@ class SimpleEventEmitter {
 export class AudioEngine extends SimpleEventEmitter {
   private ctx: AudioContext;
   private masterGain: GainNode;
-  private localGain: GainNode; // Controls GM's local monitoring level
+  private localGain: GainNode;
   private channelGains: Record<TrackGroup, GainNode>;
   private players: Map<string, StreamingPlayer> = new Map();
   private _activeContext: PlaybackContext | null = null;
 
-  // Effects System
-  // Effects System
-  private effects: Map<string, AudioEffect> = new Map();
-  // Sends: Channel -> EffectId -> GainNode
-  private sends: Record<TrackGroup, Map<string, GainNode>> = {
-    music: new Map(),
-    ambience: new Map(),
-    sfx: new Map()
-  };
-  // Direct Gains: Channel -> Master (Control dry level)
-  private directGains: Record<TrackGroup, GainNode>;
+  // ─── Effects Chain System ───────────────────────────────────
+  private chains: Record<TrackGroup, EffectChain>;
 
   private _volumes: ChannelVolumes = {
     master: 1,
@@ -107,14 +89,14 @@ export class AudioEngine extends SimpleEventEmitter {
   private saveTimeout: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
-    super(); // Init EventEmitter
+    super();
     this.ctx = new AudioContext();
 
     this.masterGain = this.ctx.createGain();
 
     // Create Local Gain (GM only)
     this.localGain = this.ctx.createGain();
-    this.localGain.gain.value = 1; // Default to full volume
+    this.localGain.gain.value = 1;
 
     // Master -> Local -> Destination
     this.masterGain.connect(this.localGain);
@@ -126,60 +108,23 @@ export class AudioEngine extends SimpleEventEmitter {
       sfx: this.ctx.createGain()
     };
 
-    // Initialize Direct Gains
-    this.directGains = {
-      music: this.ctx.createGain(),
-      ambience: this.ctx.createGain(),
-      sfx: this.ctx.createGain()
+    // ─── Initialize Chains ────────────────────────────────────
+    // Signal flow per channel:
+    //   channelGain → chain.inputNode → [effects...] → chain.outputNode → masterGain
+
+    this.chains = {
+      music: new EffectChain(this.ctx, 'music'),
+      ambience: new EffectChain(this.ctx, 'ambience'),
+      sfx: new EffectChain(this.ctx, 'sfx')
     };
 
-    // Connect Channel -> DirectGain -> Master
-    // This replaces the direct connection so we can duck the dry signal
-    this.channelGains.music.connect(this.directGains.music);
-    this.directGains.music.connect(this.masterGain);
+    for (const group of ['music', 'ambience', 'sfx'] as TrackGroup[]) {
+      this.channelGains[group].connect(this.chains[group].inputNode);
+      this.chains[group].outputNode.connect(this.masterGain);
+      this.chains[group].buildDefault();
+    }
 
-    this.channelGains.ambience.connect(this.directGains.ambience);
-    this.directGains.ambience.connect(this.masterGain);
-
-    this.channelGains.sfx.connect(this.directGains.sfx);
-    this.directGains.sfx.connect(this.masterGain);
-
-    this.initializeEffects();
-
-    Logger.info('AudioEngine initialized');
-  }
-
-  private initializeEffects(): void {
-    // Create one instance of each effect
-    const effectClasses = [
-      ReverbEffect,
-      FilterEffect,
-      DelayEffect,
-      CompressorEffect,
-      DistortionEffect
-    ];
-
-    effectClasses.forEach(EffectClass => {
-      const effect = new EffectClass(this.ctx);
-      // CRITICAL FIX: Use effect type as ID instead of UUID for sync compatibility with PlayerAudioEngine
-      const effectId = effect.type; // 'reverb', 'delay', 'filter', etc.
-      this.effects.set(effectId, effect);
-
-      // Connect Effect Output to Master Gain
-      effect.outputNode.connect(this.masterGain);
-
-      // Create Send Gains for each channel
-      (['music', 'ambience', 'sfx'] as TrackGroup[]).forEach(group => {
-        const sendGain = this.ctx.createGain();
-        sendGain.gain.value = 0; // Default off
-
-        // Connect Channel -> SendGain -> Effect Input
-        this.channelGains[group].connect(sendGain);
-        sendGain.connect(effect.inputNode);
-
-        this.sends[group].set(effectId, sendGain);
-      });
-    });
+    Logger.info('AudioEngine initialized (chain architecture)');
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -231,14 +176,12 @@ export class AudioEngine extends SimpleEventEmitter {
   // ─────────────────────────────────────────────────────────────
 
   async createTrack(config: TrackConfig): Promise<StreamingPlayer> {
-    // Generate UUID if not provided
     const trackId = config.id || generateUUID();
 
     if (this.players.has(trackId)) {
       return this.players.get(trackId)!;
     }
 
-    // Validate audio file format
     const validation = validateAudioFile(config.url);
     if (!validation.valid) {
       const error = new Error(validation.error || 'Invalid audio file');
@@ -263,10 +206,8 @@ export class AudioEngine extends SimpleEventEmitter {
 
     this.players.set(trackId, player);
 
-    // Wire up events
     player.onEnded = () => {
       this.emit('trackEnded', trackId);
-      // Also remove from active players map if needed, but StreamingPlayer handles state.
     };
 
     this.scheduleSave();
@@ -352,7 +293,6 @@ export class AudioEngine extends SimpleEventEmitter {
     this.scheduleSave();
   }
 
-
   stopAll(): void {
     for (const player of this.players.values()) {
       player.stop();
@@ -403,106 +343,61 @@ export class AudioEngine extends SimpleEventEmitter {
   }
 
   // ─────────────────────────────────────────────────────────────
-  // Effects Management
+  // Effects Chain Management
   // ─────────────────────────────────────────────────────────────
 
-  getAllEffects(): AudioEffect[] {
-    return Array.from(this.effects.values());
+  /** Get chain for a specific channel */
+  getChain(channel: TrackGroup): EffectChain {
+    return this.chains[channel];
   }
 
-  setEffectParam(effectId: string, paramId: string, value: any): void {
-    const effect = this.effects.get(effectId);
-    if (!effect) return;
+  /** Get all chains state for serialization / sync */
+  getAllChainsState(): ChannelChain[] {
+    return (['music', 'ambience', 'sfx'] as TrackGroup[]).map(
+      group => this.chains[group].getState()
+    );
+  }
 
-    effect.setParam(paramId, value);
+  /** Set effect parameter within a specific channel's chain */
+  setChainEffectParam(channel: TrackGroup, effectType: EffectType, paramId: string, value: any): void {
+    this.chains[channel].setEffectParam(effectType, paramId, value);
     this.scheduleSave();
   }
 
-  setEffectEnabled(effectId: string, enabled: boolean): void {
-    const effect = this.effects.get(effectId);
-    if (!effect) {
-      console.warn('[ASE GM] setEffectEnabled: Effect not found:', effectId);
-      return;
-    }
-
-    console.log('[ASE GM] setEffectEnabled:', effectId, enabled, 'effect.enabled before:', effect.enabled);
-    effect.setEnabled(enabled);
-    console.log('[ASE GM] effect.enabled after:', effect.enabled);
+  /** Enable/disable an effect within a channel's chain */
+  setChainEffectEnabled(channel: TrackGroup, effectType: EffectType, enabled: boolean): void {
+    this.chains[channel].setEffectEnabled(effectType, enabled);
     this.scheduleSave();
-
-    // Update dry levels for all channels that use this effect
-    (['music', 'ambience', 'sfx'] as TrackGroup[]).forEach(group => {
-      this.updateDryLevel(group);
-    });
   }
 
-  /**
-   * Toggle routing from a channel to an effect
-   */
-  setEffectRouting(effectId: string, channel: TrackGroup, enabled: boolean): void {
-    const channelSends = this.sends[channel];
-    const sendNode = channelSends.get(effectId);
-
-    console.log('[ASE GM] setEffectRouting:', effectId, channel, enabled, 'sendNode exists:', !!sendNode);
-    if (sendNode) {
-      console.log('[ASE GM] Setting send gain from', sendNode.gain.value, 'to', enabled ? 1 : 0);
-      // Smooth transition
-      sendNode.gain.setTargetAtTime(enabled ? 1 : 0, this.ctx.currentTime, 0.05);
-      this.scheduleSave();
-
-      // Update dry level for this channel
-      this.updateDryLevel(channel);
-    } else {
-      console.warn('[ASE GM] Send node not found for:', effectId, channel);
-    }
+  /** Set dry/wet mix for an effect within a channel's chain */
+  setChainEffectMix(channel: TrackGroup, effectType: EffectType, mix: number): void {
+    this.chains[channel].setEffectMix(effectType, mix);
+    this.scheduleSave();
   }
 
-  /**
-   * Checks active effects for the channel and adjusts direct (dry) gain.
-   * If an INSERT effect (Filter, Distortion, Compressor) is active + routed, 
-   * we duck the dry signal to 0.
-   */
-  private updateDryLevel(channel: TrackGroup): void {
-    let isInsertActive = false;
-    const insertTypes: EffectType[] = ['filter', 'distortion', 'compressor'];
-
-    for (const effect of this.effects.values()) {
-      // Check if effect is enabled globally
-      if (!effect.enabled) continue;
-
-      // Check if routed to this channel
-      const sendNode = this.sends[channel].get(effect.id);
-      const isRouted = (sendNode?.gain.value || 0) > 0.5; // Threshold check
-
-      if (isRouted && insertTypes.includes(effect.type)) {
-        isInsertActive = true;
-        break; // Found one, that's enough to mute dry
-      }
-    }
-
-    // If Insert is active, Dry = 0. Else Dry = 1.
-    const targetGain = isInsertActive ? 0 : 1;
-
-    // Smooth transition to avoid clicks
-    this.directGains[channel].gain.setTargetAtTime(targetGain, this.ctx.currentTime, 0.1);
-
-    Logger.debug(`Channel ${channel} dry level set to ${targetGain} (Insert Active: ${isInsertActive})`);
+  /** Reorder effects in a channel's chain */
+  reorderChainEffect(channel: TrackGroup, fromIndex: number, toIndex: number): void {
+    this.chains[channel].reorder(fromIndex, toIndex);
+    this.scheduleSave();
   }
 
-  getEffectState(effectId: string): EffectState | undefined {
-    const effect = this.effects.get(effectId);
-    if (!effect) return undefined;
+  /** Reorder by type array (from sync) */
+  reorderChainByTypes(channel: TrackGroup, order: EffectType[]): void {
+    this.chains[channel].reorderByTypes(order);
+    this.scheduleSave();
+  }
 
-    const state = effect.getState();
+  /** Add effect to a channel's chain */
+  addChainEffect(channel: TrackGroup, effectType: EffectType, atIndex?: number): void {
+    this.chains[channel].addEffect(effectType, atIndex);
+    this.scheduleSave();
+  }
 
-    // Inject current routing state
-    (['music', 'ambience', 'sfx'] as TrackGroup[]).forEach(group => {
-      const sendGain = this.sends[group].get(effectId);
-      // We consider it enabled if gain > 0.1
-      state.routing[group] = (sendGain?.gain.value || 0) > 0.1;
-    });
-
-    return state;
+  /** Remove effect from a channel's chain */
+  removeChainEffect(channel: TrackGroup, effectType: EffectType): void {
+    this.chains[channel].removeEffect(effectType);
+    this.scheduleSave();
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -520,7 +415,7 @@ export class AudioEngine extends SimpleEventEmitter {
       masterVolume: this._volumes.master,
       channelVolumes: { ...this._volumes },
       tracks,
-      effects: this.getAllEffects().map(e => this.getEffectState(e.type)!),
+      chains: this.getAllChainsState(),
       timestamp: getServerTime(),
       syncEnabled: false
     };
@@ -538,26 +433,18 @@ export class AudioEngine extends SimpleEventEmitter {
       }
     }
 
-    // Restore Effects
-    if (state.effects) {
-      for (const fxState of state.effects) {
-        // Find by Type since IDs might be regenerated on reload if not persistent?
-        // Actually, IDs are persistent in state. But we initialized new effects with random IDs in constructor.
-        // We need to match by TYPE because we have exactly 1 of each type.
-
-        const effect = Array.from(this.effects.values()).find(e => e.type === fxState.type);
-        if (effect) {
-          // Restore Params
-          for (const [key, value] of Object.entries(fxState.params)) {
-            effect.setParam(key, value);
-          }
-
-          // Restore Routing
-          for (const [group, enabled] of Object.entries(fxState.routing)) {
-            this.setEffectRouting(effect.id, group as TrackGroup, enabled as boolean);
-          }
+    // Restore chains (new format)
+    if (state.chains && state.chains.length > 0) {
+      for (const chainState of state.chains) {
+        const chain = this.chains[chainState.channel];
+        if (chain) {
+          chain.restoreState(chainState);
         }
       }
+    }
+    // Migration: old format (effects[] without chains[])
+    else if (state.effects && state.effects.length > 0) {
+      this.migrateFromLegacyEffects(state.effects);
     }
 
     // Restore tracks (without playing)
@@ -582,6 +469,28 @@ export class AudioEngine extends SimpleEventEmitter {
       if (!stateTrackIds.has(id)) {
         this.removeTrack(id);
       }
+    }
+  }
+
+  /** Migrate from old parallel send architecture to chain architecture */
+  private migrateFromLegacyEffects(effects: EffectState[]): void {
+    Logger.info('Migrating from legacy effects format to chain architecture');
+
+    for (const group of ['music', 'ambience', 'sfx'] as TrackGroup[]) {
+      const chainEffects = DEFAULT_CHAIN_ORDER.map(type => {
+        const oldEffect = effects.find(e => e.type === type);
+        return {
+          type,
+          enabled: oldEffect ? (oldEffect.enabled && oldEffect.routing[group]) : false,
+          mix: DEFAULT_MIX[type] ?? 1.0,
+          params: oldEffect?.params || {},
+        };
+      });
+
+      this.chains[group].restoreState({
+        channel: group,
+        effects: chainEffects,
+      });
     }
   }
 
@@ -613,10 +522,9 @@ export class AudioEngine extends SimpleEventEmitter {
     }
     this.players.clear();
 
-    for (const effect of this.effects.values()) {
-      effect.dispose();
+    for (const chain of Object.values(this.chains)) {
+      chain.dispose();
     }
-    this.effects.clear();
 
     this.ctx.close();
     Logger.info('AudioEngine disposed');
