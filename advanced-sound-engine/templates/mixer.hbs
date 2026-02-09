@@ -55,10 +55,39 @@
       {{#each queuePlaylists}}
       <div class="ase-queue-playlist {{#if collapsed}}is-collapsed{{/if}}" data-playlist-id="{{id}}">
         {{!-- Playlist Header --}}
-        <div class="ase-queue-playlist-header" data-action="toggle-playlist">
-          <i class="fa-solid fa-chevron-down ase-collapse-icon"></i>
-          <span class="ase-playlist-name">{{name}}</span>
-          <span class="ase-playlist-count">({{tracks.length}} tracks)</span>
+        <div class="ase-queue-playlist-header" data-playlist-id="{{id}}">
+          <div class="ase-playlist-header-left" data-action="toggle-playlist">
+            <i class="fa-solid fa-chevron-down ase-collapse-icon"></i>
+            <span class="ase-playlist-name">{{name}}</span>
+            <span class="ase-playlist-count">({{activeTrackCount}}/{{totalTrackCount}} tracks)</span>
+          </div>
+          <div class="ase-playlist-header-controls">
+            {{!-- Play/Pause Toggle --}}
+            {{#if hasPlayingTracks}}
+            <button class="btn-icon" data-action="pause-playlist" title="Pause All">
+              <i class="fa-solid fa-pause"></i>
+            </button>
+            {{else}}
+            <button class="btn-icon" data-action="play-playlist" title="Play">
+              <i class="fa-solid fa-play"></i>
+            </button>
+            {{/if}}
+            {{!-- Stop --}}
+            <button class="btn-icon" data-action="stop-playlist" title="Stop All">
+              <i class="fa-solid fa-stop"></i>
+            </button>
+            {{!-- Playback Mode (only for real playlists, not ungrouped) --}}
+            {{#unless isUngrouped}}
+            <button class="btn-icon" data-action="playlist-mode-dropdown" data-playlist-id="{{id}}"
+              title="Playback Mode: {{playbackMode}}">
+              <i class="fa-solid {{#if (eq playbackMode 'linear')}}fa-arrow-right{{else if (eq playbackMode 'random')}}fa-shuffle{{else}}fa-repeat{{/if}}"></i>
+            </button>
+            {{/unless}}
+            {{!-- Remove/Clear --}}
+            <button class="btn-icon btn-delete-inline" data-action="remove-playlist" title="{{#if isUngrouped}}Clear Ungrouped{{else}}Remove Playlist{{/if}}">
+              <i class="fa-solid fa-trash"></i>
+            </button>
+          </div>
         </div>
 
         {{!-- Playlist Tracks --}}
