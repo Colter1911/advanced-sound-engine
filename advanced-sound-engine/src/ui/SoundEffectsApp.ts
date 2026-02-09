@@ -1,144 +1,284 @@
 import { AudioEngine } from '@core/AudioEngine';
 import { SocketManager } from '@sync/SocketManager';
 import { GlobalStorage } from '@storage/GlobalStorage';
-import type { EffectType, EffectState, EffectParam } from '@t/effects';
+import type { EffectType, EffectParam, EffectPreset } from '@t/effects';
+import { BUILTIN_PRESETS } from '@core/effects/presets';
 import type { TrackGroup } from '@t/audio';
 import { Logger } from '@utils/logger';
 
 const MODULE_ID = 'advanced-sound-engine';
 
+// ─── View Data Types ───────────────────────────────────────────
+
+interface ParamViewData {
+    id: string;
+    name: string;
+    type: 'float' | 'boolean' | 'select';
+    value: number | boolean | string;
+    displayValue: string;
+    min?: number;
+    max?: number;
+    step?: number;
+    suffix?: string;
+    options?: { label: string; value: string }[];
+}
+
+interface PedalViewData {
+    type: EffectType;
+    enabled: boolean;
+    mix: number;
+    mixPercent: number;
+    mixRotation: number;
+    chainIndex: number;
+    selected: boolean;
+    params: ParamViewData[];
+}
+
+interface EffectsViewData {
+    activeChannel: TrackGroup;
+    pedals: PedalViewData[];
+    selectedEffect: PedalViewData | null;
+    musicActiveCount: number;
+    ambienceActiveCount: number;
+    sfxActiveCount: number;
+    builtinPresets: EffectPreset[];
+    customPresets: EffectPreset[];
+}
+
+// ─── Controller ────────────────────────────────────────────────
+
 export class SoundEffectsApp {
     private engine: AudioEngine;
     private socket: SocketManager;
-    private storage: GlobalStorage;
     private html: JQuery | null = null;
     private renderParent: (() => void) | null = null;
-    private updateInterval: ReturnType<typeof setInterval> | null = null;
 
-    constructor(
-        engine: AudioEngine,
-        socket: SocketManager,
-        storage: GlobalStorage
-    ) {
+    private activeChannel: TrackGroup = 'music';
+    private selectedEffectType: EffectType | null = null;
+
+    constructor(engine: AudioEngine, socket: SocketManager) {
         this.engine = engine;
         this.socket = socket;
-        this.storage = storage;
     }
 
     setRenderCallback(callback: () => void): void {
         this.renderParent = callback;
     }
 
-    async getData() {
+    // ─────────────────────────────────────────────────────────────
+    // Data Provider
+    // ─────────────────────────────────────────────────────────────
+
+    async getData(): Promise<EffectsViewData> {
         try {
-            // Load presets
-            const presets = await GlobalStorage.loadPresets();
+            const chain = this.engine.getChain(this.activeChannel);
+            const effects = chain.getEffects();
 
-            // Transform effects into view data
-            const effects = this.engine.getAllEffects().map(effect => {
-                const state = this.engine.getEffectState(effect.type)!;
+            const pedals: PedalViewData[] = effects.map((effect, index) => {
+                const state = effect.getChainState();
+                const mixPercent = Math.round(state.mix * 100);
+                const mixRotation = (state.mix * 270) - 135;
 
-                // Calculate Main Knob Rotation (Level)
-                // Range 0 to 2.0 -> -135deg to +135deg
-                const levelVal = (state.params['level'] as number) || 1.0;
-                const rotation = (levelVal / 2.0) * 270 - 135;
+                const params: ParamViewData[] = [];
+                for (const [key, param] of effect.getAllParams()) {
+                    if (key === 'level') continue;
+                    params.push({
+                        id: param.id,
+                        name: param.name,
+                        type: param.type,
+                        value: param.value,
+                        displayValue: this.formatParamValue(param),
+                        min: param.min,
+                        max: param.max,
+                        step: param.step,
+                        suffix: param.suffix,
+                        options: param.options,
+                    });
+                }
 
                 return {
-                    ...state,
-                    // Helper for template to render specific controls if needed
-                    isReverb: state.type === 'reverb',
-                    isDelay: state.type === 'delay',
-                    mainValue: levelVal.toFixed(2), // Display value
-                    mainParamRotation: rotation,
-                    // Add metadata for params (min, max, etc) which are not in state
-                    params: Object.entries(state.params).map(([key, value]) => {
-                        const paramConfig = (effect as any).params.get(key) as EffectParam;
-                        // Skip 'level' from the list if we treat it as the main knob only?
-                        // Or keep it as a slider too for precision? Let's keep it for now or hide it via CSS if needed.
-                        // Actually, let's filter it out from the list if it's the main knob to avoid duplication? 
-                        // No, let's keep it in the list for now, user might want fine control.
-                        return {
-                            ...paramConfig,
-                            value: value
-                        };
-                    }).filter(p => p.id !== 'level') // Filter out level from the slider list to avoid clutter
+                    type: state.type,
+                    enabled: state.enabled,
+                    mix: state.mix,
+                    mixPercent,
+                    mixRotation,
+                    chainIndex: index,
+                    selected: state.type === this.selectedEffectType,
+                    params,
                 };
             });
 
-            // Sort order: Reverb, Filter, Delay, Compressor, Distortion
-            const sortOrder: EffectType[] = ['reverb', 'filter', 'delay', 'compressor', 'distortion'];
-            effects.sort((a, b) => sortOrder.indexOf(a.type) - sortOrder.indexOf(b.type));
+            // Load presets
+            const allPresets = await GlobalStorage.loadPresets();
+            const builtinPresets = allPresets.filter(p => p.builtIn);
+            const customPresets = allPresets.filter(p => !p.builtIn);
 
             return {
-                effects,
-                presets
+                activeChannel: this.activeChannel,
+                pedals,
+                selectedEffect: pedals.find(p => p.selected) || null,
+                musicActiveCount: this.engine.getChain('music').getActiveCount(),
+                ambienceActiveCount: this.engine.getChain('ambience').getActiveCount(),
+                sfxActiveCount: this.engine.getChain('sfx').getActiveCount(),
+                builtinPresets,
+                customPresets,
             };
         } catch (error) {
-            Logger.error('Failed to get data for SoundEffectsApp:', error);
-            // Return safe default data to allow render
+            Logger.error('SoundEffectsApp getData failed:', error);
             return {
-                effects: [],
-                presets: []
+                activeChannel: this.activeChannel,
+                pedals: [],
+                selectedEffect: null,
+                musicActiveCount: 0,
+                ambienceActiveCount: 0,
+                sfxActiveCount: 0,
+                builtinPresets: [...BUILTIN_PRESETS],
+                customPresets: [],
             };
         }
     }
 
+    private formatParamValue(param: EffectParam): string {
+        if (param.type === 'select') return String(param.value);
+        if (param.type === 'boolean') return param.value ? 'ON' : 'OFF';
+        const num = Number(param.value);
+        const formatted = Number.isInteger(num) ? num.toString() : num.toFixed(2);
+        return param.suffix ? `${formatted}${param.suffix}` : formatted;
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Event Listeners
+    // ─────────────────────────────────────────────────────────────
+
     activateListeners(html: JQuery): void {
         this.html = html;
 
-        console.log("AudioSoundEngine | SoundEffectsApp | View Loaded");
+        // Channel tabs
+        html.off('click', '.ase-channel-tab').on('click', '.ase-channel-tab', (e) => this.onChannelSwitch(e));
 
-        // Event Delegation for Enable Toggle
-        // IMPORTANT: Unbind first to prevent conflicting multiple listeners on root element re-renders
-        html.off('click', '.ase-effect-toggle').on('click', '.ase-effect-toggle', (e) => this.onToggleEnable(e));
+        // Pedal card click → select
+        html.off('click', '.ase-pedal-card').on('click', '.ase-pedal-card', (e) => this.onPedalSelect(e));
 
-        // Routing Buttons
-        html.off('click', '[data-action="toggle-route"]').on('click', '[data-action="toggle-route"]', (e) => this.onToggleRoute(e));
+        // Footswitch → toggle bypass (stop propagation to avoid select)
+        html.off('click', '.ase-pedal-footswitch').on('click', '.ase-pedal-footswitch', (e) => {
+            e.stopPropagation();
+            this.onToggleBypass(e);
+        });
 
-        // Knobs / Sliders
-        // These are direct binds to new elements (found via find), so no accumulation issue, 
-        // but ensuring cleanliness is good practice if elements weren't replaced. 
-        // Since re-render replaces content, direct binds are fine.
-        html.find('.ase-param-slider').on('input', (e) => this.onParamChange(e));
-        html.find('.ase-param-input').on('change', (e) => this.onParamChange(e));
+        // Pedal knob drag (mix on card)
+        html.find('.ase-pedal-knob').on('mousedown', (e) => {
+            e.stopPropagation();
+            this.onKnobDrag(e, 'pedal');
+        });
 
-        // Circular Knob Interaction
-        html.find('.ase-knob-circle').on('mousedown', (e) => this.onKnobCheck(e));
+        // Detail panel mix knob drag
+        html.find('.ase-detail-knob').on('mousedown', (e) => this.onKnobDrag(e, 'detail'));
+
+        // Detail panel sliders
+        html.find('.ase-detail-slider').on('input', (e) => this.onDetailParamSlider(e));
+
+        // Detail panel segmented buttons
+        html.off('click', '.ase-seg-btn').on('click', '.ase-seg-btn', (e) => this.onDetailParamSelect(e));
 
         // Presets
-        html.find('[data-action="save-preset"]').on('click', (e) => this.onSavePreset(e));
         html.find('#ase-preset-select').on('change', (e) => this.onLoadPreset(e));
+        html.off('click', '[data-action="save-preset"]').on('click', '[data-action="save-preset"]', (e) => this.onSavePreset(e));
+        html.off('click', '[data-action="reset-chain"]').on('click', '[data-action="reset-chain"]', (e) => this.onResetChain(e));
+
+        // Drag-and-drop
+        this.initDragAndDrop(html);
     }
 
-    private onKnobCheck(event: JQuery.TriggeredEvent): void {
-        const $knob = $(event.currentTarget);
-        const $card = $knob.closest('.ase-effect-card');
-        const effectId = $card.data('effect-id') as string;
+    // ─────────────────────────────────────────────────────────────
+    // Channel Switch
+    // ─────────────────────────────────────────────────────────────
 
-        const startY = (event as any).pageY;
-        // We need to know current value to offset
-        // But since we are directly manipulating styling/value, we can read from engine or DOM
-        // Simpler: just use delta to inc/dec
-        const state = this.engine.getEffectState(effectId)!;
-        let currentValue = (state.params['level'] as number) || 1.0;
+    private onChannelSwitch(event: JQuery.ClickEvent): void {
+        event.preventDefault();
+        const channel = $(event.currentTarget).data('channel') as TrackGroup;
+        if (channel === this.activeChannel) return;
+
+        this.activeChannel = channel;
+        this.selectedEffectType = null;
+        this.renderParent?.();
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Pedal Select
+    // ─────────────────────────────────────────────────────────────
+
+    private onPedalSelect(event: JQuery.ClickEvent): void {
+        const effectType = $(event.currentTarget).data('effect-type') as EffectType;
+
+        if (this.selectedEffectType === effectType) {
+            this.selectedEffectType = null;
+        } else {
+            this.selectedEffectType = effectType;
+        }
+
+        this.renderParent?.();
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Footswitch (Bypass Toggle)
+    // ─────────────────────────────────────────────────────────────
+
+    private onToggleBypass(event: JQuery.ClickEvent): void {
+        const $card = $(event.currentTarget).closest('.ase-pedal-card');
+        const effectType = $card.data('effect-type') as EffectType;
+        const wasActive = $card.hasClass('active');
+        const newEnabled = !wasActive;
+
+        this.engine.setChainEffectEnabled(this.activeChannel, effectType, newEnabled);
+        this.socket.broadcastEffectEnabled(this.activeChannel, effectType, newEnabled);
+
+        // Optimistic UI update
+        $card.toggleClass('active', newEnabled);
+        $card.find('.ase-pedal-led').toggleClass('on', newEnabled);
+        $card.find('.ase-pedal-footswitch').toggleClass('engaged', newEnabled);
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Knob Drag (shared for pedal & detail mix knobs)
+    // ─────────────────────────────────────────────────────────────
+
+    private onKnobDrag(event: JQuery.MouseDownEvent, source: 'pedal' | 'detail'): void {
+        const $knob = $(event.currentTarget);
+        let effectType: EffectType;
+
+        if (source === 'pedal') {
+            effectType = $knob.closest('.ase-pedal-card').data('effect-type') as EffectType;
+        } else {
+            if (!this.selectedEffectType) return;
+            effectType = this.selectedEffectType;
+        }
+
+        const chain = this.engine.getChain(this.activeChannel);
+        const effect = chain.getEffect(effectType);
+        if (!effect) return;
+
+        const startY = event.pageY;
+        let currentMix = effect.mix;
 
         const onMouseMove = (moveEvent: JQuery.TriggeredEvent) => {
             const pageY = (moveEvent as any).pageY || (moveEvent.originalEvent as MouseEvent).pageY;
-            const deltaY = startY - pageY; // Up is positive
-            const sensitivity = 0.01;
-            let newValue = currentValue + (deltaY * sensitivity);
+            const deltaY = startY - pageY;
+            const sensitivity = 0.005;
+            const newMix = Math.max(0, Math.min(1, currentMix + (deltaY * sensitivity)));
 
-            // Clamp 0 to 2.0
-            newValue = Math.max(0, Math.min(2.0, newValue));
+            // Update UI on all matching knobs
+            const rotation = (newMix * 270) - 135;
+            if (this.html) {
+                const $pedalCard = this.html.find(`.ase-pedal-card[data-effect-type="${effectType}"]`);
+                $pedalCard.find('.ase-pedal-knob').css('--knob-rotation', `${rotation}deg`);
+                $pedalCard.find('.ase-pedal-mix-value').text(`${Math.round(newMix * 100)}%`);
 
-            // Update UI immediately
-            const rotation = (newValue / 2.0) * 270 - 135;
-            $knob.css('--knob-rotation', `${rotation}deg`);
-            $knob.find('.ase-knob-value').text(newValue.toFixed(2));
+                this.html.find('.ase-detail-knob').css('--knob-rotation', `${rotation}deg`);
+                this.html.find('.ase-detail-knob-label').text(`Mix ${Math.round(newMix * 100)}%`);
+            }
 
-            // Update Engine
-            this.engine.setEffectParam(effectId, 'level', newValue);
-            this.socket.broadcastEffectParam(effectId, 'level', newValue);
+            this.engine.setChainEffectMix(this.activeChannel, effectType, newMix);
+            this.socket.broadcastChainEffectMix(this.activeChannel, effectType, newMix);
         };
 
         const onMouseUp = () => {
@@ -150,165 +290,202 @@ export class SoundEffectsApp {
         $(document).on('mouseup', onMouseUp as any);
     }
 
-    private onToggleEnable(event: JQuery.ClickEvent): void {
-        event.preventDefault();
+    // ─────────────────────────────────────────────────────────────
+    // Detail Panel: Param Slider
+    // ─────────────────────────────────────────────────────────────
 
-        const $toggle = $(event.currentTarget);
-        const $card = $toggle.closest('.ase-effect-card');
-        const effectId = $card.data('effect-id') as string;
+    private onDetailParamSlider(event: JQuery.TriggeredEvent): void {
+        if (!this.selectedEffectType) return;
 
-        const wasEnabled = $card.hasClass('enabled');
-        const newState = !wasEnabled;
-
-        this.engine.setEffectEnabled(effectId, newState);
-        this.socket.broadcastEffectEnabled(effectId, newState);
-
-        // UI Update
-        if (newState) {
-            $card.addClass('enabled');
-        } else {
-            $card.removeClass('enabled');
-        }
-    }
-
-    private onToggleRoute(event: JQuery.ClickEvent): void {
-        event.preventDefault();
-        const $btn = $(event.currentTarget);
-        const $card = $btn.closest('.ase-effect-card');
-        const effectId = $card.data('effect-id') as string;
-        const channel = $btn.data('channel') as TrackGroup;
-
-        const isActive = $btn.hasClass('active');
-        const newState = !isActive;
-
-        this.engine.setEffectRouting(effectId, channel, newState);
-        this.socket.broadcastEffectRouting(effectId, channel, newState);
-
-        // UI Update immediately for responsiveness
-        if (newState) $btn.addClass('active');
-        else $btn.removeClass('active');
-    }
-
-    private onParamChange(event: JQuery.TriggeredEvent): void {
         const $input = $(event.currentTarget);
-        const $card = $input.closest('.ase-effect-card');
-        const effectId = $card.data('effect-id') as string;
         const paramId = $input.data('param-id') as string;
+        const value = parseFloat($input.val() as string);
 
-        let value: string | number | boolean = $input.val() as string;
+        this.engine.setChainEffectParam(this.activeChannel, this.selectedEffectType, paramId, value);
+        this.socket.broadcastEffectParam(this.activeChannel, this.selectedEffectType, paramId, value);
 
-        // Check type of param
-        if ($input.attr('type') === 'range') {
-            value = parseFloat(value);
-            // Update display value
-            $card.find(`.ase-param-control:has([data-param-id="${paramId}"]) .ase-param-val`).text(value); // Hacky selector
-            // Better:
-            $input.siblings('.ase-param-val').text(value);
-        }
+        // Update display value
+        const suffix = $input.data('suffix') || '';
+        const $row = $input.closest('.ase-detail-param-row');
+        const formatted = Number.isInteger(value) ? value.toString() : value.toFixed(2);
+        $row.find('.ase-detail-param-value').text(`${formatted}${suffix}`);
 
-        this.engine.setEffectParam(effectId, paramId, value);
-        this.socket.broadcastEffectParam(effectId, paramId, value);
+        // Update slider fill
+        const min = parseFloat($input.attr('min') || '0');
+        const max = parseFloat($input.attr('max') || '1');
+        const fill = ((value - min) / (max - min)) * 100;
+        $input.css('--slider-fill', `${fill}%`);
     }
 
+    // ─────────────────────────────────────────────────────────────
+    // Detail Panel: Select Param (segmented buttons)
+    // ─────────────────────────────────────────────────────────────
+
+    private onDetailParamSelect(event: JQuery.ClickEvent): void {
+        event.preventDefault();
+        if (!this.selectedEffectType) return;
+
+        const $btn = $(event.currentTarget);
+        const paramId = $btn.data('param-id') as string;
+        const value = $btn.data('value') as string;
+
+        this.engine.setChainEffectParam(this.activeChannel, this.selectedEffectType, paramId, value);
+        this.socket.broadcastEffectParam(this.activeChannel, this.selectedEffectType, paramId, value);
+
+        // UI update
+        $btn.siblings().removeClass('active');
+        $btn.addClass('active');
+
+        const $row = $btn.closest('.ase-detail-param-row');
+        $row.find('.ase-detail-param-value').text(value);
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Drag and Drop Reorder
+    // ─────────────────────────────────────────────────────────────
+
+    private initDragAndDrop(html: JQuery): void {
+        const $pedalboard = html.find('.ase-pedalboard');
+        if (!$pedalboard.length) return;
+
+        html.find('.ase-pedal-card').each((_, el) => {
+            el.addEventListener('dragstart', (e: DragEvent) => {
+                if (!e.dataTransfer) return;
+                e.dataTransfer.setData('text/plain', JSON.stringify({
+                    effectType: el.dataset.effectType,
+                    chainIndex: el.dataset.chainIndex,
+                }));
+                e.dataTransfer.effectAllowed = 'move';
+                $(el).addClass('dragging');
+            });
+
+            el.addEventListener('dragend', () => {
+                $(el).removeClass('dragging');
+                html.find('.ase-drop-zone').removeClass('drag-over');
+            });
+        });
+
+        html.find('.ase-drop-zone').each((_, zone) => {
+            zone.addEventListener('dragover', (e: DragEvent) => {
+                e.preventDefault();
+                if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+                $(zone).addClass('drag-over');
+            });
+
+            zone.addEventListener('dragleave', () => {
+                $(zone).removeClass('drag-over');
+            });
+
+            zone.addEventListener('drop', (e: DragEvent) => {
+                e.preventDefault();
+                $(zone).removeClass('drag-over');
+                if (!e.dataTransfer) return;
+
+                const data = JSON.parse(e.dataTransfer.getData('text/plain'));
+                const fromIndex = parseInt(data.chainIndex, 10);
+                const toIndex = parseInt((zone as HTMLElement).dataset.dropIndex || '0', 10);
+
+                if (fromIndex !== toIndex && fromIndex !== toIndex - 1) {
+                    const adjustedTo = fromIndex < toIndex ? toIndex - 1 : toIndex;
+                    this.engine.reorderChainEffect(this.activeChannel, fromIndex, adjustedTo);
+
+                    const newOrder = this.engine.getChain(this.activeChannel).getOrder();
+                    this.socket.broadcastChainReorder(this.activeChannel, newOrder);
+                    this.renderParent?.();
+                }
+            });
+        });
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Presets
+    // ─────────────────────────────────────────────────────────────
+
+    private async onLoadPreset(event: JQuery.ChangeEvent): Promise<void> {
+        const presetId = $(event.currentTarget).val() as string;
+        if (!presetId) return;
+
+        const allPresets = await GlobalStorage.loadPresets();
+        const preset = allPresets.find(p => p.id === presetId);
+        if (!preset || !preset.chains) return;
+
+        // Apply preset chains to all channels
+        for (const chainState of preset.chains) {
+            const chain = this.engine.getChain(chainState.channel as TrackGroup);
+            if (chain) {
+                chain.restoreState(chainState);
+            }
+        }
+
+        this.socket.broadcastFullState();
+        ui.notifications?.info(`Loaded preset: ${preset.name}`);
+        this.renderParent?.();
+
+        // Reset select
+        $(event.currentTarget).val('');
+    }
 
     private async onSavePreset(event: JQuery.ClickEvent): Promise<void> {
         event.preventDefault();
 
-        // Get preset name
         const content = `
             <div class="form-group">
                 <label>Preset Name</label>
-                <input type="text" name="name" placeholder="My Cool Preset"/>
+                <input type="text" name="name" placeholder="My Custom Preset"/>
+            </div>
+            <div class="form-group">
+                <label>Description (optional)</label>
+                <input type="text" name="description" placeholder="Short description..."/>
             </div>
         `;
 
         new Dialog({
             title: "Save Effect Preset",
-            content: content,
+            content,
             buttons: {
                 save: {
                     label: "Save",
                     callback: async (html: JQuery) => {
                         const name = html.find('input[name="name"]').val() as string;
                         if (!name) return;
+                        const description = html.find('input[name="description"]').val() as string;
 
-                        await this.savePreset(name);
+                        const newPreset: EffectPreset = {
+                            id: `custom-${Date.now()}`,
+                            name,
+                            description: description || undefined,
+                            builtIn: false,
+                            chains: this.engine.getAllChainsState(),
+                        };
+
+                        const allPresets = await GlobalStorage.loadPresets();
+                        allPresets.push(newPreset);
+                        await GlobalStorage.savePresets(allPresets);
+
+                        ui.notifications?.info(`Saved preset: ${name}`);
+                        this.renderParent?.();
                     }
                 }
             }
         }).render(true);
     }
 
-    private async savePreset(name: string): Promise<void> {
-        // Collect state
-        const effects = this.engine.getAllEffects().map(e => this.engine.getEffectState(e.id)!);
+    private onResetChain(event: JQuery.ClickEvent): void {
+        event.preventDefault();
 
-        const newPreset = {
-            id: generateUUID(), // We need a UUID helper or just Math.random
-            name,
-            effects
-        };
+        const chain = this.engine.getChain(this.activeChannel);
+        chain.buildDefault();
+        this.selectedEffectType = null;
 
-        // Load existing, append, save
-        const presets = await GlobalStorage.loadPresets();
-        presets.push(newPreset);
-        await GlobalStorage.savePresets(presets);
-
-        ui.notifications?.info(`Saved preset: ${name}`);
+        this.socket.broadcastFullState();
         this.renderParent?.();
     }
 
-    private async onLoadPreset(event: JQuery.ChangeEvent): Promise<void> {
-        const presetId = $(event.currentTarget).val() as string;
-        if (!presetId) return;
-
-        const presets = await GlobalStorage.loadPresets();
-        const preset = presets.find((p: any) => p.id === presetId);
-
-        if (preset) {
-            // Apply all effects
-            for (const effectState of preset.effects) {
-                // Determine if we match by ID or Type
-                // Since Effect IDs might change or be fixed, matching by Type is safer for a Rack
-                // But if we support multiple instances of same type, we need index or ID
-                // For now, Single Rack (one of each type)
-
-                const existingEffect = this.engine.getAllEffects().find(e => e.type === effectState.type);
-                if (existingEffect) {
-                    // Apply PArsims
-                    for (const [key, value] of Object.entries(effectState.params)) {
-                        this.engine.setEffectParam(existingEffect.id, key, value);
-                    }
-
-                    // Apply Routing
-                    if (effectState.routing) {
-                        // engine.setRouting? engine.setEffectRouting
-                        for (const [group, active] of Object.entries(effectState.routing)) {
-                            this.engine.setEffectRouting(existingEffect.id, group as any, active as boolean);
-                        }
-                    }
-
-                    // Apply Enabled?
-                    // engine.setEffectEnabled?
-                }
-            }
-            ui.notifications?.info(`Loaded preset: ${preset.name}`);
-            this.renderParent?.();
-
-            // Broadcast full state to sync all clients
-            this.socket.broadcastFullState();
-        }
-    }
+    // ─────────────────────────────────────────────────────────────
+    // Cleanup
+    // ─────────────────────────────────────────────────────────────
 
     destroy(): void {
         this.html = null;
     }
-}
-
-// Helper if not imported
-function generateUUID() {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
-        var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
-        return v.toString(16);
-    });
 }
