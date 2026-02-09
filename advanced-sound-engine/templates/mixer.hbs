@@ -12,26 +12,29 @@
         <li class="ase-list-item ase-favorite-item {{#if isPlaying}}is-playing{{else if isPaused}}is-paused{{/if}}"
           data-favorite-id="{{id}}" data-favorite-type="{{type}}">
           <div class="ase-favorite-info">
-            {{#if (eq type 'playlist')}}
-            <i class="fa-solid fa-list ase-type-icon"></i>
-            {{else}}
-            {{#if (eq group 'sfx')}}
-            <i class="fa-solid fa-bolt ase-type-icon"></i>
-            {{else if (eq group 'ambience')}}
-            <i class="fa-solid fa-cloud ase-type-icon"></i>
-            {{else}}
-            <i class="fa-solid fa-music ase-type-icon"></i>
-            {{/if}}
-            {{/if}}
             <span>{{name}}</span>
           </div>
           <div class="ase-icons">
             <i class="ase-icon-add-queue {{#if inQueue}}active{{/if}}" data-action="add-to-queue-from-favorite"
               data-favorite-id="{{id}}" data-favorite-type="{{type}}" title="Add to Queue"></i>
+            {{!-- Play/Pause Toggle --}}
+            {{#if isPlaying}}
+            <i class="fa-solid fa-pause" data-action="pause-favorite" data-favorite-id="{{id}}"
+              data-favorite-type="{{type}}" title="Pause"></i>
+            {{else}}
             <i class="fa-solid fa-play" data-action="play-favorite" data-favorite-id="{{id}}"
               data-favorite-type="{{type}}" title="Play"></i>
+            {{/if}}
+            {{!-- Stop --}}
             <i class="fa-solid fa-stop" data-action="stop-favorite" data-favorite-id="{{id}}"
               data-favorite-type="{{type}}" title="Stop"></i>
+            {{!-- Playback Mode --}}
+            <i class="fa-solid ase-mode-icon {{#if (eq playbackMode 'single')}}fa-arrow-right-to-line{{else if (eq playbackMode 'linear')}}fa-arrow-right{{else if (eq playbackMode 'loop')}}fa-repeat{{else if (eq playbackMode 'random')}}fa-shuffle{{else}}fa-arrow-turn-down{{/if}}"
+              data-action="favorite-mode-dropdown" data-favorite-id="{{id}}" data-favorite-type="{{type}}"
+              title="Playback Mode: {{playbackMode}}"></i>
+            {{!-- Favorite Star --}}
+            <i class="fa-solid fa-star active" data-action="toggle-mixer-favorite" data-favorite-id="{{id}}"
+              data-favorite-type="{{type}}" title="Remove from Favorites"></i>
           </div>
         </li>
         {{else}}

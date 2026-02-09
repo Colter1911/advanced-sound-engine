@@ -4316,21 +4316,32 @@ const _SoundMixerApp = class _SoundMixerApp {
             group: item.group,
             isPlaying: (player == null ? void 0 : player.state) === "playing",
             isPaused: (player == null ? void 0 : player.state) === "paused",
-            inQueue
+            inQueue,
+            playbackMode: item.playbackMode || "inherit",
+            isFavorite: true
           });
         }
       } else if (fav.type === "playlist") {
         const playlist = this.libraryManager.playlists.getPlaylist(fav.id);
         if (playlist) {
+          const playlistTracks = this.libraryManager.playlists.getPlaylistTracks(fav.id);
+          let isPlaying = false;
+          let isPaused = false;
+          for (const pt of playlistTracks) {
+            const player = this.engine.getTrack(pt.libraryItemId);
+            if ((player == null ? void 0 : player.state) === "playing") isPlaying = true;
+            if ((player == null ? void 0 : player.state) === "paused") isPaused = true;
+          }
           favorites.push({
             id: playlist.id,
             name: playlist.name,
             type: "playlist",
             group: void 0,
-            isPlaying: false,
-            // Playlists don't have individual play state
-            isPaused: false,
-            inQueue
+            isPlaying,
+            isPaused: !isPlaying && isPaused,
+            inQueue,
+            playbackMode: playlist.playbackMode || "loop",
+            isFavorite: true
           });
         }
       }
@@ -4434,6 +4445,8 @@ const _SoundMixerApp = class _SoundMixerApp {
     html.find('[data-action="pause-favorite"]').on("click", (e) => this.onPauseFavorite(e));
     html.find('[data-action="stop-favorite"]').on("click", (e) => this.onStopFavorite(e));
     html.find('[data-action="add-to-queue-from-favorite"]').on("click", (e) => this.onAddToQueueFromFavorite(e));
+    html.find('[data-action="favorite-mode-dropdown"]').on("click", (e) => this.onFavoriteModeClick(e));
+    html.find('[data-action="toggle-mixer-favorite"]').on("click", (e) => this.onToggleMixerFavorite(e));
     html.find('[data-action="play-queue"]').on("click", (e) => this.onPlayQueueItem(e));
     html.find('[data-action="pause-queue"]').on("click", (e) => this.onPauseQueueItem(e));
     html.find('[data-action="stop-queue"]').on("click", (e) => this.onStopQueueItem(e));
@@ -4540,6 +4553,14 @@ const _SoundMixerApp = class _SoundMixerApp {
     const type = $el.data("favorite-type");
     if (type === "track") {
       this.pauseTrack(id);
+    } else {
+      const tracks = this.libraryManager.playlists.getPlaylistTracks(id);
+      for (const track of tracks) {
+        const player = this.engine.getTrack(track.libraryItemId);
+        if ((player == null ? void 0 : player.state) === "playing") {
+          this.pauseTrack(track.libraryItemId);
+        }
+      }
     }
     this.requestRender();
   }
@@ -4553,6 +4574,53 @@ const _SoundMixerApp = class _SoundMixerApp {
       this.stopTrack(id);
     } else {
       this.stopPlaylist(id);
+    }
+    this.requestRender();
+  }
+  onFavoriteModeClick(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    const btn = $(event.currentTarget);
+    const id = btn.data("favorite-id");
+    const type = btn.data("favorite-type");
+    if (type === "track") {
+      const item = this.libraryManager.getItem(id);
+      if (!item) return;
+      const modes = [
+        { label: "Inherit (Default)", value: "inherit", icon: "fa-arrow-turn-down" },
+        { label: "Loop", value: "loop", icon: "fa-repeat" },
+        { label: "Single", value: "single", icon: "fa-arrow-right-to-line" },
+        { label: "Linear", value: "linear", icon: "fa-arrow-right" },
+        { label: "Random", value: "random", icon: "fa-shuffle" }
+      ];
+      this.showModeContextMenu(event, modes, (mode) => {
+        this.libraryManager.updateItem(id, { playbackMode: mode });
+        this.requestRender();
+      });
+    } else {
+      const playlist = this.libraryManager.playlists.getPlaylist(id);
+      if (!playlist) return;
+      const modes = [
+        { label: "Loop (Default)", value: "loop", icon: "fa-repeat" },
+        { label: "Linear", value: "linear", icon: "fa-arrow-right" },
+        { label: "Random", value: "random", icon: "fa-shuffle" }
+      ];
+      this.showModeContextMenu(event, modes, (mode) => {
+        this.libraryManager.playlists.updatePlaylist(id, { playbackMode: mode });
+        this.requestRender();
+      });
+    }
+  }
+  onToggleMixerFavorite(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    const btn = $(event.currentTarget);
+    const id = btn.data("favorite-id");
+    const type = btn.data("favorite-type");
+    if (type === "track") {
+      this.libraryManager.toggleFavorite(id);
+    } else {
+      this.libraryManager.playlists.togglePlaylistFavorite(id);
     }
     this.requestRender();
   }
@@ -5071,6 +5139,53 @@ const _SoundMixerApp = class _SoundMixerApp {
       } else {
         $headerIcon.removeClass("fa-pause").addClass("fa-play");
         $headerBtn.attr("data-action", "play-playlist").attr("title", "Play");
+      }
+    });
+    this.html.find(".ase-favorite-item").each((_, el) => {
+      const $fav = $(el);
+      const favId = $fav.data("favorite-id");
+      const favType = $fav.data("favorite-type");
+      let isPlaying = false;
+      let isPaused = false;
+      if (favType === "track") {
+        const player = this.engine.getTrack(favId);
+        isPlaying = (player == null ? void 0 : player.state) === "playing";
+        isPaused = (player == null ? void 0 : player.state) === "paused";
+      } else {
+        const tracks = this.libraryManager.playlists.getPlaylistTracks(favId);
+        for (const pt of tracks) {
+          const player = this.engine.getTrack(pt.libraryItemId);
+          if ((player == null ? void 0 : player.state) === "playing") isPlaying = true;
+          if ((player == null ? void 0 : player.state) === "paused") isPaused = true;
+        }
+        if (isPlaying) isPaused = false;
+      }
+      const $btn = $fav.find('[data-action="play-favorite"], [data-action="pause-favorite"]');
+      const $icon = $btn.find("i").length ? $btn.find("i") : $btn;
+      if (isPlaying) {
+        $fav.removeClass("is-paused").addClass("is-playing");
+        if ($icon.is("i")) {
+          $icon.removeClass("fa-play").addClass("fa-pause");
+        } else {
+          $btn.removeClass("fa-play").addClass("fa-pause");
+        }
+        $btn.attr("data-action", "pause-favorite").attr("title", "Pause");
+      } else if (isPaused) {
+        $fav.removeClass("is-playing").addClass("is-paused");
+        if ($icon.is("i")) {
+          $icon.removeClass("fa-pause").addClass("fa-play");
+        } else {
+          $btn.removeClass("fa-pause").addClass("fa-play");
+        }
+        $btn.attr("data-action", "play-favorite").attr("title", "Play");
+      } else {
+        $fav.removeClass("is-playing is-paused");
+        if ($icon.is("i")) {
+          $icon.removeClass("fa-pause").addClass("fa-play");
+        } else {
+          $btn.removeClass("fa-pause").addClass("fa-play");
+        }
+        $btn.attr("data-action", "play-favorite").attr("title", "Play");
       }
     });
   }
