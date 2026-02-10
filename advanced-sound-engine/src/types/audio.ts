@@ -64,6 +64,7 @@ export interface SocketMessage {
   payload: unknown;
   senderId: string;
   timestamp: number;
+  version?: number; // Protocol version for compatibility checks
 }
 
 export interface SyncStatePayload {

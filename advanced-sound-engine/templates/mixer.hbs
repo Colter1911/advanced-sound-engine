@@ -10,7 +10,10 @@
       <ul class="ase-list-group" data-section="mixer-favorites">
         {{#each favorites}}
         <li class="ase-list-item ase-favorite-item {{#if isPlaying}}is-playing{{else if isPaused}}is-paused{{/if}}"
-          data-favorite-id="{{id}}" data-favorite-type="{{type}}">
+          data-favorite-id="{{id}}" data-favorite-type="{{type}}" draggable="true">
+          <div class="drag-handle drag-handle-sm" title="Drag to reorder">
+            <i class="fa-solid fa-grip-vertical"></i>
+          </div>
           <div class="ase-favorite-info">
             {{#if (eq type 'playlist')}}
             <i class="fa-solid fa-list ase-type-icon"></i>
@@ -26,12 +29,27 @@
             <span>{{name}}</span>
           </div>
           <div class="ase-icons">
-            <i class="ase-icon-add-queue {{#if inQueue}}active{{/if}}" data-action="add-to-queue-from-favorite"
-              data-favorite-id="{{id}}" data-favorite-type="{{type}}" title="Add to Queue"></i>
+            {{!-- Play/Pause Toggle --}}
+            {{#if isPlaying}}
+            <i class="fa-solid fa-pause" data-action="pause-favorite" data-favorite-id="{{id}}"
+              data-favorite-type="{{type}}" title="Pause"></i>
+            {{else}}
             <i class="fa-solid fa-play" data-action="play-favorite" data-favorite-id="{{id}}"
               data-favorite-type="{{type}}" title="Play"></i>
+            {{/if}}
+            {{!-- Stop --}}
             <i class="fa-solid fa-stop" data-action="stop-favorite" data-favorite-id="{{id}}"
               data-favorite-type="{{type}}" title="Stop"></i>
+            {{!-- Playback Mode --}}
+            <i class="fa-solid ase-mode-icon {{#if (eq playbackMode 'single')}}fa-arrow-right-to-line{{else if (eq playbackMode 'linear')}}fa-arrow-right{{else if (eq playbackMode 'loop')}}fa-repeat{{else if (eq playbackMode 'random')}}fa-shuffle{{else}}fa-arrow-turn-down{{/if}}"
+              data-action="favorite-mode-dropdown" data-favorite-id="{{id}}" data-favorite-type="{{type}}"
+              title="Playback Mode: {{playbackMode}}"></i>
+            {{!-- Add to Queue --}}
+            <i class="ase-icon-add-queue {{#if inQueue}}active{{/if}}" data-action="add-to-queue-from-favorite"
+              data-favorite-id="{{id}}" data-favorite-type="{{type}}" title="Add to Queue"></i>
+            {{!-- Favorite Star --}}
+            <i class="fa-solid fa-star active" data-action="toggle-mixer-favorite" data-favorite-id="{{id}}"
+              data-favorite-type="{{type}}" title="Remove from Favorites"></i>
           </div>
         </li>
         {{else}}
@@ -55,10 +73,41 @@
       {{#each queuePlaylists}}
       <div class="ase-queue-playlist {{#if collapsed}}is-collapsed{{/if}}" data-playlist-id="{{id}}">
         {{!-- Playlist Header --}}
-        <div class="ase-queue-playlist-header" data-action="toggle-playlist">
-          <i class="fa-solid fa-chevron-down ase-collapse-icon"></i>
-          <span class="ase-playlist-name">{{name}}</span>
-          <span class="ase-playlist-count">({{tracks.length}} tracks)</span>
+        <div class="ase-queue-playlist-header" data-playlist-id="{{id}}">
+          <div class="ase-playlist-header-left" data-action="toggle-playlist">
+            <i class="fa-solid fa-chevron-down ase-collapse-icon"></i>
+            <span class="ase-playlist-name">{{name}}</span>
+            <span class="ase-playlist-count">({{activeTrackCount}}/{{totalTrackCount}} tracks)</span>
+          </div>
+          <div class="ase-playlist-header-controls">
+            {{!-- Play/Pause Toggle --}}
+            {{#if hasPlayingTracks}}
+            <button class="btn-icon" data-action="pause-playlist" title="Pause All">
+              <i class="fa-solid fa-pause"></i>
+            </button>
+            {{else}}
+            <button class="btn-icon" data-action="play-playlist" title="Play">
+              <i class="fa-solid fa-play"></i>
+            </button>
+            {{/if}}
+            {{!-- Stop --}}
+            <button class="btn-icon" data-action="stop-playlist" title="Stop All">
+              <i class="fa-solid fa-stop"></i>
+            </button>
+            {{!-- Playback Mode (only for real playlists, not ungrouped) --}}
+            {{#unless isUngrouped}}
+            <button class="btn-icon" data-action="playlist-mode-dropdown" data-playlist-id="{{id}}"
+              title="Playback Mode: {{playbackMode}}">
+              <i
+                class="fa-solid {{#if (eq playbackMode 'linear')}}fa-arrow-right{{else if (eq playbackMode 'random')}}fa-shuffle{{else}}fa-repeat{{/if}}"></i>
+            </button>
+            {{/unless}}
+            {{!-- Remove/Clear --}}
+            <button class="btn-icon btn-delete-inline" data-action="remove-playlist"
+              title="{{#if isUngrouped}}Clear Ungrouped{{else}}Remove Playlist{{/if}}">
+              <i class="fa-solid fa-trash"></i>
+            </button>
+          </div>
         </div>
 
         {{!-- Playlist Tracks --}}
@@ -67,10 +116,15 @@
           {{!-- Show all if not collapsed, otherwise only playing/paused --}}
           <div
             class="ase-track-player-item ase-queue-track {{#if isPlaying}}is-playing{{else if isPaused}}is-paused{{/if}} {{#if shouldBeHidden}}collapsed-hidden{{/if}}"
-            data-queue-id="{{queueId}}" data-item-id="{{libraryItemId}}">
+            data-queue-id="{{queueId}}" data-item-id="{{libraryItemId}}" draggable="true">
 
-            {{!-- Row 1: Identity (Icon + Info + Volume + Buttons + Delete) --}}
+            {{!-- Row 1: Identity (Handle + Icon + Info + Volume + Buttons + Delete) --}}
             <div class="track-identity-row">
+              {{!-- Drag Handle --}}
+              <div class="drag-handle" title="Drag to reorder">
+                <i class="fa-solid fa-grip-vertical"></i>
+              </div>
+
               {{!-- Track Icon --}}
               <div class="track-icon">
                 {{#if (eq group 'music')}}
