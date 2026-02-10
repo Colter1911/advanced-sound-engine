@@ -5,7 +5,7 @@ export default defineConfig({
   plugins: [],
   build: {
     outDir: 'dist',
-    emptyOutDir: true,
+    emptyOutDir: false,
     sourcemap: true,
     minify: false, // Disable minification for debugging
     lib: {

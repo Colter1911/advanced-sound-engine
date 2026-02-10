@@ -16,7 +16,8 @@
     "dist/module.js"
   ],
   "styles": [
-    "dist/styles/sound-engine-v5.css"
+    "dist/styles/sound-engine-v5.css",
+    "dist/styles/effects.css"
   ],
   "languages": [
     {
