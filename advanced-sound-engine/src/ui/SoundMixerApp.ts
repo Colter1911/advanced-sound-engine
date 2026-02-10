@@ -405,7 +405,65 @@ export class SoundMixerApp {
 
     // Drag and Drop
     this.setupDragAndDrop(html);
+
+    // Text Marquee on hover
+    this.setupMarquee(html);
   }
+
+  // ─────────────────────────────────────────────────────────────
+  // Marquee Logic
+  // ─────────────────────────────────────────────────────────────
+
+  /**
+   * Setup scrolling text for truncated names on hover
+   */
+  private setupMarquee(html: JQuery): void {
+    html.find('.ase-favorite-info').on('mouseenter', (e) => {
+      const container = e.currentTarget as HTMLElement;
+      const span = container.querySelector('span') as HTMLElement;
+      if (!span) return;
+
+      // Check if text is truncated
+      // ScrollWidth is content width, OffsetWidth is visible width
+      const overflow = span.scrollWidth - span.offsetWidth;
+
+      if (overflow > 0) {
+        // Calculate duration based on speed (e.g., 30 pixels per second)
+        const speed = 30; // px/s
+        const duration = overflow / speed;
+
+        // Reset first to ensure clean state
+        span.style.transition = 'none';
+        span.style.transform = 'translateX(0)';
+
+        // Force reflow
+        void span.offsetWidth;
+
+        // Start scrolling
+        // We scroll slightly more than overflow to reveal the end fully with padding
+        const scrollDist = overflow + 5;
+
+        // Wait a tiny bit (0.5s) then scroll
+        setTimeout(() => {
+          // Check if still hovering (simple check via style presence or flag, 
+          // but re-setting transition is safe)
+          span.style.transition = `transform ${duration}s linear`;
+          span.style.transform = `translateX(-${scrollDist}px)`;
+        }, 500);
+      }
+    });
+
+    html.find('.ase-favorite-info').on('mouseleave', (e) => {
+      const container = e.currentTarget as HTMLElement;
+      const span = container.querySelector('span') as HTMLElement;
+      if (!span) return;
+
+      // Reset immediately/quickly
+      span.style.transition = 'transform 0.2s ease-out';
+      span.style.transform = 'translateX(0)';
+    });
+  }
+
 
   // ─────────────────────────────────────────────────────────────
   // Favorites Handlers

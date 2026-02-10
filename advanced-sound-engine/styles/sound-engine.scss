@@ -510,6 +510,9 @@
     flex: 1;
     overflow: hidden;
 
+    margin-right: 5px;
+    /* Spacing before buttons */
+
     .ase-type-icon {
       color: var(--ase-border-gold);
       font-size: 12px;
@@ -522,6 +525,11 @@
       white-space: nowrap;
       font-family: var(--ase-font-body);
       color: var(--ase-text-body);
+      transition: transform 0s linear;
+      /* Prepared for JS-driven scroll */
+      will-change: transform;
+      display: block;
+      /* Ensure transform works */
     }
   }
 }
@@ -2758,6 +2766,7 @@
   [data-action="track-mode-dropdown"],
   [data-action="playlist-mode-dropdown"],
   [data-action="favorite-mode-dropdown"] {
+
     &.btn-icon,
     & {
       i.fa-solid {

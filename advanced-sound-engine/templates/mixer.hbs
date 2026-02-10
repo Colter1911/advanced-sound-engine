@@ -29,8 +29,6 @@
             <span>{{name}}</span>
           </div>
           <div class="ase-icons">
-            <i class="ase-icon-add-queue {{#if inQueue}}active{{/if}}" data-action="add-to-queue-from-favorite"
-              data-favorite-id="{{id}}" data-favorite-type="{{type}}" title="Add to Queue"></i>
             {{!-- Play/Pause Toggle --}}
             {{#if isPlaying}}
             <i class="fa-solid fa-pause" data-action="pause-favorite" data-favorite-id="{{id}}"
@@ -46,6 +44,9 @@
             <i class="fa-solid ase-mode-icon {{#if (eq playbackMode 'single')}}fa-arrow-right-to-line{{else if (eq playbackMode 'linear')}}fa-arrow-right{{else if (eq playbackMode 'loop')}}fa-repeat{{else if (eq playbackMode 'random')}}fa-shuffle{{else}}fa-arrow-turn-down{{/if}}"
               data-action="favorite-mode-dropdown" data-favorite-id="{{id}}" data-favorite-type="{{type}}"
               title="Playback Mode: {{playbackMode}}"></i>
+            {{!-- Add to Queue --}}
+            <i class="ase-icon-add-queue {{#if inQueue}}active{{/if}}" data-action="add-to-queue-from-favorite"
+              data-favorite-id="{{id}}" data-favorite-type="{{type}}" title="Add to Queue"></i>
             {{!-- Favorite Star --}}
             <i class="fa-solid fa-star active" data-action="toggle-mixer-favorite" data-favorite-id="{{id}}"
               data-favorite-type="{{type}}" title="Remove from Favorites"></i>
@@ -97,11 +98,13 @@
             {{#unless isUngrouped}}
             <button class="btn-icon" data-action="playlist-mode-dropdown" data-playlist-id="{{id}}"
               title="Playback Mode: {{playbackMode}}">
-              <i class="fa-solid {{#if (eq playbackMode 'linear')}}fa-arrow-right{{else if (eq playbackMode 'random')}}fa-shuffle{{else}}fa-repeat{{/if}}"></i>
+              <i
+                class="fa-solid {{#if (eq playbackMode 'linear')}}fa-arrow-right{{else if (eq playbackMode 'random')}}fa-shuffle{{else}}fa-repeat{{/if}}"></i>
             </button>
             {{/unless}}
             {{!-- Remove/Clear --}}
-            <button class="btn-icon btn-delete-inline" data-action="remove-playlist" title="{{#if isUngrouped}}Clear Ungrouped{{else}}Remove Playlist{{/if}}">
+            <button class="btn-icon btn-delete-inline" data-action="remove-playlist"
+              title="{{#if isUngrouped}}Clear Ungrouped{{else}}Remove Playlist{{/if}}">
               <i class="fa-solid fa-trash"></i>
             </button>
           </div>
