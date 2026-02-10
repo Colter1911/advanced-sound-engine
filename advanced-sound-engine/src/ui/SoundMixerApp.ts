@@ -434,51 +434,58 @@ export class SoundMixerApp {
   /**
    * Setup scrolling text for truncated names on hover
    */
+  /**
+   * Setup scrolling text for truncated names on hover or active play
+   */
   private setupMarquee(html: JQuery): void {
-    html.find('.ase-favorite-info').on('mouseenter', (e) => {
-      const container = e.currentTarget as HTMLElement;
-      const span = container.querySelector('span') as HTMLElement;
-      if (!span) return;
+    // 1. Handle Hover
+    html.find('.ase-favorite-item').on('mouseenter', (e) => {
+      this.toggleMarquee(e.currentTarget as HTMLElement, true);
+    });
 
-      // Check if text is truncated
-      // ScrollWidth is content width, OffsetWidth is visible width
-      const overflow = span.scrollWidth - span.offsetWidth;
-
-      if (overflow > 0) {
-        // Calculate duration based on speed (e.g., 30 pixels per second)
-        const speed = 30; // px/s
-        const duration = overflow / speed;
-
-        // Reset first to ensure clean state
-        span.style.transition = 'none';
-        span.style.transform = 'translateX(0)';
-
-        // Force reflow
-        void span.offsetWidth;
-
-        // Start scrolling
-        // We scroll slightly more than overflow to reveal the end fully with padding
-        const scrollDist = overflow + 5;
-
-        // Wait a tiny bit (0.5s) then scroll
-        setTimeout(() => {
-          // Check if still hovering (simple check via style presence or flag, 
-          // but re-setting transition is safe)
-          span.style.transition = `transform ${duration}s linear`;
-          span.style.transform = `translateX(-${scrollDist}px)`;
-        }, 500);
+    html.find('.ase-favorite-item').on('mouseleave', (e) => {
+      // Only stop if not playing
+      const item = e.currentTarget as HTMLElement;
+      if (!item.classList.contains('is-playing')) {
+        this.toggleMarquee(item, false);
       }
     });
 
-    html.find('.ase-favorite-info').on('mouseleave', (e) => {
-      const container = e.currentTarget as HTMLElement;
-      const span = container.querySelector('span') as HTMLElement;
-      if (!span) return;
-
-      // Reset immediately/quickly
-      span.style.transition = 'transform 0.2s ease-out';
-      span.style.transform = 'translateX(0)';
+    // 2. Initial Setup for Playing Items
+    html.find('.ase-favorite-item.is-playing').each((_, el) => {
+      this.toggleMarquee(el as HTMLElement, true);
     });
+  }
+
+  private toggleMarquee(item: HTMLElement, active: boolean): void {
+    const info = item.querySelector('.ase-favorite-info') as HTMLElement;
+    const span = info?.querySelector('span') as HTMLElement;
+    if (!span) return;
+
+    if (!active) {
+      item.classList.remove('is-scrolling');
+      span.style.removeProperty('--scroll-offset');
+      span.style.removeProperty('--scroll-duration');
+      return;
+    }
+
+    // Check overflow
+    // We need to temporarily enable overflow to measure true scrollWidth?
+    // Actually, scrollWidth works even with overflow:hidden
+    const overflow = span.scrollWidth - info.offsetWidth; // Use info container width
+
+    if (overflow > 0) {
+      const speed = 20; // px/s
+      // Add padding for better visual
+      const buffer = 20;
+      const offset = -(overflow + buffer);
+      // Ensure minimum duration
+      const duration = Math.max((overflow + buffer) / speed, 2);
+
+      span.style.setProperty('--scroll-offset', `${offset}px`);
+      span.style.setProperty('--scroll-duration', `${duration}s`);
+      item.classList.add('is-scrolling');
+    }
   }
 
 

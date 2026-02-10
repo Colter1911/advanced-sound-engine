@@ -2,6 +2,21 @@ var __defProp = Object.defineProperty;
 var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
 var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
+const DEFAULT_MIX = {
+  filter: 1,
+  compressor: 1,
+  distortion: 1,
+  delay: 0.3,
+  reverb: 0.35,
+  modulation: 0.5
+};
+const DEFAULT_CHAIN_ORDER = [
+  "filter",
+  "compressor",
+  "distortion",
+  "delay",
+  "reverb"
+];
 const PREFIX = "ASE";
 const Logger = {
   info: /* @__PURE__ */ __name((message, ...args) => {
@@ -192,98 +207,6 @@ const _StreamingPlayer = class _StreamingPlayer {
 };
 __name(_StreamingPlayer, "StreamingPlayer");
 let StreamingPlayer = _StreamingPlayer;
-function getServerTime() {
-  return Date.now();
-}
-__name(getServerTime, "getServerTime");
-function formatTime(seconds) {
-  if (!isFinite(seconds) || seconds < 0) return "0:00";
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-  return `${mins}:${secs.toString().padStart(2, "0")}`;
-}
-__name(formatTime, "formatTime");
-function generateUUID$1() {
-  if (typeof crypto !== "undefined" && crypto.randomUUID) {
-    return crypto.randomUUID();
-  }
-  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
-    const r = Math.random() * 16 | 0;
-    const v = c === "x" ? r : r & 3 | 8;
-    return v.toString(16);
-  });
-}
-__name(generateUUID$1, "generateUUID$1");
-const SUPPORTED_AUDIO_FORMATS = [
-  ".mp3",
-  ".ogg",
-  ".wav",
-  ".webm",
-  ".m4a",
-  ".aac",
-  ".flac",
-  ".opus"
-];
-const AUDIO_MIME_TYPES = {
-  ".mp3": "audio/mpeg",
-  ".ogg": "audio/ogg",
-  ".wav": "audio/wav",
-  ".webm": "audio/webm",
-  ".m4a": "audio/mp4",
-  ".aac": "audio/aac",
-  ".flac": "audio/flac",
-  ".opus": "audio/opus"
-};
-function isValidAudioFormat(url) {
-  const extension = getFileExtension(url);
-  return SUPPORTED_AUDIO_FORMATS.includes(extension);
-}
-__name(isValidAudioFormat, "isValidAudioFormat");
-function getFileExtension(url) {
-  try {
-    const decoded = decodeURIComponent(url);
-    const cleanUrl = decoded.split("?")[0].split("#")[0];
-    const match = cleanUrl.match(/\.([a-z0-9]+)$/i);
-    return match ? `.${match[1].toLowerCase()}` : "";
-  } catch {
-    return "";
-  }
-}
-__name(getFileExtension, "getFileExtension");
-function getAudioMimeType(url) {
-  const extension = getFileExtension(url);
-  return AUDIO_MIME_TYPES[extension] || null;
-}
-__name(getAudioMimeType, "getAudioMimeType");
-function validateAudioFile(url) {
-  if (!url || typeof url !== "string") {
-    return {
-      valid: false,
-      error: "URL is required and must be a string"
-    };
-  }
-  const extension = getFileExtension(url);
-  if (!extension) {
-    return {
-      valid: false,
-      error: "Could not extract file extension from URL"
-    };
-  }
-  if (!isValidAudioFormat(url)) {
-    return {
-      valid: false,
-      error: `Unsupported audio format: ${extension}. Supported formats: ${SUPPORTED_AUDIO_FORMATS.join(", ")}`,
-      extension
-    };
-  }
-  const mimeType = getAudioMimeType(url);
-  return {
-    valid: true,
-    extension,
-    mimeType: mimeType || void 0
-  };
-}
-__name(validateAudioFile, "validateAudioFile");
 const _AudioEffect = class _AudioEffect {
   constructor(ctx, type, id) {
     __publicField(this, "id");
@@ -294,10 +217,13 @@ const _AudioEffect = class _AudioEffect {
     __publicField(this, "outputNode");
     __publicField(this, "wetNode");
     __publicField(this, "dryNode");
+    /** Current dry/wet mix: 0.0 = fully dry, 1.0 = fully wet */
+    __publicField(this, "_mix");
     __publicField(this, "params", /* @__PURE__ */ new Map());
     this.ctx = ctx;
     this.type = type;
     this.id = id || type;
+    this._mix = DEFAULT_MIX[type] ?? 1;
     this.inputNode = ctx.createGain();
     this.outputNode = ctx.createGain();
     this.wetNode = ctx.createGain();
@@ -318,9 +244,58 @@ const _AudioEffect = class _AudioEffect {
     });
     this.setEnabled(this.enabled);
   }
+  // ─── Mix Control ────────────────────────────────────────────
+  /** Get current mix value */
+  get mix() {
+    return this._mix;
+  }
   /**
-   * Set a parameter value
+   * Set dry/wet mix.
+   * 0.0 = fully dry (signal passes through untouched)
+   * 1.0 = fully wet (100% effect processing)
    */
+  setMix(mix) {
+    this._mix = Math.max(0, Math.min(1, mix));
+    if (this.enabled) {
+      this.applyMixGains();
+    }
+  }
+  /** Apply the current mix values to dry/wet nodes */
+  applyMixGains() {
+    const t = this.ctx.currentTime;
+    this.dryNode.gain.setTargetAtTime(1 - this._mix, t, 0.02);
+    this.wetNode.gain.setTargetAtTime(this._mix, t, 0.02);
+  }
+  // ─── Enable / Bypass ────────────────────────────────────────
+  /**
+   * Enable/Disable effect processing.
+   * Disabled = true bypass: dry gain = 1.0, wet gain = 0.0
+   * Enabled = apply current mix values
+   */
+  setEnabled(enabled) {
+    this.enabled = enabled;
+    const t = this.ctx.currentTime;
+    if (enabled) {
+      this.applyMixGains();
+    } else {
+      this.dryNode.gain.setTargetAtTime(1, t, 0.02);
+      this.wetNode.gain.setTargetAtTime(0, t, 0.02);
+    }
+  }
+  // ─── Chain Connection API ───────────────────────────────────
+  /** Connect this effect's output to the next effect's input */
+  connectToNext(next) {
+    this.outputNode.connect(next.inputNode);
+  }
+  /** Connect this effect's output to a destination node */
+  connectToDestination(destination) {
+    this.outputNode.connect(destination);
+  }
+  /** Disconnect output from everything */
+  disconnectOutput() {
+    this.outputNode.disconnect();
+  }
+  // ─── Parameter API ──────────────────────────────────────────
   setParam(key, value) {
     const param = this.params.get(key);
     if (!param) {
@@ -335,48 +310,40 @@ const _AudioEffect = class _AudioEffect {
       this.applyParam(key, value);
     }
   }
-  /**
-   * Get current state
-   */
-  getState() {
+  getParamValue(key) {
+    var _a;
+    return (_a = this.params.get(key)) == null ? void 0 : _a.value;
+  }
+  getAllParams() {
+    return this.params;
+  }
+  // ─── State ──────────────────────────────────────────────────
+  /** Get chain-compatible state */
+  getChainState() {
     const paramsObj = {};
     for (const [key, param] of this.params) {
       paramsObj[key] = param.value;
     }
     return {
-      id: this.id,
       type: this.type,
       enabled: this.enabled,
-      params: paramsObj,
-      routing: {
-        music: false,
-        ambience: false,
-        sfx: false
-      }
-      // Routing is managed by AudioEngine, this is just a placeholder or could be updated by engine
+      mix: this._mix,
+      params: paramsObj
     };
   }
-  /**
-   * Initialize parameters (called by subclass)
-   */
+  /** Restore state from a ChainEffectState */
+  restoreChainState(state) {
+    this._mix = state.mix ?? DEFAULT_MIX[this.type] ?? 1;
+    for (const [key, value] of Object.entries(state.params)) {
+      this.setParam(key, value);
+    }
+    this.setEnabled(state.enabled);
+  }
+  // ─── Abstract (subclass) ────────────────────────────────────
   addParam(param) {
     this.params.set(param.id, param);
   }
-  /**
-   * Enable/Disable effect processing
-   */
-  setEnabled(enabled) {
-    this.enabled = enabled;
-    if (enabled) {
-      this.wetNode.gain.setTargetAtTime(1, this.ctx.currentTime, 0.05);
-      this.dryNode.gain.value = 0;
-    } else {
-      this.wetNode.gain.setTargetAtTime(0, this.ctx.currentTime, 0.05);
-      this.dryNode.gain.value = 0;
-    }
-  }
-  setDryWet(mix) {
-  }
+  // ─── Cleanup ────────────────────────────────────────────────
   dispose() {
     this.inputNode.disconnect();
     this.outputNode.disconnect();
@@ -706,6 +673,295 @@ const _DistortionEffect = class _DistortionEffect extends AudioEffect {
 };
 __name(_DistortionEffect, "DistortionEffect");
 let DistortionEffect = _DistortionEffect;
+function createEffect(ctx, type) {
+  switch (type) {
+    case "reverb":
+      return new ReverbEffect(ctx);
+    case "delay":
+      return new DelayEffect(ctx);
+    case "filter":
+      return new FilterEffect(ctx);
+    case "compressor":
+      return new CompressorEffect(ctx);
+    case "distortion":
+      return new DistortionEffect(ctx);
+    default:
+      Logger.warn(`Unknown effect type: ${type}, falling back to filter`);
+      return new FilterEffect(ctx);
+  }
+}
+__name(createEffect, "createEffect");
+const _EffectChain = class _EffectChain {
+  constructor(ctx, channel) {
+    __publicField(this, "channel");
+    __publicField(this, "inputNode");
+    __publicField(this, "outputNode");
+    __publicField(this, "ctx");
+    __publicField(this, "effects", []);
+    /** Mute node used during chain rebuild to prevent clicks */
+    __publicField(this, "muteNode");
+    this.ctx = ctx;
+    this.channel = channel;
+    this.inputNode = ctx.createGain();
+    this.outputNode = ctx.createGain();
+    this.muteNode = ctx.createGain();
+    this.muteNode.gain.value = 1;
+    this.muteNode.connect(this.outputNode);
+    this.inputNode.connect(this.muteNode);
+  }
+  // ─── Chain Building ─────────────────────────────────────────
+  /** Build a chain with default effect order, all disabled */
+  buildDefault() {
+    this.buildFromTypes(DEFAULT_CHAIN_ORDER);
+  }
+  /** Build chain from an ordered array of effect types */
+  buildFromTypes(types) {
+    this.disposeEffects();
+    this.effects = types.map((type) => createEffect(this.ctx, type));
+    this.rebuildConnections();
+    Logger.debug(`EffectChain [${this.channel}]: built with ${types.join(" → ")}`);
+  }
+  /** Rebuild chain from a full ChannelChain state (restore/sync) */
+  restoreState(state) {
+    this.disposeEffects();
+    this.effects = state.effects.map((es) => {
+      const effect = createEffect(this.ctx, es.type);
+      effect.restoreChainState(es);
+      return effect;
+    });
+    this.rebuildConnections();
+    Logger.debug(`EffectChain [${this.channel}]: restored ${this.effects.length} effects`);
+  }
+  // ─── Connection Management ──────────────────────────────────
+  /**
+   * Disconnect and reconnect all effects in current order.
+   * Uses a brief mute to prevent audio clicks.
+   */
+  rebuildConnections() {
+    const t = this.ctx.currentTime;
+    this.muteNode.gain.setTargetAtTime(0, t, 5e-3);
+    this.inputNode.disconnect();
+    for (const effect of this.effects) {
+      effect.disconnectOutput();
+    }
+    if (this.effects.length === 0) {
+      this.inputNode.connect(this.muteNode);
+    } else {
+      this.inputNode.connect(this.effects[0].inputNode);
+      for (let i = 0; i < this.effects.length - 1; i++) {
+        this.effects[i].connectToNext(this.effects[i + 1]);
+      }
+      this.effects[this.effects.length - 1].connectToDestination(this.muteNode);
+    }
+    this.muteNode.gain.setTargetAtTime(1, t + 0.015, 5e-3);
+  }
+  // ─── Reorder ────────────────────────────────────────────────
+  /** Move effect from one position to another in the chain */
+  reorder(fromIndex, toIndex) {
+    if (fromIndex < 0 || fromIndex >= this.effects.length) return;
+    if (toIndex < 0 || toIndex >= this.effects.length) return;
+    if (fromIndex === toIndex) return;
+    const [moved] = this.effects.splice(fromIndex, 1);
+    this.effects.splice(toIndex, 0, moved);
+    this.rebuildConnections();
+    Logger.debug(`EffectChain [${this.channel}]: reordered ${moved.type} from ${fromIndex} to ${toIndex}`);
+  }
+  /** Set new order by effect type array */
+  reorderByTypes(order) {
+    const reordered = [];
+    for (const type of order) {
+      const effect = this.effects.find((e) => e.type === type);
+      if (effect) {
+        reordered.push(effect);
+      }
+    }
+    for (const effect of this.effects) {
+      if (!reordered.includes(effect)) {
+        reordered.push(effect);
+      }
+    }
+    this.effects = reordered;
+    this.rebuildConnections();
+  }
+  // ─── Effect Access ──────────────────────────────────────────
+  /** Get effect by type */
+  getEffect(type) {
+    return this.effects.find((e) => e.type === type);
+  }
+  /** Get all effects in chain order */
+  getEffects() {
+    return [...this.effects];
+  }
+  /** Get the ordered list of effect types */
+  getOrder() {
+    return this.effects.map((e) => e.type);
+  }
+  /** Count of enabled effects */
+  getActiveCount() {
+    return this.effects.filter((e) => e.enabled).length;
+  }
+  // ─── Effect Control ─────────────────────────────────────────
+  setEffectEnabled(type, enabled) {
+    const effect = this.getEffect(type);
+    if (effect) {
+      effect.setEnabled(enabled);
+    }
+  }
+  setEffectParam(type, paramId, value) {
+    const effect = this.getEffect(type);
+    if (effect) {
+      effect.setParam(paramId, value);
+    }
+  }
+  setEffectMix(type, mix) {
+    const effect = this.getEffect(type);
+    if (effect) {
+      effect.setMix(mix);
+    }
+  }
+  // ─── Add / Remove ───────────────────────────────────────────
+  /** Add a new effect at the end of the chain (or at specified index) */
+  addEffect(type, atIndex) {
+    if (this.getEffect(type)) {
+      Logger.warn(`EffectChain [${this.channel}]: effect ${type} already in chain`);
+      return null;
+    }
+    const effect = createEffect(this.ctx, type);
+    if (atIndex !== void 0 && atIndex >= 0 && atIndex <= this.effects.length) {
+      this.effects.splice(atIndex, 0, effect);
+    } else {
+      this.effects.push(effect);
+    }
+    this.rebuildConnections();
+    Logger.debug(`EffectChain [${this.channel}]: added ${type}`);
+    return effect;
+  }
+  /** Remove an effect from the chain */
+  removeEffect(type) {
+    const index = this.effects.findIndex((e) => e.type === type);
+    if (index === -1) return false;
+    const [removed] = this.effects.splice(index, 1);
+    removed.dispose();
+    this.rebuildConnections();
+    Logger.debug(`EffectChain [${this.channel}]: removed ${type}`);
+    return true;
+  }
+  // ─── State ──────────────────────────────────────────────────
+  /** Get full chain state for serialization / sync */
+  getState() {
+    return {
+      channel: this.channel,
+      effects: this.effects.map((e) => e.getChainState())
+    };
+  }
+  // ─── Cleanup ────────────────────────────────────────────────
+  disposeEffects() {
+    for (const effect of this.effects) {
+      effect.dispose();
+    }
+    this.effects = [];
+  }
+  dispose() {
+    this.disposeEffects();
+    this.inputNode.disconnect();
+    this.muteNode.disconnect();
+    this.outputNode.disconnect();
+  }
+};
+__name(_EffectChain, "EffectChain");
+let EffectChain = _EffectChain;
+function getServerTime() {
+  return Date.now();
+}
+__name(getServerTime, "getServerTime");
+function formatTime(seconds) {
+  if (!isFinite(seconds) || seconds < 0) return "0:00";
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, "0")}`;
+}
+__name(formatTime, "formatTime");
+function generateUUID() {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = Math.random() * 16 | 0;
+    const v = c === "x" ? r : r & 3 | 8;
+    return v.toString(16);
+  });
+}
+__name(generateUUID, "generateUUID");
+const SUPPORTED_AUDIO_FORMATS = [
+  ".mp3",
+  ".ogg",
+  ".wav",
+  ".webm",
+  ".m4a",
+  ".aac",
+  ".flac",
+  ".opus"
+];
+const AUDIO_MIME_TYPES = {
+  ".mp3": "audio/mpeg",
+  ".ogg": "audio/ogg",
+  ".wav": "audio/wav",
+  ".webm": "audio/webm",
+  ".m4a": "audio/mp4",
+  ".aac": "audio/aac",
+  ".flac": "audio/flac",
+  ".opus": "audio/opus"
+};
+function isValidAudioFormat(url) {
+  const extension = getFileExtension(url);
+  return SUPPORTED_AUDIO_FORMATS.includes(extension);
+}
+__name(isValidAudioFormat, "isValidAudioFormat");
+function getFileExtension(url) {
+  try {
+    const decoded = decodeURIComponent(url);
+    const cleanUrl = decoded.split("?")[0].split("#")[0];
+    const match = cleanUrl.match(/\.([a-z0-9]+)$/i);
+    return match ? `.${match[1].toLowerCase()}` : "";
+  } catch {
+    return "";
+  }
+}
+__name(getFileExtension, "getFileExtension");
+function getAudioMimeType(url) {
+  const extension = getFileExtension(url);
+  return AUDIO_MIME_TYPES[extension] || null;
+}
+__name(getAudioMimeType, "getAudioMimeType");
+function validateAudioFile(url) {
+  if (!url || typeof url !== "string") {
+    return {
+      valid: false,
+      error: "URL is required and must be a string"
+    };
+  }
+  const extension = getFileExtension(url);
+  if (!extension) {
+    return {
+      valid: false,
+      error: "Could not extract file extension from URL"
+    };
+  }
+  if (!isValidAudioFormat(url)) {
+    return {
+      valid: false,
+      error: `Unsupported audio format: ${extension}. Supported formats: ${SUPPORTED_AUDIO_FORMATS.join(", ")}`,
+      extension
+    };
+  }
+  const mimeType = getAudioMimeType(url);
+  return {
+    valid: true,
+    extension,
+    mimeType: mimeType || void 0
+  };
+}
+__name(validateAudioFile, "validateAudioFile");
 const MODULE_ID$6 = "advanced-sound-engine";
 function getMaxSimultaneous() {
   return game.settings.get(MODULE_ID$6, "maxSimultaneousTracks") || 8;
@@ -765,22 +1021,11 @@ const _AudioEngine = class _AudioEngine extends SimpleEventEmitter {
     __publicField(this, "ctx");
     __publicField(this, "masterGain");
     __publicField(this, "localGain");
-    // Controls GM's local monitoring level
     __publicField(this, "channelGains");
     __publicField(this, "players", /* @__PURE__ */ new Map());
     __publicField(this, "_activeContext", null);
-    __publicField(this, "_scheduler", null);
-    __publicField(this, "_socketManager", null);
-    // Effects System
-    __publicField(this, "effects", /* @__PURE__ */ new Map());
-    // Sends: Channel -> EffectId -> GainNode
-    __publicField(this, "sends", {
-      music: /* @__PURE__ */ new Map(),
-      ambience: /* @__PURE__ */ new Map(),
-      sfx: /* @__PURE__ */ new Map()
-    });
-    // Direct Gains: Channel -> Master (Control dry level)
-    __publicField(this, "directGains");
+    // ─── Effects Chain System ───────────────────────────────────
+    __publicField(this, "chains");
     __publicField(this, "_volumes", {
       master: 1,
       music: 1,
@@ -799,51 +1044,17 @@ const _AudioEngine = class _AudioEngine extends SimpleEventEmitter {
       ambience: this.ctx.createGain(),
       sfx: this.ctx.createGain()
     };
-    this.directGains = {
-      music: this.ctx.createGain(),
-      ambience: this.ctx.createGain(),
-      sfx: this.ctx.createGain()
+    this.chains = {
+      music: new EffectChain(this.ctx, "music"),
+      ambience: new EffectChain(this.ctx, "ambience"),
+      sfx: new EffectChain(this.ctx, "sfx")
     };
-    this.channelGains.music.connect(this.directGains.music);
-    this.directGains.music.connect(this.masterGain);
-    this.channelGains.ambience.connect(this.directGains.ambience);
-    this.directGains.ambience.connect(this.masterGain);
-    this.channelGains.sfx.connect(this.directGains.sfx);
-    this.directGains.sfx.connect(this.masterGain);
-    this.initializeEffects();
-    Logger.info("AudioEngine initialized");
-  }
-  initializeEffects() {
-    const effectClasses = [
-      ReverbEffect,
-      FilterEffect,
-      DelayEffect,
-      CompressorEffect,
-      DistortionEffect
-    ];
-    effectClasses.forEach((EffectClass) => {
-      const effect = new EffectClass(this.ctx);
-      const effectId = effect.type;
-      this.effects.set(effectId, effect);
-      effect.outputNode.connect(this.masterGain);
-      ["music", "ambience", "sfx"].forEach((group) => {
-        const sendGain = this.ctx.createGain();
-        sendGain.gain.value = 0;
-        this.channelGains[group].connect(sendGain);
-        sendGain.connect(effect.inputNode);
-        this.sends[group].set(effectId, sendGain);
-      });
-    });
-  }
-  /**
-   * Wire up references after construction to avoid circular dependencies.
-   * Called from main.ts after all managers are created.
-   */
-  setScheduler(scheduler) {
-    this._scheduler = scheduler;
-  }
-  setSocketManager(socketManager2) {
-    this._socketManager = socketManager2;
+    for (const group of ["music", "ambience", "sfx"]) {
+      this.channelGains[group].connect(this.chains[group].inputNode);
+      this.chains[group].outputNode.connect(this.masterGain);
+      this.chains[group].buildDefault();
+    }
+    Logger.info("AudioEngine initialized (chain architecture)");
   }
   // ─────────────────────────────────────────────────────────────
   // Persistence (GM only)
@@ -885,7 +1096,7 @@ const _AudioEngine = class _AudioEngine extends SimpleEventEmitter {
   // Track Management
   // ─────────────────────────────────────────────────────────────
   async createTrack(config) {
-    const trackId = config.id || generateUUID$1();
+    const trackId = config.id || generateUUID();
     if (this.players.has(trackId)) {
       return this.players.get(trackId);
     }
@@ -980,15 +1191,9 @@ const _AudioEngine = class _AudioEngine extends SimpleEventEmitter {
     this.scheduleSave();
   }
   stopAll() {
-    var _a, _b;
-    (_a = this._scheduler) == null ? void 0 : _a.clearContext();
-    this._activeContext = null;
     for (const player of this.players.values()) {
       player.stop();
     }
-    (_b = this._socketManager) == null ? void 0 : _b.broadcastStopAll();
-    this.scheduleSave();
-    Logger.info("All tracks stopped");
   }
   // ─────────────────────────────────────────────────────────────
   // Volume Control
@@ -1026,77 +1231,52 @@ const _AudioEngine = class _AudioEngine extends SimpleEventEmitter {
     return this.localGain.gain.value;
   }
   // ─────────────────────────────────────────────────────────────
-  // Effects Management
+  // Effects Chain Management
   // ─────────────────────────────────────────────────────────────
-  getAllEffects() {
-    return Array.from(this.effects.values());
+  /** Get chain for a specific channel */
+  getChain(channel) {
+    return this.chains[channel];
   }
-  setEffectParam(effectId, paramId, value) {
-    const effect = this.effects.get(effectId);
-    if (!effect) return;
-    effect.setParam(paramId, value);
+  /** Get all chains state for serialization / sync */
+  getAllChainsState() {
+    return ["music", "ambience", "sfx"].map(
+      (group) => this.chains[group].getState()
+    );
+  }
+  /** Set effect parameter within a specific channel's chain */
+  setChainEffectParam(channel, effectType, paramId, value) {
+    this.chains[channel].setEffectParam(effectType, paramId, value);
     this.scheduleSave();
   }
-  setEffectEnabled(effectId, enabled) {
-    const effect = this.effects.get(effectId);
-    if (!effect) {
-      console.warn("[ASE GM] setEffectEnabled: Effect not found:", effectId);
-      return;
-    }
-    console.log("[ASE GM] setEffectEnabled:", effectId, enabled, "effect.enabled before:", effect.enabled);
-    effect.setEnabled(enabled);
-    console.log("[ASE GM] effect.enabled after:", effect.enabled);
+  /** Enable/disable an effect within a channel's chain */
+  setChainEffectEnabled(channel, effectType, enabled) {
+    this.chains[channel].setEffectEnabled(effectType, enabled);
     this.scheduleSave();
-    ["music", "ambience", "sfx"].forEach((group) => {
-      this.updateDryLevel(group);
-    });
   }
-  /**
-   * Toggle routing from a channel to an effect
-   */
-  setEffectRouting(effectId, channel, enabled) {
-    const channelSends = this.sends[channel];
-    const sendNode = channelSends.get(effectId);
-    console.log("[ASE GM] setEffectRouting:", effectId, channel, enabled, "sendNode exists:", !!sendNode);
-    if (sendNode) {
-      console.log("[ASE GM] Setting send gain from", sendNode.gain.value, "to", enabled ? 1 : 0);
-      sendNode.gain.setTargetAtTime(enabled ? 1 : 0, this.ctx.currentTime, 0.05);
-      this.scheduleSave();
-      this.updateDryLevel(channel);
-    } else {
-      console.warn("[ASE GM] Send node not found for:", effectId, channel);
-    }
+  /** Set dry/wet mix for an effect within a channel's chain */
+  setChainEffectMix(channel, effectType, mix) {
+    this.chains[channel].setEffectMix(effectType, mix);
+    this.scheduleSave();
   }
-  /**
-   * Checks active effects for the channel and adjusts direct (dry) gain.
-   * If an INSERT effect (Filter, Distortion, Compressor) is active + routed, 
-   * we duck the dry signal to 0.
-   */
-  updateDryLevel(channel) {
-    let isInsertActive = false;
-    const insertTypes = ["filter", "distortion", "compressor"];
-    for (const effect of this.effects.values()) {
-      if (!effect.enabled) continue;
-      const sendNode = this.sends[channel].get(effect.id);
-      const isRouted = ((sendNode == null ? void 0 : sendNode.gain.value) || 0) > 0.5;
-      if (isRouted && insertTypes.includes(effect.type)) {
-        isInsertActive = true;
-        break;
-      }
-    }
-    const targetGain = isInsertActive ? 0 : 1;
-    this.directGains[channel].gain.setTargetAtTime(targetGain, this.ctx.currentTime, 0.1);
-    Logger.debug(`Channel ${channel} dry level set to ${targetGain} (Insert Active: ${isInsertActive})`);
+  /** Reorder effects in a channel's chain */
+  reorderChainEffect(channel, fromIndex, toIndex) {
+    this.chains[channel].reorder(fromIndex, toIndex);
+    this.scheduleSave();
   }
-  getEffectState(effectId) {
-    const effect = this.effects.get(effectId);
-    if (!effect) return void 0;
-    const state = effect.getState();
-    ["music", "ambience", "sfx"].forEach((group) => {
-      const sendGain = this.sends[group].get(effectId);
-      state.routing[group] = ((sendGain == null ? void 0 : sendGain.gain.value) || 0) > 0.1;
-    });
-    return state;
+  /** Reorder by type array (from sync) */
+  reorderChainByTypes(channel, order) {
+    this.chains[channel].reorderByTypes(order);
+    this.scheduleSave();
+  }
+  /** Add effect to a channel's chain */
+  addChainEffect(channel, effectType, atIndex) {
+    this.chains[channel].addEffect(effectType, atIndex);
+    this.scheduleSave();
+  }
+  /** Remove effect from a channel's chain */
+  removeChainEffect(channel, effectType) {
+    this.chains[channel].removeEffect(effectType);
+    this.scheduleSave();
   }
   // ─────────────────────────────────────────────────────────────
   // State
@@ -1110,7 +1290,7 @@ const _AudioEngine = class _AudioEngine extends SimpleEventEmitter {
       masterVolume: this._volumes.master,
       channelVolumes: { ...this._volumes },
       tracks,
-      effects: this.getAllEffects().map((e) => this.getEffectState(e.type)),
+      chains: this.getAllChainsState(),
       timestamp: getServerTime(),
       syncEnabled: false
     };
@@ -1124,18 +1304,15 @@ const _AudioEngine = class _AudioEngine extends SimpleEventEmitter {
         this.channelGains[channel].gain.setValueAtTime(this._volumes[channel], this.ctx.currentTime);
       }
     }
-    if (state.effects) {
-      for (const fxState of state.effects) {
-        const effect = Array.from(this.effects.values()).find((e) => e.type === fxState.type);
-        if (effect) {
-          for (const [key, value] of Object.entries(fxState.params)) {
-            effect.setParam(key, value);
-          }
-          for (const [group, enabled] of Object.entries(fxState.routing)) {
-            this.setEffectRouting(effect.id, group, enabled);
-          }
+    if (state.chains && state.chains.length > 0) {
+      for (const chainState of state.chains) {
+        const chain = this.chains[chainState.channel];
+        if (chain) {
+          chain.restoreState(chainState);
         }
       }
+    } else if (state.effects && state.effects.length > 0) {
+      this.migrateFromLegacyEffects(state.effects);
     }
     for (const trackState of state.tracks) {
       if (!this.players.has(trackState.id)) {
@@ -1156,6 +1333,25 @@ const _AudioEngine = class _AudioEngine extends SimpleEventEmitter {
       if (!stateTrackIds.has(id)) {
         this.removeTrack(id);
       }
+    }
+  }
+  /** Migrate from old parallel send architecture to chain architecture */
+  migrateFromLegacyEffects(effects) {
+    Logger.info("Migrating from legacy effects format to chain architecture");
+    for (const group of ["music", "ambience", "sfx"]) {
+      const chainEffects = DEFAULT_CHAIN_ORDER.map((type) => {
+        const oldEffect = effects.find((e) => e.type === type);
+        return {
+          type,
+          enabled: oldEffect ? oldEffect.enabled && oldEffect.routing[group] : false,
+          mix: DEFAULT_MIX[type] ?? 1,
+          params: (oldEffect == null ? void 0 : oldEffect.params) || {}
+        };
+      });
+      this.chains[group].restoreState({
+        channel: group,
+        effects: chainEffects
+      });
     }
   }
   // ─────────────────────────────────────────────────────────────
@@ -1181,10 +1377,9 @@ const _AudioEngine = class _AudioEngine extends SimpleEventEmitter {
       player.dispose();
     }
     this.players.clear();
-    for (const effect of this.effects.values()) {
-      effect.dispose();
+    for (const chain of Object.values(this.chains)) {
+      chain.dispose();
     }
-    this.effects.clear();
     this.ctx.close();
     Logger.info("AudioEngine disposed");
   }
@@ -1196,21 +1391,11 @@ const _PlayerAudioEngine = class _PlayerAudioEngine {
     __publicField(this, "ctx");
     __publicField(this, "masterGain");
     __publicField(this, "gmGain");
-    // Громкость от GM
     __publicField(this, "channelGains");
     __publicField(this, "players", /* @__PURE__ */ new Map());
-    // Effects System
-    __publicField(this, "effects", /* @__PURE__ */ new Map());
-    // Sends: Channel -> EffectId -> GainNode
-    __publicField(this, "sends", {
-      music: /* @__PURE__ */ new Map(),
-      ambience: /* @__PURE__ */ new Map(),
-      sfx: /* @__PURE__ */ new Map()
-    });
-    // Direct Gains: Channel -> Master (Control dry level)
-    __publicField(this, "directGains");
+    // ─── Effects Chain System ───────────────────────────────────
+    __publicField(this, "chains");
     __publicField(this, "_localVolume", 1);
-    // Личная громкость игрока
     __publicField(this, "_gmVolumes", {
       master: 1,
       music: 1,
@@ -1221,12 +1406,8 @@ const _PlayerAudioEngine = class _PlayerAudioEngine {
     __publicField(this, "lastSyncState", []);
     __publicField(this, "syncCheckInterval", null);
     __publicField(this, "socketManager");
-    // Reference to SocketManager for requesting sync
     __publicField(this, "lastSyncRequestTime", 0);
     __publicField(this, "SYNC_REQUEST_COOLDOWN", 1e4);
-    // 10 seconds
-    __publicField(this, "syncRequestFailCount", 0);
-    __publicField(this, "MAX_SYNC_RETRIES", 3);
     this.ctx = new AudioContext();
     this.socketManager = socketManager2;
     this.startSyncVerification();
@@ -1239,20 +1420,17 @@ const _PlayerAudioEngine = class _PlayerAudioEngine {
       ambience: this.ctx.createGain(),
       sfx: this.ctx.createGain()
     };
-    this.directGains = {
-      music: this.ctx.createGain(),
-      ambience: this.ctx.createGain(),
-      sfx: this.ctx.createGain()
+    this.chains = {
+      music: new EffectChain(this.ctx, "music"),
+      ambience: new EffectChain(this.ctx, "ambience"),
+      sfx: new EffectChain(this.ctx, "sfx")
     };
-    this.channelGains.music.connect(this.directGains.music);
-    this.directGains.music.connect(this.gmGain);
-    this.channelGains.ambience.connect(this.directGains.ambience);
-    this.directGains.ambience.connect(this.gmGain);
-    this.channelGains.sfx.connect(this.directGains.sfx);
-    this.directGains.sfx.connect(this.gmGain);
-    this.initializeEffects();
-    Logger.info("PlayerAudioEngine initialized");
-    console.log("%c ASE PLAYER ENGINE V3 (FIXED) LOADED ", "background: #222; color: #bada55; font-size: 20px; font-weight: bold;");
+    for (const group of ["music", "ambience", "sfx"]) {
+      this.channelGains[group].connect(this.chains[group].inputNode);
+      this.chains[group].outputNode.connect(this.gmGain);
+      this.chains[group].buildDefault();
+    }
+    Logger.info("PlayerAudioEngine initialized (chain architecture)");
   }
   startSyncVerification() {
     this.syncCheckInterval = window.setInterval(() => {
@@ -1262,45 +1440,36 @@ const _PlayerAudioEngine = class _PlayerAudioEngine {
   verifySyncState() {
     let needsResync = false;
     if (this.lastSyncState.length === 0) {
-      const hasActivePlayers = Array.from(this.players.values()).some(
-        (p) => p.state === "playing" || p.state === "paused"
-      );
-      if (hasActivePlayers) {
-        Logger.warn("Sync verification: Active players exist but sync state is empty");
+      if (this.players.size > 0) {
+        console.warn("[ASE PLAYER] Sync verification: Have", this.players.size, "players but sync state is empty");
         needsResync = true;
       } else {
         return;
       }
     }
-    if (!needsResync) {
-      for (const expectedTrack of this.lastSyncState) {
-        const player = this.players.get(expectedTrack.id);
-        if (!player) {
-          if (expectedTrack.isPlaying) {
-            Logger.warn(`Sync verification: Expected playing track not found: ${expectedTrack.id}`);
-            needsResync = true;
-            break;
-          }
-          continue;
-        }
-        const actuallyPlaying = player.state === "playing";
-        if (expectedTrack.isPlaying && !actuallyPlaying) {
-          Logger.warn(`Sync verification: Track should be playing but is ${player.state}: ${expectedTrack.id}`);
+    for (const expectedTrack of this.lastSyncState) {
+      const player = this.players.get(expectedTrack.id);
+      if (!player) {
+        if (expectedTrack.isPlaying) {
           needsResync = true;
           break;
         }
-        if (!expectedTrack.isPlaying && actuallyPlaying) {
-          Logger.warn(`Sync verification: Track should be stopped but is playing: ${expectedTrack.id}`);
-          needsResync = true;
-          break;
-        }
+        continue;
+      }
+      const actuallyPlaying = player.state === "playing";
+      if (expectedTrack.isPlaying && !actuallyPlaying) {
+        needsResync = true;
+        break;
+      }
+      if (!expectedTrack.isPlaying && actuallyPlaying) {
+        needsResync = true;
+        break;
       }
     }
-    if (!needsResync && this.lastSyncState.length > 0) {
+    if (!needsResync) {
       const expectedIds = new Set(this.lastSyncState.map((t) => t.id));
-      for (const [id, player] of this.players) {
-        if (!expectedIds.has(id) && player.state === "playing") {
-          Logger.warn(`Sync verification: Unexpected playing track: ${id}`);
+      for (const [id] of this.players) {
+        if (!expectedIds.has(id)) {
           needsResync = true;
           break;
         }
@@ -1311,20 +1480,10 @@ const _PlayerAudioEngine = class _PlayerAudioEngine {
       if (now - this.lastSyncRequestTime < this.SYNC_REQUEST_COOLDOWN) {
         return;
       }
-      this.syncRequestFailCount++;
-      if (this.syncRequestFailCount > this.MAX_SYNC_RETRIES) {
-        Logger.warn(`Sync verification: Exceeded ${this.MAX_SYNC_RETRIES} retries, stopping requests`);
-        return;
-      }
-      Logger.info(`Sync verification failed — requesting full sync (attempt ${this.syncRequestFailCount}/${this.MAX_SYNC_RETRIES})`);
       this.lastSyncRequestTime = now;
       if (this.socketManager) {
         this.socketManager.requestFullSync();
-      } else {
-        Logger.warn("Cannot request sync: socketManager not set");
       }
-    } else {
-      this.syncRequestFailCount = 0;
     }
   }
   dispose() {
@@ -1333,33 +1492,11 @@ const _PlayerAudioEngine = class _PlayerAudioEngine {
       this.syncCheckInterval = null;
     }
     this.clearAll();
-    for (const effect of this.effects.values()) {
-      effect.dispose();
+    for (const chain of Object.values(this.chains)) {
+      chain.dispose();
     }
-    this.effects.clear();
     this.ctx.close();
     Logger.info("PlayerAudioEngine disposed");
-  }
-  initializeEffects() {
-    const effectClasses = [
-      ReverbEffect,
-      FilterEffect,
-      DelayEffect,
-      CompressorEffect,
-      DistortionEffect
-    ];
-    effectClasses.forEach((EffectClass) => {
-      const effect = new EffectClass(this.ctx);
-      this.effects.set(effect.id, effect);
-      effect.outputNode.connect(this.gmGain);
-      ["music", "ambience", "sfx"].forEach((group) => {
-        const sendGain = this.ctx.createGain();
-        sendGain.gain.value = 0;
-        this.channelGains[group].connect(sendGain);
-        sendGain.connect(effect.inputNode);
-        this.sends[group].set(effect.id, sendGain);
-      });
-    });
   }
   // ─────────────────────────────────────────────────────────────
   // Local Volume (Player's personal control)
@@ -1395,57 +1532,28 @@ const _PlayerAudioEngine = class _PlayerAudioEngine {
     this.channelGains.sfx.gain.setValueAtTime(volumes.sfx, this.ctx.currentTime);
   }
   // ─────────────────────────────────────────────────────────────
-  // Effects Management (Called via Socket)
+  // Effects Chain Management (Called via Socket)
   // ─────────────────────────────────────────────────────────────
-  setEffectParam(effectId, paramId, value) {
-    console.log("[ASE PLAYER] setEffectParam received:", effectId, paramId, value);
-    const effect = this.effects.get(effectId);
-    if (!effect) {
-      console.warn("[ASE PLAYER] Effect not found:", effectId);
-      return;
-    }
-    effect.setParam(paramId, value);
-    console.log("[ASE PLAYER] Effect param set successfully");
+  setChainEffectParam(channel, effectType, paramId, value) {
+    this.chains[channel].setEffectParam(effectType, paramId, value);
   }
-  setEffectEnabled(effectId, enabled) {
-    console.log("[ASE PLAYER] setEffectEnabled received:", effectId, enabled);
-    const effect = this.effects.get(effectId);
-    if (!effect) {
-      console.warn("[ASE PLAYER] Effect not found:", effectId);
-      return;
-    }
-    effect.setEnabled(enabled);
-    console.log("[ASE PLAYER] Effect enabled set to:", enabled);
-    ["music", "ambience", "sfx"].forEach((group) => {
-      this.updateDryLevel(group);
-    });
+  setChainEffectEnabled(channel, effectType, enabled) {
+    this.chains[channel].setEffectEnabled(effectType, enabled);
   }
-  setEffectRouting(effectId, channel, active) {
-    console.log("[ASE PLAYER] setEffectRouting received:", effectId, channel, active);
-    const channelSends = this.sends[channel];
-    const sendNode = channelSends.get(effectId);
-    if (sendNode) {
-      sendNode.gain.setTargetAtTime(active ? 1 : 0, this.ctx.currentTime, 0.05);
-      this.updateDryLevel(channel);
-      console.log("[ASE PLAYER] Effect routing set successfully");
-    } else {
-      console.warn("[ASE PLAYER] Send node not found for:", effectId, channel);
-    }
+  setChainEffectMix(channel, effectType, mix) {
+    this.chains[channel].setEffectMix(effectType, mix);
   }
-  updateDryLevel(channel) {
-    let isInsertActive = false;
-    const insertTypes = ["filter", "distortion", "compressor"];
-    for (const effect of this.effects.values()) {
-      if (!effect.enabled) continue;
-      const sendNode = this.sends[channel].get(effect.id);
-      const isRouted = ((sendNode == null ? void 0 : sendNode.gain.value) || 0) > 0.5;
-      if (isRouted && insertTypes.includes(effect.type)) {
-        isInsertActive = true;
-        break;
+  reorderChainByTypes(channel, order) {
+    this.chains[channel].reorderByTypes(order);
+  }
+  /** Restore all chains from sync state */
+  syncChains(chainsState) {
+    for (const chainState of chainsState) {
+      const chain = this.chains[chainState.channel];
+      if (chain) {
+        chain.restoreState(chainState);
       }
     }
-    const targetGain = isInsertActive ? 0 : 1;
-    this.directGains[channel].gain.setTargetAtTime(targetGain, this.ctx.currentTime, 0.1);
   }
   // ─────────────────────────────────────────────────────────────
   // Local Playback Control (Interface Compliance)
@@ -1472,7 +1580,6 @@ const _PlayerAudioEngine = class _PlayerAudioEngine {
   async handlePlay(payload) {
     let player = this.players.get(payload.trackId);
     if (player && player.url !== payload.url) {
-      Logger.debug(`Player: Disposing existing track ${payload.trackId} (URL changed)`);
       player.stop();
       player.dispose();
       this.players.delete(payload.trackId);
@@ -1491,9 +1598,7 @@ const _PlayerAudioEngine = class _PlayerAudioEngine {
     player.setVolume(payload.volume);
     const elapsed = (getServerTime() - payload.startTimestamp) / 1e3;
     const adjustedOffset = Math.max(0, payload.offset + elapsed);
-    Logger.debug(`Player: Handling Play. TrackId=${payload.trackId}, Vol=${payload.volume}, Offset=${adjustedOffset}s`);
     await player.play(adjustedOffset);
-    Logger.debug(`Player: track ${payload.trackId} playing at ${adjustedOffset.toFixed(2)}s`);
   }
   handlePause(trackId) {
     var _a;
@@ -1517,31 +1622,15 @@ const _PlayerAudioEngine = class _PlayerAudioEngine {
     var _a;
     (_a = this.players.get(trackId)) == null ? void 0 : _a.setVolume(volume);
   }
+  // ─────────────────────────────────────────────────────────────
   // Sync State (full state from GM)
   // ─────────────────────────────────────────────────────────────
-  async syncState(tracks, volumes, effectsState = []) {
-    Logger.debug(`Player: Sync State Received. Tracks=${tracks.length}, Effects=${(effectsState == null ? void 0 : effectsState.length) || 0}`);
+  async syncState(tracks, volumes, chainsState = []) {
+    Logger.debug(`Player: Sync State Received. Tracks=${tracks.length}, Chains=${(chainsState == null ? void 0 : chainsState.length) || 0}`);
     this.lastSyncState = tracks;
-    this.syncRequestFailCount = 0;
     this.setAllGMVolumes(volumes);
-    Logger.debug(`Player: GM Gain set to ${this.gmGain.gain.value}`);
-    if (effectsState && effectsState.length > 0) {
-      for (const effectState of effectsState) {
-        const effect = this.effects.get(effectState.id);
-        if (!effect) {
-          console.warn("[ASE PLAYER] Effect not found during sync:", effectState.id);
-          continue;
-        }
-        this.setEffectEnabled(effectState.id, effectState.enabled);
-        ["music", "ambience", "sfx"].forEach((group) => {
-          const active = effectState.routing[group] || false;
-          this.setEffectRouting(effectState.id, group, active);
-        });
-        Object.entries(effectState.params).forEach(([paramId, value]) => {
-          this.setEffectParam(effectState.id, paramId, value);
-        });
-        Logger.debug(`Player: synced ${effect.type} state from GM`);
-      }
+    if (chainsState && chainsState.length > 0) {
+      this.syncChains(chainsState);
     }
     const newTrackIds = new Set(tracks.map((t) => t.id));
     for (const [id, player] of this.players) {
@@ -1553,7 +1642,6 @@ const _PlayerAudioEngine = class _PlayerAudioEngine {
     for (const trackState of tracks) {
       let player = this.players.get(trackState.id);
       if (player && !trackState.isPlaying && player.state === "playing") {
-        Logger.debug("Player: Stopping track that should not be playing:", trackState.id);
         player.stop();
         continue;
       }
@@ -1574,14 +1662,6 @@ const _PlayerAudioEngine = class _PlayerAudioEngine {
       if (trackState.isPlaying) {
         const elapsed = (getServerTime() - trackState.startTimestamp) / 1e3;
         const adjustedTime = trackState.currentTime + elapsed;
-        if (player.state === "playing") {
-          const drift = Math.abs(player.getCurrentTime() - adjustedTime);
-          if (drift < 2) {
-            Logger.debug(`Player: Track ${trackState.id} already playing, drift=${drift.toFixed(2)}s — skipping re-play`);
-            continue;
-          }
-          Logger.debug(`Player: Track ${trackState.id} drift=${drift.toFixed(2)}s — re-syncing`);
-        }
         await player.play(adjustedTime);
       } else {
         player.stop();
@@ -1592,19 +1672,14 @@ const _PlayerAudioEngine = class _PlayerAudioEngine {
   // ─────────────────────────────────────────────────────────────
   // Sync Off
   // ─────────────────────────────────────────────────────────────
-  // Stop all tracks — full cleanup to prevent phantom sound and sync loops
   stopAll() {
-    Logger.info("Player: Stopping all tracks");
     for (const player of this.players.values()) {
-      player.stop();
-      player.dispose();
+      if (player.state === "playing" || player.state === "paused") {
+        player.stop();
+      }
     }
-    this.players.clear();
     this.lastSyncState = [];
-    this.syncRequestFailCount = 0;
-    Logger.info("Player: All tracks stopped and cleared");
   }
-  // Clear all tracks (stop + dispose) — used on sync-stop
   clearAll() {
     for (const player of this.players.values()) {
       player.stop();
@@ -1612,7 +1687,6 @@ const _PlayerAudioEngine = class _PlayerAudioEngine {
     }
     this.players.clear();
     this.lastSyncState = [];
-    this.syncRequestFailCount = 0;
     Logger.info("Player: all tracks cleared");
   }
   // ─────────────────────────────────────────────────────────────
@@ -1636,8 +1710,6 @@ const _SocketManager = class _SocketManager {
     __publicField(this, "socket", null);
     __publicField(this, "_syncEnabled", false);
     __publicField(this, "isGM", false);
-    __publicField(this, "throttleTimers", /* @__PURE__ */ new Map());
-    __publicField(this, "throttlePending", /* @__PURE__ */ new Map());
   }
   initializeAsGM(engine) {
     var _a;
@@ -1684,14 +1756,10 @@ const _SocketManager = class _SocketManager {
   handleGMMessage(message) {
     var _a;
     if (message.senderId === ((_a = game.user) == null ? void 0 : _a.id)) return;
-    if (message.version && message.version !== _SocketManager.PROTOCOL_VERSION) {
-      Logger.warn(`Protocol mismatch: received v${message.version}, expected v${_SocketManager.PROTOCOL_VERSION}. Player may need to refresh.`);
-    }
     if (message.type === "player-ready" && this._syncEnabled) {
       this.sendStateTo(message.senderId);
     }
     if (message.type === "sync-request" && this._syncEnabled) {
-      Logger.debug("Received sync request from player:", message.senderId);
       this.sendStateTo(message.senderId);
     }
   }
@@ -1702,66 +1770,79 @@ const _SocketManager = class _SocketManager {
     var _a;
     if (message.senderId === ((_a = game.user) == null ? void 0 : _a.id)) return;
     if (!this.playerEngine) return;
-    if (message.version && message.version !== _SocketManager.PROTOCOL_VERSION) {
-      Logger.warn(`Protocol mismatch: received v${message.version}, expected v${_SocketManager.PROTOCOL_VERSION}. Try refreshing the page.`);
-    }
     Logger.debug(`Player received: ${message.type}`, message.payload);
     switch (message.type) {
-      case "sync-start":
-        const startPayload = message.payload;
-        await this.playerEngine.syncState(startPayload.tracks, startPayload.channelVolumes, startPayload.effects);
+      case "sync-start": {
+        const payload = message.payload;
+        await this.playerEngine.syncState(payload.tracks, payload.channelVolumes, payload.chains);
         break;
+      }
       case "sync-stop":
         this.playerEngine.clearAll();
         break;
-      case "sync-state":
-        const statePayload = message.payload;
-        await this.playerEngine.syncState(statePayload.tracks, statePayload.channelVolumes, statePayload.effects);
+      case "sync-state": {
+        const payload = message.payload;
+        await this.playerEngine.syncState(payload.tracks, payload.channelVolumes, payload.chains);
         break;
-      case "track-play":
-        const playPayload = message.payload;
-        await this.playerEngine.handlePlay(playPayload);
+      }
+      case "track-play": {
+        const payload = message.payload;
+        await this.playerEngine.handlePlay(payload);
         break;
-      case "track-pause":
-        const pausePayload = message.payload;
-        this.playerEngine.handlePause(pausePayload.trackId);
+      }
+      case "track-pause": {
+        const payload = message.payload;
+        this.playerEngine.handlePause(payload.trackId);
         break;
-      case "track-stop":
-        const stopPayload = message.payload;
-        this.playerEngine.handleStop(stopPayload.trackId);
+      }
+      case "track-stop": {
+        const payload = message.payload;
+        this.playerEngine.handleStop(payload.trackId);
         break;
-      case "track-seek":
-        const seekPayload = message.payload;
+      }
+      case "track-seek": {
+        const payload = message.payload;
         this.playerEngine.handleSeek(
-          seekPayload.trackId,
-          seekPayload.time,
-          seekPayload.isPlaying,
-          seekPayload.seekTimestamp
+          payload.trackId,
+          payload.time,
+          payload.isPlaying,
+          payload.seekTimestamp
         );
         break;
-      case "track-volume":
-        const volPayload = message.payload;
-        this.playerEngine.handleTrackVolume(volPayload.trackId, volPayload.volume);
+      }
+      case "track-volume": {
+        const payload = message.payload;
+        this.playerEngine.handleTrackVolume(payload.trackId, payload.volume);
         break;
-      case "channel-volume":
-        const chVolPayload = message.payload;
-        this.playerEngine.setGMVolume(chVolPayload.channel, chVolPayload.volume);
+      }
+      case "channel-volume": {
+        const payload = message.payload;
+        this.playerEngine.setGMVolume(payload.channel, payload.volume);
         break;
+      }
       case "stop-all":
         this.playerEngine.stopAll();
         break;
-      case "effect-param":
-        const paramPayload = message.payload;
-        this.playerEngine.setEffectParam(paramPayload.effectId, paramPayload.paramId, paramPayload.value);
+      case "effect-param": {
+        const payload = message.payload;
+        this.playerEngine.setChainEffectParam(payload.channel, payload.effectType, payload.paramId, payload.value);
         break;
-      case "effect-routing":
-        const routingPayload = message.payload;
-        this.playerEngine.setEffectRouting(routingPayload.effectId, routingPayload.channel, routingPayload.active);
+      }
+      case "effect-enabled": {
+        const payload = message.payload;
+        this.playerEngine.setChainEffectEnabled(payload.channel, payload.effectType, payload.enabled);
         break;
-      case "effect-enabled":
-        const enabledPayload = message.payload;
-        this.playerEngine.setEffectEnabled(enabledPayload.effectId, enabledPayload.enabled);
+      }
+      case "chain-reorder": {
+        const payload = message.payload;
+        this.playerEngine.reorderChainByTypes(payload.channel, payload.order);
         break;
+      }
+      case "chain-effect-mix": {
+        const payload = message.payload;
+        this.playerEngine.setChainEffectMix(payload.channel, payload.effectType, payload.mix);
+        break;
+      }
     }
   }
   // ─────────────────────────────────────────────────────────────
@@ -1774,8 +1855,7 @@ const _SocketManager = class _SocketManager {
       type,
       payload,
       senderId: ((_a = game.user) == null ? void 0 : _a.id) ?? "",
-      timestamp: getServerTime(),
-      version: _SocketManager.PROTOCOL_VERSION
+      timestamp: getServerTime()
     };
     if (targetUserId) {
       this.socket.emit(SOCKET_NAME, message, { recipients: [targetUserId] });
@@ -1784,27 +1864,13 @@ const _SocketManager = class _SocketManager {
     }
     Logger.debug(`Sent: ${type}`, payload);
   }
-  /**
-   * Throttle a send by key — ensures high-frequency broadcasts (seek, volume, effect params)
-   * don't flood the socket. The last value always gets sent.
-   */
-  throttledSend(key, type, payload) {
-    this.throttlePending.set(key, () => this.send(type, payload));
-    if (this.throttleTimers.has(key)) return;
-    this.send(type, payload);
-    this.throttlePending.delete(key);
-    this.throttleTimers.set(key, setTimeout(() => {
-      this.throttleTimers.delete(key);
-      const pending = this.throttlePending.get(key);
-      if (pending) {
-        this.throttlePending.delete(key);
-        pending();
-      }
-    }, _SocketManager.THROTTLE_MS));
-  }
   getCurrentSyncState() {
     if (!this.gmEngine) {
-      return { tracks: [], channelVolumes: { master: 1, music: 1, ambience: 1, sfx: 1 }, effects: [] };
+      return {
+        tracks: [],
+        channelVolumes: { master: 1, music: 1, ambience: 1, sfx: 1 },
+        chains: []
+      };
     }
     const now = getServerTime();
     const tracks = [];
@@ -1823,7 +1889,7 @@ const _SocketManager = class _SocketManager {
     return {
       tracks,
       channelVolumes: this.gmEngine.volumes,
-      effects: this.gmEngine.getAllEffects().map((e) => this.gmEngine.getEffectState(e.id))
+      chains: this.gmEngine.getAllChainsState()
     };
   }
   broadcastFullState() {
@@ -1876,56 +1942,57 @@ const _SocketManager = class _SocketManager {
       isPlaying,
       seekTimestamp: getServerTime()
     };
-    this.throttledSend(`seek:${trackId}`, "track-seek", payload);
+    this.send("track-seek", payload);
   }
   broadcastTrackVolume(trackId, volume) {
     if (!this._syncEnabled) return;
     const payload = { trackId, volume };
-    this.throttledSend(`vol:${trackId}`, "track-volume", payload);
+    this.send("track-volume", payload);
   }
   broadcastChannelVolume(channel, volume) {
     if (!this._syncEnabled) return;
     const payload = { channel, volume };
-    this.throttledSend(`chvol:${channel}`, "channel-volume", payload);
+    this.send("channel-volume", payload);
   }
   broadcastStopAll() {
+    if (!this._syncEnabled) return;
     this.send("stop-all", {});
   }
   dispose() {
     var _a;
-    for (const timer of this.throttleTimers.values()) {
-      clearTimeout(timer);
-    }
-    this.throttleTimers.clear();
-    this.throttlePending.clear();
     (_a = this.socket) == null ? void 0 : _a.off(SOCKET_NAME);
   }
-  // Effects
-  broadcastEffectParam(effectId, paramId, value) {
+  // ─────────────────────────────────────────────────────────────
+  // Chain Effect Broadcasts (GM → Players)
+  // ─────────────────────────────────────────────────────────────
+  broadcastEffectParam(channel, effectType, paramId, value) {
     if (!this._syncEnabled) return;
-    this.throttledSend(`fx:${effectId}:${paramId}`, "effect-param", { effectId, paramId, value });
+    const payload = { channel, effectType, paramId, value };
+    this.send("effect-param", payload);
   }
-  broadcastEffectRouting(effectId, channel, active) {
+  broadcastEffectEnabled(channel, effectType, enabled) {
     if (!this._syncEnabled) return;
-    this.send("effect-routing", { effectId, channel, active });
+    const payload = { channel, effectType, enabled };
+    this.send("effect-enabled", payload);
   }
-  broadcastEffectEnabled(effectId, enabled) {
+  broadcastChainReorder(channel, order) {
     if (!this._syncEnabled) return;
-    this.send("effect-enabled", { effectId, enabled });
+    const payload = { channel, order };
+    this.send("chain-reorder", payload);
+  }
+  broadcastChainEffectMix(channel, effectType, mix) {
+    if (!this._syncEnabled) return;
+    const payload = { channel, effectType, mix };
+    this.send("chain-effect-mix", payload);
   }
   // ─────────────────────────────────────────────────────────────
   // Player Methods (request sync from GM)
   // ─────────────────────────────────────────────────────────────
   requestFullSync() {
-    Logger.debug("Requesting full sync from GM");
     this.send("sync-request", {});
   }
 };
 __name(_SocketManager, "SocketManager");
-// Protocol version — bump when message format changes
-__publicField(_SocketManager, "PROTOCOL_VERSION", 1);
-// Rate limiting for high-frequency broadcasts
-__publicField(_SocketManager, "THROTTLE_MS", 150);
 let SocketManager = _SocketManager;
 const MODULE_ID$4 = "advanced-sound-engine";
 const _PlayerVolumePanel = class _PlayerVolumePanel extends Application {
@@ -4438,11 +4505,26 @@ const _SoundMixerApp = class _SoundMixerApp {
     }
     const queueItems = this.queueManager.getItems();
     const queuePlaylists = this.groupQueueByPlaylist(queueItems);
-    const effects = this.engine.getAllEffects().map((effect) => ({
-      id: effect.id,
-      name: effect.type,
-      enabled: effect.enabled
-    }));
+    const effectTypes = /* @__PURE__ */ new Set();
+    const effects = [];
+    const channels = ["music", "ambience", "sfx"];
+    for (const channel of channels) {
+      const chain = this.engine.getChain(channel);
+      for (const effect of chain.getEffects()) {
+        if (!effectTypes.has(effect.type)) {
+          effectTypes.add(effect.type);
+          const isEnabled = channels.some((ch) => {
+            const e = this.engine.getChain(ch).getEffect(effect.type);
+            return (e == null ? void 0 : e.enabled) ?? false;
+          });
+          effects.push({
+            id: effect.type,
+            name: effect.type,
+            enabled: isEnabled
+          });
+        }
+      }
+    }
     return {
       favorites,
       queuePlaylists,
@@ -4587,6 +4669,51 @@ const _SoundMixerApp = class _SoundMixerApp {
     });
     html.find('[data-action="toggle-effect"]').on("click", (e) => this.onToggleEffect(e));
     this.setupDragAndDrop(html);
+    this.setupMarquee(html);
+  }
+  // ─────────────────────────────────────────────────────────────
+  // Marquee Logic
+  // ─────────────────────────────────────────────────────────────
+  /**
+   * Setup scrolling text for truncated names on hover
+   */
+  /**
+   * Setup scrolling text for truncated names on hover or active play
+   */
+  setupMarquee(html) {
+    html.find(".ase-favorite-item").on("mouseenter", (e) => {
+      this.toggleMarquee(e.currentTarget, true);
+    });
+    html.find(".ase-favorite-item").on("mouseleave", (e) => {
+      const item = e.currentTarget;
+      if (!item.classList.contains("is-playing")) {
+        this.toggleMarquee(item, false);
+      }
+    });
+    html.find(".ase-favorite-item.is-playing").each((_, el) => {
+      this.toggleMarquee(el, true);
+    });
+  }
+  toggleMarquee(item, active) {
+    const info = item.querySelector(".ase-favorite-info");
+    const span = info == null ? void 0 : info.querySelector("span");
+    if (!span) return;
+    if (!active) {
+      item.classList.remove("is-scrolling");
+      span.style.removeProperty("--scroll-offset");
+      span.style.removeProperty("--scroll-duration");
+      return;
+    }
+    const overflow = span.scrollWidth - info.offsetWidth;
+    if (overflow > 0) {
+      const speed = 20;
+      const buffer = 20;
+      const offset = -(overflow + buffer);
+      const duration = Math.max((overflow + buffer) / speed, 2);
+      span.style.setProperty("--scroll-offset", `${offset}px`);
+      span.style.setProperty("--scroll-duration", `${duration}s`);
+      item.classList.add("is-scrolling");
+    }
   }
   // ─────────────────────────────────────────────────────────────
   // Favorites Handlers
@@ -5509,16 +5636,16 @@ const _SoundMixerApp = class _SoundMixerApp {
   onToggleEffect(event) {
     event.preventDefault();
     const $btn = $(event.currentTarget);
-    const effectId = $btn.data("effect-id");
+    const effectType = $btn.data("effect-id");
     const wasEnabled = $btn.hasClass("active");
     const newState = !wasEnabled;
-    this.engine.setEffectEnabled(effectId, newState);
-    if (newState) {
-      $btn.addClass("active");
-    } else {
-      $btn.removeClass("active");
+    const channels = ["music", "ambience", "sfx"];
+    for (const channel of channels) {
+      this.engine.setChainEffectEnabled(channel, effectType, newState);
+      this.socket.broadcastEffectEnabled(channel, effectType, newState);
     }
-    Logger.info(`Effect ${effectId} ${newState ? "enabled" : "disabled"}`);
+    $btn.toggleClass("active", newState);
+    Logger.info(`Effect ${effectType} ${newState ? "enabled" : "disabled"} on all channels`);
   }
   // ─────────────────────────────────────────────────────────────
   // RAF Processor for Drag Events
@@ -5539,54 +5666,277 @@ const _SoundMixerApp = class _SoundMixerApp {
 __name(_SoundMixerApp, "SoundMixerApp");
 __publicField(_SoundMixerApp, "THROTTLE_MS", 200);
 let SoundMixerApp = _SoundMixerApp;
+function fx(type, enabled, params = {}, mix) {
+  return {
+    type,
+    enabled,
+    mix: mix ?? DEFAULT_MIX[type] ?? 1,
+    params: { level: 1, ...params }
+  };
+}
+__name(fx, "fx");
+function chains(music, ambience, sfx) {
+  return [
+    { channel: "music", effects: music },
+    { channel: "ambience", effects: ambience },
+    { channel: "sfx", effects: sfx }
+  ];
+}
+__name(chains, "chains");
+const BUILTIN_PRESETS = [
+  {
+    id: "builtin-standard",
+    name: "Standard",
+    description: "Default chain order, all effects disabled. Clean starting point.",
+    builtIn: true,
+    chains: chains(
+      [fx("filter", false), fx("compressor", false), fx("distortion", false), fx("delay", false), fx("reverb", false)],
+      [fx("filter", false), fx("compressor", false), fx("distortion", false), fx("delay", false), fx("reverb", false)],
+      [fx("filter", false), fx("compressor", false), fx("distortion", false), fx("delay", false), fx("reverb", false)]
+    )
+  },
+  {
+    id: "builtin-dark-dungeon",
+    name: "Dark Dungeon",
+    description: "Low rumble, long reverb tails, muffled echoes.",
+    builtIn: true,
+    chains: chains(
+      // Music: lowpass filter + long reverb
+      [
+        fx("filter", true, { type: "lowpass", frequency: 800, Q: 1 }),
+        fx("reverb", true, { decay: 4, size: 2, tone: "dark" }, 0.4)
+      ],
+      // Ambience: lowpass + delay + very long reverb
+      [
+        fx("filter", true, { type: "lowpass", frequency: 600, Q: 0.8 }),
+        fx("delay", true, { time: 0.8, feedback: 0.5 }, 0.25),
+        fx("reverb", true, { decay: 6, size: 2.5, tone: "dark" }, 0.5)
+      ],
+      // SFX: compressor + medium reverb
+      [
+        fx("compressor", true, { threshold: -24, ratio: 8 }),
+        fx("reverb", true, { decay: 3, size: 1.5, tone: "dark" }, 0.3)
+      ]
+    )
+  },
+  {
+    id: "builtin-cave-echo",
+    name: "Cave Echo",
+    description: "Hard reflections, prominent delay, natural cave feel.",
+    builtIn: true,
+    chains: chains(
+      // Music: mild filter + short delay + medium reverb
+      [
+        fx("filter", true, { type: "lowpass", frequency: 3e3, Q: 0.5 }),
+        fx("delay", true, { time: 0.15, feedback: 0.6 }, 0.25),
+        fx("reverb", true, { decay: 2.5, size: 1.8, tone: "default" }, 0.35)
+      ],
+      // Ambience: prominent delay + reverb
+      [
+        fx("delay", true, { time: 0.25, feedback: 0.5 }, 0.3),
+        fx("reverb", true, { decay: 3.5, size: 2, tone: "default" }, 0.4)
+      ],
+      // SFX: heavy delay + reverb for dramatic echoes
+      [
+        fx("delay", true, { time: 0.12, feedback: 0.7 }, 0.35),
+        fx("reverb", true, { decay: 2, size: 1.5, tone: "default" }, 0.25)
+      ]
+    )
+  },
+  {
+    id: "builtin-open-field",
+    name: "Open Field",
+    description: "Wide open space, subtle reverb, natural clarity.",
+    builtIn: true,
+    chains: chains(
+      // Music: light compressor + subtle delay + short reverb
+      [
+        fx("compressor", true, { threshold: -20, ratio: 4 }),
+        fx("delay", true, { time: 0.15, feedback: 0.2 }, 0.15),
+        fx("reverb", true, { decay: 1.5, size: 1, tone: "bright" }, 0.2)
+      ],
+      // Ambience: highpass (remove rumble) + gentle reverb
+      [
+        fx("filter", true, { type: "highpass", frequency: 200, Q: 0.7 }),
+        fx("reverb", true, { decay: 2, size: 1.2, tone: "bright" }, 0.25)
+      ],
+      // SFX: just compressor for punch
+      [
+        fx("compressor", true, { threshold: -18, ratio: 6 })
+      ]
+    )
+  },
+  {
+    id: "builtin-tavern",
+    name: "Tavern",
+    description: "Warm, close-quarters sound with slight crunch.",
+    builtIn: true,
+    chains: chains(
+      // Music: lowpass (warmth) + compressor + light distortion + short reverb
+      [
+        fx("filter", true, { type: "lowpass", frequency: 3e3, Q: 0.8 }),
+        fx("compressor", true, { threshold: -20, ratio: 6 }),
+        fx("distortion", true, { drive: 10 }, 0.8),
+        fx("reverb", true, { decay: 1, size: 0.5, tone: "dark" }, 0.2)
+      ],
+      // Ambience: bandpass (narrow room) + short reverb
+      [
+        fx("filter", true, { type: "bandpass", frequency: 800, Q: 2 }),
+        fx("reverb", true, { decay: 0.8, size: 0.4, tone: "default" }, 0.15)
+      ],
+      // SFX: short reverb only
+      [
+        fx("reverb", true, { decay: 0.5, size: 0.3, tone: "default" }, 0.15)
+      ]
+    )
+  },
+  {
+    id: "builtin-combat",
+    name: "Combat",
+    description: "Punchy, aggressive. Heavy compression, tight sound.",
+    builtIn: true,
+    chains: chains(
+      // Music: heavy compressor + light distortion for energy
+      [
+        fx("compressor", true, { threshold: -30, ratio: 8 }),
+        fx("distortion", true, { drive: 15 }, 0.7)
+      ],
+      // Ambience: highpass (cut mud) + compressor
+      [
+        fx("filter", true, { type: "highpass", frequency: 150, Q: 0.7 }),
+        fx("compressor", true, { threshold: -24, ratio: 6 })
+      ],
+      // SFX: compressor for impact + very short delay for punch
+      [
+        fx("compressor", true, { threshold: -20, ratio: 6 }),
+        fx("delay", true, { time: 0.05, feedback: 0.2 }, 0.2)
+      ]
+    )
+  },
+  {
+    id: "builtin-underwater",
+    name: "Underwater",
+    description: "Heavy lowpass, slow modulated feel, muffled world.",
+    builtIn: true,
+    chains: chains(
+      // Music: aggressive lowpass + reverb
+      [
+        fx("filter", true, { type: "lowpass", frequency: 400, Q: 2 }),
+        fx("reverb", true, { decay: 3, size: 2, tone: "dark" }, 0.45)
+      ],
+      // Ambience: same treatment
+      [
+        fx("filter", true, { type: "lowpass", frequency: 350, Q: 2.5 }),
+        fx("delay", true, { time: 0.4, feedback: 0.4 }, 0.2),
+        fx("reverb", true, { decay: 4, size: 2.5, tone: "dark" }, 0.5)
+      ],
+      // SFX: lowpass + reverb
+      [
+        fx("filter", true, { type: "lowpass", frequency: 500, Q: 1.5 }),
+        fx("reverb", true, { decay: 2, size: 1.5, tone: "dark" }, 0.35)
+      ]
+    )
+  },
+  {
+    id: "builtin-old-radio",
+    name: "Old Radio",
+    description: "Bandpass filter + distortion for vintage radio effect.",
+    builtIn: true,
+    chains: chains(
+      [
+        fx("filter", true, { type: "bandpass", frequency: 2e3, Q: 3 }),
+        fx("compressor", true, { threshold: -30, ratio: 12 }),
+        fx("distortion", true, { drive: 25 }, 0.85)
+      ],
+      [
+        fx("filter", true, { type: "bandpass", frequency: 2e3, Q: 3 }),
+        fx("distortion", true, { drive: 20 }, 0.85)
+      ],
+      [
+        fx("filter", true, { type: "bandpass", frequency: 2e3, Q: 3 }),
+        fx("distortion", true, { drive: 20 }, 0.85)
+      ]
+    )
+  }
+];
 const MODULE_ID$3 = "advanced-sound-engine";
 const _GlobalStorage = class _GlobalStorage {
   /**
-   * Load presets from global JSON file
+   * Load presets from global JSON file.
+   * Returns built-in presets merged with user-saved custom presets.
    */
   static async loadPresets() {
     try {
       const response = await fetch(`${this.PRESETS_FILE_PATH}?t=${Date.now()}`);
-      if (!response.ok) return this.getDefaultPresets();
+      if (!response.ok) return [...BUILTIN_PRESETS];
       const data = await response.json();
-      return data.length > 0 ? data : this.getDefaultPresets();
+      if (!data || data.length === 0) return [...BUILTIN_PRESETS];
+      const customPresets = this.migratePresets(data);
+      return [...BUILTIN_PRESETS, ...customPresets];
     } catch (error) {
       Logger.warn("Failed to load presets:", error);
-      return this.getDefaultPresets();
+      return [...BUILTIN_PRESETS];
     }
   }
-  static getDefaultPresets() {
-    return [
-      {
-        id: "preset-cave",
-        name: "Cave",
-        effects: [
-          { type: "reverb", params: { ir: "cave", level: 1.2 }, routing: { music: false, sfx: true, ambience: true } },
-          { type: "delay", params: { time: 0.15, feedback: 0.3, level: 0.5 }, routing: { music: false, sfx: true, ambience: false } }
-        ]
-      },
-      {
-        id: "preset-underwater",
-        name: "Underwater",
-        effects: [
-          { type: "filter", params: { type: "lowpass", frequency: 600, Q: 1, level: 1 }, routing: { music: true, sfx: true, ambience: true } }
-        ]
-      },
-      {
-        id: "preset-radio",
-        name: "Old Radio",
-        effects: [
-          { type: "filter", params: { type: "bandpass", frequency: 2e3, Q: 2, level: 1.5 }, routing: { music: true, sfx: true, ambience: true } },
-          { type: "distortion", params: { drive: 20, level: 0.8 }, routing: { music: true, sfx: true, ambience: true } }
-        ]
+  /**
+   * Migrate old-format presets (flat effects[] with routing) to chain format.
+   * Filters out any presets that match built-in IDs to avoid duplicates.
+   */
+  static migratePresets(rawPresets) {
+    const builtInIds = new Set(BUILTIN_PRESETS.map((p) => p.id));
+    const result = [];
+    for (const raw of rawPresets) {
+      if (builtInIds.has(raw.id)) continue;
+      if (raw.chains && Array.isArray(raw.chains) && raw.chains.length > 0) {
+        result.push(raw);
+        continue;
       }
-    ];
+      if (raw.effects && Array.isArray(raw.effects)) {
+        const migrated = this.migrateLegacyPreset(raw);
+        if (migrated) result.push(migrated);
+        continue;
+      }
+      Logger.warn(`Skipping unrecognized preset format: ${raw.id || raw.name}`);
+    }
+    return result;
   }
   /**
-   * Save presets to global JSON file
+   * Convert a single legacy preset (effects[] with routing) to chain format
+   */
+  static migrateLegacyPreset(raw) {
+    try {
+      const channels = ["music", "ambience", "sfx"];
+      const chains2 = channels.map((channel) => ({
+        channel,
+        effects: raw.effects.filter((e) => {
+          var _a;
+          return (_a = e.routing) == null ? void 0 : _a[channel];
+        }).map((e) => ({
+          type: e.type,
+          enabled: true,
+          mix: DEFAULT_MIX[e.type] ?? 1,
+          params: { level: 1, ...e.params }
+        }))
+      }));
+      return {
+        id: raw.id,
+        name: raw.name,
+        description: raw.description || `Migrated from legacy format`,
+        builtIn: false,
+        chains: chains2
+      };
+    } catch (error) {
+      Logger.error(`Failed to migrate preset ${raw.id}:`, error);
+      return null;
+    }
+  }
+  /**
+   * Save custom presets to global JSON file.
+   * Built-in presets are NOT saved (they are always loaded from code).
    */
   static async savePresets(presets) {
-    return this.saveFile(this.PRESETS_FILE_PATH, presets);
+    const customOnly = presets.filter((p) => !p.builtIn);
+    return this.saveFile(this.PRESETS_FILE_PATH, customOnly);
   }
   /**
    * Generic save helper (refactored from save method)
@@ -5736,89 +6086,185 @@ __publicField(_GlobalStorage, "FILE_SOURCE", "data");
 __publicField(_GlobalStorage, "DIRECTORY", "ase_library");
 let GlobalStorage = _GlobalStorage;
 const _SoundEffectsApp = class _SoundEffectsApp {
-  constructor(engine, socket, storage) {
+  constructor(engine, socket) {
     __publicField(this, "engine");
     __publicField(this, "socket");
-    __publicField(this, "storage");
     __publicField(this, "html", null);
     __publicField(this, "renderParent", null);
-    __publicField(this, "updateInterval", null);
+    __publicField(this, "activeChannel", "music");
+    __publicField(this, "selectedEffectType", null);
     this.engine = engine;
     this.socket = socket;
-    this.storage = storage;
   }
   setRenderCallback(callback) {
     this.renderParent = callback;
   }
+  // ─────────────────────────────────────────────────────────────
+  // Data Provider
+  // ─────────────────────────────────────────────────────────────
   async getData() {
     try {
-      const presets = await GlobalStorage.loadPresets();
-      const effects = this.engine.getAllEffects().map((effect) => {
-        const state = this.engine.getEffectState(effect.type);
-        const levelVal = state.params["level"] || 1;
-        const rotation = levelVal / 2 * 270 - 135;
+      const chain = this.engine.getChain(this.activeChannel);
+      const effects = chain.getEffects();
+      const pedals = effects.map((effect, index) => {
+        const state = effect.getChainState();
+        const mixPercent = Math.round(state.mix * 100);
+        const mixRotation = state.mix * 270 - 135;
+        const params = [];
+        for (const [key, param] of effect.getAllParams()) {
+          if (key === "level") continue;
+          params.push({
+            id: param.id,
+            name: param.name,
+            type: param.type,
+            value: param.value,
+            displayValue: this.formatParamValue(param),
+            min: param.min,
+            max: param.max,
+            step: param.step,
+            suffix: param.suffix,
+            options: param.options
+          });
+        }
         return {
-          ...state,
-          // Helper for template to render specific controls if needed
-          isReverb: state.type === "reverb",
-          isDelay: state.type === "delay",
-          mainValue: levelVal.toFixed(2),
-          // Display value
-          mainParamRotation: rotation,
-          // Add metadata for params (min, max, etc) which are not in state
-          params: Object.entries(state.params).map(([key, value]) => {
-            const paramConfig = effect.params.get(key);
-            return {
-              ...paramConfig,
-              value
-            };
-          }).filter((p) => p.id !== "level")
-          // Filter out level from the slider list to avoid clutter
+          type: state.type,
+          enabled: state.enabled,
+          mix: state.mix,
+          mixPercent,
+          mixRotation,
+          chainIndex: index,
+          selected: state.type === this.selectedEffectType,
+          params
         };
       });
-      const sortOrder = ["reverb", "filter", "delay", "compressor", "distortion"];
-      effects.sort((a, b) => sortOrder.indexOf(a.type) - sortOrder.indexOf(b.type));
+      const allPresets = await GlobalStorage.loadPresets();
+      const builtinPresets = allPresets.filter((p) => p.builtIn);
+      const customPresets = allPresets.filter((p) => !p.builtIn);
       return {
-        effects,
-        presets
+        activeChannel: this.activeChannel,
+        pedals,
+        selectedEffect: pedals.find((p) => p.selected) || null,
+        musicActiveCount: this.engine.getChain("music").getActiveCount(),
+        ambienceActiveCount: this.engine.getChain("ambience").getActiveCount(),
+        sfxActiveCount: this.engine.getChain("sfx").getActiveCount(),
+        builtinPresets,
+        customPresets
       };
     } catch (error) {
-      Logger.error("Failed to get data for SoundEffectsApp:", error);
+      Logger.error("SoundEffectsApp getData failed:", error);
       return {
-        effects: [],
-        presets: []
+        activeChannel: this.activeChannel,
+        pedals: [],
+        selectedEffect: null,
+        musicActiveCount: 0,
+        ambienceActiveCount: 0,
+        sfxActiveCount: 0,
+        builtinPresets: [...BUILTIN_PRESETS],
+        customPresets: []
       };
     }
   }
+  formatParamValue(param) {
+    if (param.type === "select") return String(param.value);
+    if (param.type === "boolean") return param.value ? "ON" : "OFF";
+    const num = Number(param.value);
+    const formatted = Number.isInteger(num) ? num.toString() : num.toFixed(2);
+    return param.suffix ? `${formatted}${param.suffix}` : formatted;
+  }
+  // ─────────────────────────────────────────────────────────────
+  // Event Listeners
+  // ─────────────────────────────────────────────────────────────
   activateListeners(html) {
     this.html = html;
-    Logger.debug("SoundEffectsApp: View Loaded");
-    html.off("click", ".ase-effect-toggle").on("click", ".ase-effect-toggle", (e) => this.onToggleEnable(e));
-    html.off("click", '[data-action="toggle-route"]').on("click", '[data-action="toggle-route"]', (e) => this.onToggleRoute(e));
-    html.find(".ase-param-slider").on("input", (e) => this.onParamChange(e));
-    html.find(".ase-param-input").on("change", (e) => this.onParamChange(e));
-    html.find(".ase-knob-circle").on("mousedown", (e) => this.onKnobCheck(e));
-    html.find('[data-action="save-preset"]').on("click", (e) => this.onSavePreset(e));
+    html.off("click", ".ase-channel-tab").on("click", ".ase-channel-tab", (e) => this.onChannelSwitch(e));
+    html.off("click", ".ase-pedal-card").on("click", ".ase-pedal-card", (e) => this.onPedalSelect(e));
+    html.off("click", ".ase-pedal-footswitch").on("click", ".ase-pedal-footswitch", (e) => {
+      e.stopPropagation();
+      this.onToggleBypass(e);
+    });
+    html.find(".ase-pedal-knob").on("mousedown", (e) => {
+      e.stopPropagation();
+      this.onKnobDrag(e, "pedal");
+    });
+    html.find(".ase-detail-knob").on("mousedown", (e) => this.onKnobDrag(e, "detail"));
+    html.find(".ase-detail-slider").on("input", (e) => this.onDetailParamSlider(e));
+    html.off("click", ".ase-seg-btn").on("click", ".ase-seg-btn", (e) => this.onDetailParamSelect(e));
     html.find("#ase-preset-select").on("change", (e) => this.onLoadPreset(e));
+    html.off("click", '[data-action="save-preset"]').on("click", '[data-action="save-preset"]', (e) => this.onSavePreset(e));
+    html.off("click", '[data-action="reset-chain"]').on("click", '[data-action="reset-chain"]', (e) => this.onResetChain(e));
+    this.initDragAndDrop(html);
   }
-  onKnobCheck(event) {
+  // ─────────────────────────────────────────────────────────────
+  // Channel Switch
+  // ─────────────────────────────────────────────────────────────
+  onChannelSwitch(event) {
+    var _a;
+    event.preventDefault();
+    const channel = $(event.currentTarget).data("channel");
+    if (channel === this.activeChannel) return;
+    this.activeChannel = channel;
+    this.selectedEffectType = null;
+    (_a = this.renderParent) == null ? void 0 : _a.call(this);
+  }
+  // ─────────────────────────────────────────────────────────────
+  // Pedal Select
+  // ─────────────────────────────────────────────────────────────
+  onPedalSelect(event) {
+    var _a;
+    const effectType = $(event.currentTarget).data("effect-type");
+    if (this.selectedEffectType === effectType) {
+      this.selectedEffectType = null;
+    } else {
+      this.selectedEffectType = effectType;
+    }
+    (_a = this.renderParent) == null ? void 0 : _a.call(this);
+  }
+  // ─────────────────────────────────────────────────────────────
+  // Footswitch (Bypass Toggle)
+  // ─────────────────────────────────────────────────────────────
+  onToggleBypass(event) {
+    const $card = $(event.currentTarget).closest(".ase-pedal-card");
+    const effectType = $card.data("effect-type");
+    const wasActive = $card.hasClass("active");
+    const newEnabled = !wasActive;
+    this.engine.setChainEffectEnabled(this.activeChannel, effectType, newEnabled);
+    this.socket.broadcastEffectEnabled(this.activeChannel, effectType, newEnabled);
+    $card.toggleClass("active", newEnabled);
+    $card.find(".ase-pedal-led").toggleClass("on", newEnabled);
+    $card.find(".ase-pedal-footswitch").toggleClass("engaged", newEnabled);
+  }
+  // ─────────────────────────────────────────────────────────────
+  // Knob Drag (shared for pedal & detail mix knobs)
+  // ─────────────────────────────────────────────────────────────
+  onKnobDrag(event, source) {
     const $knob = $(event.currentTarget);
-    const $card = $knob.closest(".ase-effect-card");
-    const effectId = $card.data("effect-id");
+    let effectType;
+    if (source === "pedal") {
+      effectType = $knob.closest(".ase-pedal-card").data("effect-type");
+    } else {
+      if (!this.selectedEffectType) return;
+      effectType = this.selectedEffectType;
+    }
+    const chain = this.engine.getChain(this.activeChannel);
+    const effect = chain.getEffect(effectType);
+    if (!effect) return;
     const startY = event.pageY;
-    const state = this.engine.getEffectState(effectId);
-    let currentValue = state.params["level"] || 1;
+    let currentMix = effect.mix;
     const onMouseMove = /* @__PURE__ */ __name((moveEvent) => {
       const pageY = moveEvent.pageY || moveEvent.originalEvent.pageY;
       const deltaY = startY - pageY;
-      const sensitivity = 0.01;
-      let newValue = currentValue + deltaY * sensitivity;
-      newValue = Math.max(0, Math.min(2, newValue));
-      const rotation = newValue / 2 * 270 - 135;
-      $knob.css("--knob-rotation", `${rotation}deg`);
-      $knob.find(".ase-knob-value").text(newValue.toFixed(2));
-      this.engine.setEffectParam(effectId, "level", newValue);
-      this.socket.broadcastEffectParam(effectId, "level", newValue);
+      const sensitivity = 5e-3;
+      const newMix = Math.max(0, Math.min(1, currentMix + deltaY * sensitivity));
+      const rotation = newMix * 270 - 135;
+      if (this.html) {
+        const $pedalCard = this.html.find(`.ase-pedal-card[data-effect-type="${effectType}"]`);
+        $pedalCard.find(".ase-pedal-knob").css("--knob-rotation", `${rotation}deg`);
+        $pedalCard.find(".ase-pedal-mix-value").text(`${Math.round(newMix * 100)}%`);
+        this.html.find(".ase-detail-knob").css("--knob-rotation", `${rotation}deg`);
+        this.html.find(".ase-detail-knob-label").text(`Mix ${Math.round(newMix * 100)}%`);
+      }
+      this.engine.setChainEffectMix(this.activeChannel, effectType, newMix);
+      this.socket.broadcastChainEffectMix(this.activeChannel, effectType, newMix);
     }, "onMouseMove");
     const onMouseUp = /* @__PURE__ */ __name(() => {
       $(document).off("mousemove", onMouseMove);
@@ -5827,54 +6273,120 @@ const _SoundEffectsApp = class _SoundEffectsApp {
     $(document).on("mousemove", onMouseMove);
     $(document).on("mouseup", onMouseUp);
   }
-  onToggleEnable(event) {
-    event.preventDefault();
-    const $toggle = $(event.currentTarget);
-    const $card = $toggle.closest(".ase-effect-card");
-    const effectId = $card.data("effect-id");
-    const wasEnabled = $card.hasClass("enabled");
-    const newState = !wasEnabled;
-    this.engine.setEffectEnabled(effectId, newState);
-    this.socket.broadcastEffectEnabled(effectId, newState);
-    if (newState) {
-      $card.addClass("enabled");
-    } else {
-      $card.removeClass("enabled");
-    }
-  }
-  onToggleRoute(event) {
-    event.preventDefault();
-    const $btn = $(event.currentTarget);
-    const $card = $btn.closest(".ase-effect-card");
-    const effectId = $card.data("effect-id");
-    const channel = $btn.data("channel");
-    const isActive = $btn.hasClass("active");
-    const newState = !isActive;
-    this.engine.setEffectRouting(effectId, channel, newState);
-    this.socket.broadcastEffectRouting(effectId, channel, newState);
-    if (newState) $btn.addClass("active");
-    else $btn.removeClass("active");
-  }
-  onParamChange(event) {
+  // ─────────────────────────────────────────────────────────────
+  // Detail Panel: Param Slider
+  // ─────────────────────────────────────────────────────────────
+  onDetailParamSlider(event) {
+    if (!this.selectedEffectType) return;
     const $input = $(event.currentTarget);
-    const $card = $input.closest(".ase-effect-card");
-    const effectId = $card.data("effect-id");
     const paramId = $input.data("param-id");
-    let value = $input.val();
-    if ($input.attr("type") === "range") {
-      value = parseFloat(value);
-      $card.find(`.ase-param-control:has([data-param-id="${paramId}"]) .ase-param-val`).text(value);
-      $input.siblings(".ase-param-val").text(value);
+    const value = parseFloat($input.val());
+    this.engine.setChainEffectParam(this.activeChannel, this.selectedEffectType, paramId, value);
+    this.socket.broadcastEffectParam(this.activeChannel, this.selectedEffectType, paramId, value);
+    const suffix = $input.data("suffix") || "";
+    const $row = $input.closest(".ase-detail-param-row");
+    const formatted = Number.isInteger(value) ? value.toString() : value.toFixed(2);
+    $row.find(".ase-detail-param-value").text(`${formatted}${suffix}`);
+    const min = parseFloat($input.attr("min") || "0");
+    const max = parseFloat($input.attr("max") || "1");
+    const fill = (value - min) / (max - min) * 100;
+    $input.css("--slider-fill", `${fill}%`);
+  }
+  // ─────────────────────────────────────────────────────────────
+  // Detail Panel: Select Param (segmented buttons)
+  // ─────────────────────────────────────────────────────────────
+  onDetailParamSelect(event) {
+    event.preventDefault();
+    if (!this.selectedEffectType) return;
+    const $btn = $(event.currentTarget);
+    const paramId = $btn.data("param-id");
+    const value = $btn.data("value");
+    this.engine.setChainEffectParam(this.activeChannel, this.selectedEffectType, paramId, value);
+    this.socket.broadcastEffectParam(this.activeChannel, this.selectedEffectType, paramId, value);
+    $btn.siblings().removeClass("active");
+    $btn.addClass("active");
+    const $row = $btn.closest(".ase-detail-param-row");
+    $row.find(".ase-detail-param-value").text(value);
+  }
+  // ─────────────────────────────────────────────────────────────
+  // Drag and Drop Reorder
+  // ─────────────────────────────────────────────────────────────
+  initDragAndDrop(html) {
+    const $pedalboard = html.find(".ase-pedalboard");
+    if (!$pedalboard.length) return;
+    html.find(".ase-pedal-card").each((_, el) => {
+      el.addEventListener("dragstart", (e) => {
+        if (!e.dataTransfer) return;
+        e.dataTransfer.setData("text/plain", JSON.stringify({
+          effectType: el.dataset.effectType,
+          chainIndex: el.dataset.chainIndex
+        }));
+        e.dataTransfer.effectAllowed = "move";
+        $(el).addClass("dragging");
+      });
+      el.addEventListener("dragend", () => {
+        $(el).removeClass("dragging");
+        html.find(".ase-drop-zone").removeClass("drag-over");
+      });
+    });
+    html.find(".ase-drop-zone").each((_, zone) => {
+      zone.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+        $(zone).addClass("drag-over");
+      });
+      zone.addEventListener("dragleave", () => {
+        $(zone).removeClass("drag-over");
+      });
+      zone.addEventListener("drop", (e) => {
+        var _a;
+        e.preventDefault();
+        $(zone).removeClass("drag-over");
+        if (!e.dataTransfer) return;
+        const data = JSON.parse(e.dataTransfer.getData("text/plain"));
+        const fromIndex = parseInt(data.chainIndex, 10);
+        const toIndex = parseInt(zone.dataset.dropIndex || "0", 10);
+        if (fromIndex !== toIndex && fromIndex !== toIndex - 1) {
+          const adjustedTo = fromIndex < toIndex ? toIndex - 1 : toIndex;
+          this.engine.reorderChainEffect(this.activeChannel, fromIndex, adjustedTo);
+          const newOrder = this.engine.getChain(this.activeChannel).getOrder();
+          this.socket.broadcastChainReorder(this.activeChannel, newOrder);
+          (_a = this.renderParent) == null ? void 0 : _a.call(this);
+        }
+      });
+    });
+  }
+  // ─────────────────────────────────────────────────────────────
+  // Presets
+  // ─────────────────────────────────────────────────────────────
+  async onLoadPreset(event) {
+    var _a, _b;
+    const presetId = $(event.currentTarget).val();
+    if (!presetId) return;
+    const allPresets = await GlobalStorage.loadPresets();
+    const preset = allPresets.find((p) => p.id === presetId);
+    if (!preset || !preset.chains) return;
+    for (const chainState of preset.chains) {
+      const chain = this.engine.getChain(chainState.channel);
+      if (chain) {
+        chain.restoreState(chainState);
+      }
     }
-    this.engine.setEffectParam(effectId, paramId, value);
-    this.socket.broadcastEffectParam(effectId, paramId, value);
+    this.socket.broadcastFullState();
+    (_a = ui.notifications) == null ? void 0 : _a.info(`Loaded preset: ${preset.name}`);
+    (_b = this.renderParent) == null ? void 0 : _b.call(this);
+    $(event.currentTarget).val("");
   }
   async onSavePreset(event) {
     event.preventDefault();
     const content = `
             <div class="form-group">
                 <label>Preset Name</label>
-                <input type="text" name="name" placeholder="My Cool Preset"/>
+                <input type="text" name="name" placeholder="My Custom Preset"/>
+            </div>
+            <div class="form-group">
+                <label>Description (optional)</label>
+                <input type="text" name="description" placeholder="Short description..."/>
             </div>
         `;
     new Dialog({
@@ -5884,67 +6396,45 @@ const _SoundEffectsApp = class _SoundEffectsApp {
         save: {
           label: "Save",
           callback: /* @__PURE__ */ __name(async (html) => {
+            var _a, _b;
             const name = html.find('input[name="name"]').val();
             if (!name) return;
-            await this.savePreset(name);
+            const description = html.find('input[name="description"]').val();
+            const newPreset = {
+              id: `custom-${Date.now()}`,
+              name,
+              description: description || void 0,
+              builtIn: false,
+              chains: this.engine.getAllChainsState()
+            };
+            const allPresets = await GlobalStorage.loadPresets();
+            allPresets.push(newPreset);
+            await GlobalStorage.savePresets(allPresets);
+            (_a = ui.notifications) == null ? void 0 : _a.info(`Saved preset: ${name}`);
+            (_b = this.renderParent) == null ? void 0 : _b.call(this);
           }, "callback")
         }
       }
     }).render(true);
   }
-  async savePreset(name) {
-    var _a, _b;
-    const effects = this.engine.getAllEffects().map((e) => this.engine.getEffectState(e.id));
-    const newPreset = {
-      id: generateUUID(),
-      // We need a UUID helper or just Math.random
-      name,
-      effects
-    };
-    const presets = await GlobalStorage.loadPresets();
-    presets.push(newPreset);
-    await GlobalStorage.savePresets(presets);
-    (_a = ui.notifications) == null ? void 0 : _a.info(`Saved preset: ${name}`);
-    (_b = this.renderParent) == null ? void 0 : _b.call(this);
+  onResetChain(event) {
+    var _a;
+    event.preventDefault();
+    const chain = this.engine.getChain(this.activeChannel);
+    chain.buildDefault();
+    this.selectedEffectType = null;
+    this.socket.broadcastFullState();
+    (_a = this.renderParent) == null ? void 0 : _a.call(this);
   }
-  async onLoadPreset(event) {
-    var _a, _b;
-    const presetId = $(event.currentTarget).val();
-    if (!presetId) return;
-    const presets = await GlobalStorage.loadPresets();
-    const preset = presets.find((p) => p.id === presetId);
-    if (preset) {
-      for (const effectState of preset.effects) {
-        const existingEffect = this.engine.getAllEffects().find((e) => e.type === effectState.type);
-        if (existingEffect) {
-          for (const [key, value] of Object.entries(effectState.params)) {
-            this.engine.setEffectParam(existingEffect.id, key, value);
-          }
-          if (effectState.routing) {
-            for (const [group, active] of Object.entries(effectState.routing)) {
-              this.engine.setEffectRouting(existingEffect.id, group, active);
-            }
-          }
-        }
-      }
-      (_a = ui.notifications) == null ? void 0 : _a.info(`Loaded preset: ${preset.name}`);
-      (_b = this.renderParent) == null ? void 0 : _b.call(this);
-      this.socket.broadcastFullState();
-    }
-  }
+  // ─────────────────────────────────────────────────────────────
+  // Cleanup
+  // ─────────────────────────────────────────────────────────────
   destroy() {
     this.html = null;
   }
 };
 __name(_SoundEffectsApp, "SoundEffectsApp");
 let SoundEffectsApp = _SoundEffectsApp;
-function generateUUID() {
-  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function(c) {
-    var r = Math.random() * 16 | 0, v = c == "x" ? r : r & 3 | 8;
-    return v.toString(16);
-  });
-}
-__name(generateUUID, "generateUUID");
 const MODULE_ID$2 = "advanced-sound-engine";
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 const _AdvancedSoundEngineApp = class _AdvancedSoundEngineApp extends HandlebarsApplicationMixin(ApplicationV2) {
@@ -5989,7 +6479,7 @@ const _AdvancedSoundEngineApp = class _AdvancedSoundEngineApp extends Handlebars
     this.queueManager = queueManager2;
     this.libraryApp = new LocalLibraryApp(this.libraryManager, this);
     this.mixerApp = new SoundMixerApp(this.engine, this.socket, this.libraryManager, this.queueManager);
-    this.effectsApp = new SoundEffectsApp(this.engine, this.socket, this.libraryManager.storage);
+    this.effectsApp = new SoundEffectsApp(this.engine, this.socket);
     this.mixerApp.setRenderCallback(() => {
       if (this.state.activeTab === "mixer") {
         this.captureScroll();
@@ -6289,7 +6779,7 @@ const _PlaylistManager = class _PlaylistManager {
     }
     const now = Date.now();
     const playlist = {
-      id: generateUUID$1(),
+      id: generateUUID(),
       name,
       description,
       items: [],
@@ -6412,7 +6902,7 @@ const _PlaylistManager = class _PlaylistManager {
       throw new Error("Track already exists in this playlist");
     }
     const item = {
-      id: generateUUID$1(),
+      id: generateUUID(),
       libraryItemId,
       group,
       volume: (options == null ? void 0 : options.volume) ?? 1,
@@ -6638,7 +7128,7 @@ const _LibraryManager = class _LibraryManager {
     }
     const now = Date.now();
     const item = {
-      id: generateUUID$1(),
+      id: generateUUID(),
       url,
       name: itemName,
       tags,
@@ -7176,7 +7666,7 @@ const _PlaybackQueueManager = class _PlaybackQueueManager {
    */
   addItem(libraryItemId, options) {
     const item = {
-      id: generateUUID$1(),
+      id: generateUUID(),
       libraryItemId,
       group: (options == null ? void 0 : options.group) ?? "music",
       addedAt: Date.now(),

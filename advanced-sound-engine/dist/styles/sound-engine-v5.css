@@ -464,6 +464,8 @@
   gap: 8px;
   flex: 1;
   overflow: hidden;
+  margin-right: 10px;
+  /* Spacing before buttons */
 }
 .ase-favorite-item .ase-favorite-info .ase-type-icon {
   color: var(--ase-border-gold);
@@ -476,8 +478,33 @@
   white-space: nowrap;
   font-family: var(--ase-font-body);
   color: var(--ase-text-body);
+  display: block;
+  /* Ensure transform works */
+}
+.ase-favorite-item.is-scrolling .ase-favorite-info span,
+.ase-favorite-item .ase-favorite-info.is-scrolling span {
+  animation: ase-scroll-text var(--scroll-duration, 5s) linear infinite alternate;
+  text-overflow: clip;
+  /* Show text while scrolling */
 }
 
+@keyframes ase-scroll-text {
+  0% {
+    transform: translateX(0);
+  }
+  15% {
+    transform: translateX(0);
+  }
+  /* Pause start */
+  85% {
+    transform: translateX(var(--scroll-offset, -100%));
+  }
+  /* Scroll to end */
+  100% {
+    transform: translateX(var(--scroll-offset, -100%));
+  }
+  /* Pause end */
+}
 .ase-sidebar-header {
   background: linear-gradient(to right, rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0));
   padding: 8px 10px;

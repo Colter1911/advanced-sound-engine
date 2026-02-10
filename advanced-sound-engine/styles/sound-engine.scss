@@ -510,7 +510,7 @@
     flex: 1;
     overflow: hidden;
 
-    margin-right: 5px;
+    margin-right: 10px;
     /* Spacing before buttons */
 
     .ase-type-icon {
@@ -525,13 +525,39 @@
       white-space: nowrap;
       font-family: var(--ase-font-body);
       color: var(--ase-text-body);
-      transition: transform 0s linear;
-      /* Prepared for JS-driven scroll */
-      will-change: transform;
       display: block;
       /* Ensure transform works */
     }
   }
+
+  &.is-scrolling .ase-favorite-info span,
+  .ase-favorite-info.is-scrolling span {
+    animation: ase-scroll-text var(--scroll-duration, 5s) linear infinite alternate;
+    text-overflow: clip;
+    /* Show text while scrolling */
+  }
+}
+
+@keyframes ase-scroll-text {
+  0% {
+    transform: translateX(0);
+  }
+
+  15% {
+    transform: translateX(0);
+  }
+
+  /* Pause start */
+  85% {
+    transform: translateX(var(--scroll-offset, -100%));
+  }
+
+  /* Scroll to end */
+  100% {
+    transform: translateX(var(--scroll-offset, -100%));
+  }
+
+  /* Pause end */
 }
 
 .ase-sidebar-header {
