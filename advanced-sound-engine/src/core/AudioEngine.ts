@@ -8,6 +8,8 @@ import { getServerTime } from '@utils/time';
 import { generateUUID } from '@utils/uuid';
 import { validateAudioFile } from '@utils/audio-validation';
 import type { PlaybackContext } from './PlaybackScheduler';
+import type { PlaybackScheduler } from './PlaybackScheduler';
+import type { SocketManager } from '../sync/SocketManager';
 
 const MODULE_ID = 'advanced-sound-engine';
 
@@ -75,6 +77,8 @@ export class AudioEngine extends SimpleEventEmitter {
   private channelGains: Record<TrackGroup, GainNode>;
   private players: Map<string, StreamingPlayer> = new Map();
   private _activeContext: PlaybackContext | null = null;
+  private scheduler: PlaybackScheduler | null = null;
+  private socketManager: SocketManager | null = null;
 
   // ─── Effects Chain System ───────────────────────────────────
   private chains: Record<TrackGroup, EffectChain>;
@@ -294,9 +298,24 @@ export class AudioEngine extends SimpleEventEmitter {
   }
 
   stopAll(): void {
+    this.scheduler?.clearContext();
+
     for (const player of this.players.values()) {
       player.stop();
     }
+
+    this._activeContext = null;
+    this.emit('contextChanged', null);
+
+    this.socketManager?.broadcastStopAll();
+  }
+
+  setScheduler(scheduler: PlaybackScheduler | null): void {
+    this.scheduler = scheduler;
+  }
+
+  setSocketManager(socketManager: SocketManager | null): void {
+    this.socketManager = socketManager;
   }
 
   // ─────────────────────────────────────────────────────────────
