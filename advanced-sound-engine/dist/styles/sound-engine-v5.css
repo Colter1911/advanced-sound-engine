@@ -1030,6 +1030,12 @@
   color: var(--accent-cyan, var(--ase-accent-cyan));
 }
 
+.ase-track-controls > i[data-action=track-mode-dropdown] {
+  width: 18px;
+  display: inline-block;
+  text-align: center;
+}
+
 .ase-btn-delete {
   color: #4a5568 !important;
   margin-left: 8px;
