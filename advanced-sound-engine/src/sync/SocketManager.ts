@@ -12,8 +12,11 @@ import type {
   TrackGroup,
   ChannelVolumes,
   EffectParamPayload,
-  EffectRoutingPayload
+  EffectEnabledPayload,
+  ChainReorderPayload,
+  ChainEffectMixPayload,
 } from '@t/audio';
+import type { EffectType } from '@t/effects';
 import { AudioEngine } from '@core/AudioEngine';
 import { PlayerAudioEngine } from '@core/PlayerAudioEngine';
 import { Logger } from '@utils/logger';
@@ -102,7 +105,6 @@ export class SocketManager {
     }
 
     if (message.type === 'player-ready' && this._syncEnabled) {
-      // Send current state to newly joined player
       this.sendStateTo(message.senderId);
     }
 
@@ -128,75 +130,91 @@ export class SocketManager {
     Logger.debug(`Player received: ${message.type}`, message.payload);
 
     switch (message.type) {
-      case 'sync-start':
-        const startPayload = message.payload as SyncStatePayload;
-        await this.playerEngine.syncState(startPayload.tracks, startPayload.channelVolumes, startPayload.effects);
+      case 'sync-start': {
+        const payload = message.payload as SyncStatePayload;
+        await this.playerEngine.syncState(payload.tracks, payload.channelVolumes, payload.chains);
         break;
+      }
 
       case 'sync-stop':
         this.playerEngine.clearAll();
         break;
 
-      case 'sync-state':
-        const statePayload = message.payload as SyncStatePayload;
-        await this.playerEngine.syncState(statePayload.tracks, statePayload.channelVolumes, statePayload.effects);
+      case 'sync-state': {
+        const payload = message.payload as SyncStatePayload;
+        await this.playerEngine.syncState(payload.tracks, payload.channelVolumes, payload.chains);
         break;
+      }
 
-      case 'track-play':
-        const playPayload = message.payload as TrackPlayPayload;
-        await this.playerEngine.handlePlay(playPayload);
+      case 'track-play': {
+        const payload = message.payload as TrackPlayPayload;
+        await this.playerEngine.handlePlay(payload);
         break;
+      }
 
-      case 'track-pause':
-        const pausePayload = message.payload as TrackPausePayload;
-        this.playerEngine.handlePause(pausePayload.trackId);
+      case 'track-pause': {
+        const payload = message.payload as TrackPausePayload;
+        this.playerEngine.handlePause(payload.trackId);
         break;
+      }
 
-      case 'track-stop':
-        const stopPayload = message.payload as TrackStopPayload;
-        this.playerEngine.handleStop(stopPayload.trackId);
+      case 'track-stop': {
+        const payload = message.payload as TrackStopPayload;
+        this.playerEngine.handleStop(payload.trackId);
         break;
+      }
 
-      case 'track-seek':
-        const seekPayload = message.payload as TrackSeekPayload;
+      case 'track-seek': {
+        const payload = message.payload as TrackSeekPayload;
         this.playerEngine.handleSeek(
-          seekPayload.trackId,
-          seekPayload.time,
-          seekPayload.isPlaying,
-          seekPayload.seekTimestamp
+          payload.trackId,
+          payload.time,
+          payload.isPlaying,
+          payload.seekTimestamp
         );
         break;
+      }
 
-      case 'track-volume':
-        const volPayload = message.payload as TrackVolumePayload;
-        this.playerEngine.handleTrackVolume(volPayload.trackId, volPayload.volume);
+      case 'track-volume': {
+        const payload = message.payload as TrackVolumePayload;
+        this.playerEngine.handleTrackVolume(payload.trackId, payload.volume);
         break;
+      }
 
-
-
-      case 'channel-volume':
-        const chVolPayload = message.payload as ChannelVolumePayload;
-        this.playerEngine.setGMVolume(chVolPayload.channel, chVolPayload.volume);
+      case 'channel-volume': {
+        const payload = message.payload as ChannelVolumePayload;
+        this.playerEngine.setGMVolume(payload.channel, payload.volume);
         break;
+      }
 
       case 'stop-all':
         this.playerEngine.stopAll();
         break;
 
-      case 'effect-param':
-        const paramPayload = message.payload as EffectParamPayload;
-        (this.playerEngine as any).setEffectParam(paramPayload.effectId, paramPayload.paramId, paramPayload.value);
+      // ─── Chain Effect Messages ──────────────────────────────
+      case 'effect-param': {
+        const payload = message.payload as EffectParamPayload;
+        this.playerEngine.setChainEffectParam(payload.channel, payload.effectType, payload.paramId, payload.value);
         break;
+      }
 
-      case 'effect-routing':
-        const routingPayload = message.payload as EffectRoutingPayload;
-        (this.playerEngine as any).setEffectRouting(routingPayload.effectId, routingPayload.channel, routingPayload.active);
+      case 'effect-enabled': {
+        const payload = message.payload as EffectEnabledPayload;
+        this.playerEngine.setChainEffectEnabled(payload.channel, payload.effectType, payload.enabled);
         break;
+      }
 
-      case 'effect-enabled':
-        const enabledPayload = message.payload as any; // EffectEnabledPayload
-        (this.playerEngine as any).setEffectEnabled(enabledPayload.effectId, enabledPayload.enabled);
+      case 'chain-reorder': {
+        const payload = message.payload as ChainReorderPayload;
+        this.playerEngine.reorderChainByTypes(payload.channel, payload.order);
         break;
+      }
+
+      case 'chain-effect-mix': {
+        const payload = message.payload as ChainEffectMixPayload;
+        this.playerEngine.setChainEffectMix(payload.channel, payload.effectType, payload.mix);
+        break;
+      }
     }
   }
 
@@ -253,7 +271,11 @@ export class SocketManager {
 
   private getCurrentSyncState(): SyncStatePayload {
     if (!this.gmEngine) {
-      return { tracks: [], channelVolumes: { master: 1, music: 1, ambience: 1, sfx: 1 }, effects: [] };
+      return {
+        tracks: [],
+        channelVolumes: { master: 1, music: 1, ambience: 1, sfx: 1 },
+        chains: []
+      };
     }
 
     const now = getServerTime();
@@ -275,13 +297,13 @@ export class SocketManager {
     return {
       tracks,
       channelVolumes: this.gmEngine.volumes,
-      effects: this.gmEngine.getAllEffects().map(e => this.gmEngine!.getEffectState(e.id)!)
+      chains: this.gmEngine.getAllChainsState()
     };
   }
 
   public broadcastFullState(): void {
     if (!this._syncEnabled) return;
-    this.broadcastSyncStart(); // Re-uses sync-start or sync-state logic
+    this.broadcastSyncStart();
   }
 
   private broadcastSyncStart(): void {
@@ -377,22 +399,31 @@ export class SocketManager {
     this.socket?.off(SOCKET_NAME);
   }
 
-  // Effects
+  // ─────────────────────────────────────────────────────────────
+  // Chain Effect Broadcasts (GM → Players)
+  // ─────────────────────────────────────────────────────────────
 
-  broadcastEffectParam(effectId: string, paramId: string, value: any): void {
+  broadcastEffectParam(channel: TrackGroup, effectType: EffectType, paramId: string, value: any): void {
     if (!this._syncEnabled) return;
     this.throttledSend(`fx:${effectId}:${paramId}`, 'effect-param', { effectId, paramId, value } as EffectParamPayload);
   }
 
-  broadcastEffectRouting(effectId: string, channel: TrackGroup, active: boolean): void {
+  broadcastEffectEnabled(channel: TrackGroup, effectType: EffectType, enabled: boolean): void {
     if (!this._syncEnabled) return;
     this.send('effect-routing', { effectId, channel, active } as EffectRoutingPayload);
   }
 
-  broadcastEffectEnabled(effectId: string, enabled: boolean): void {
+  broadcastChainReorder(channel: TrackGroup, order: EffectType[]): void {
     if (!this._syncEnabled) return;
     this.send('effect-enabled', { effectId, enabled } as any);
   }
+
+  broadcastChainEffectMix(channel: TrackGroup, effectType: EffectType, mix: number): void {
+    if (!this._syncEnabled) return;
+    const payload: ChainEffectMixPayload = { channel, effectType, mix };
+    this.send('chain-effect-mix', payload);
+  }
+
   // ─────────────────────────────────────────────────────────────
   // Player Methods (request sync from GM)
   // ─────────────────────────────────────────────────────────────

@@ -1,4 +1,5 @@
 import type { TrackGroup } from '@t/audio';
+import type { EffectType } from '@t/effects';
 import type { QueueItem } from '@t/queue';
 import type { LibraryItem, Playlist } from '@t/library';
 import { AudioEngine } from '@core/AudioEngine';
@@ -207,12 +208,28 @@ export class SoundMixerApp {
     const queueItems = this.queueManager.getItems();
     const queuePlaylists = this.groupQueueByPlaylist(queueItems);
 
-    // Get all effects from engine
-    const effects: EffectViewData[] = this.engine.getAllEffects().map((effect) => ({
-      id: effect.id,
-      name: effect.type,
-      enabled: effect.enabled,
-    }));
+    // Get effect types from chains (deduplicated, show enabled if active on ANY channel)
+    const effectTypes = new Set<string>();
+    const effects: EffectViewData[] = [];
+    const channels: TrackGroup[] = ['music', 'ambience', 'sfx'];
+
+    for (const channel of channels) {
+      const chain = this.engine.getChain(channel);
+      for (const effect of chain.getEffects()) {
+        if (!effectTypes.has(effect.type)) {
+          effectTypes.add(effect.type);
+          const isEnabled = channels.some(ch => {
+            const e = this.engine.getChain(ch).getEffect(effect.type as EffectType);
+            return e?.enabled ?? false;
+          });
+          effects.push({
+            id: effect.type,
+            name: effect.type,
+            enabled: isEnabled,
+          });
+        }
+      }
+    }
 
     return {
       favorites,
@@ -1681,22 +1698,20 @@ export class SoundMixerApp {
   private onToggleEffect(event: JQuery.ClickEvent): void {
     event.preventDefault();
     const $btn = $(event.currentTarget);
-    const effectId = $btn.data('effect-id') as string;
+    const effectType = $btn.data('effect-id') as EffectType;
 
-    // Toggle state based on current class
     const wasEnabled = $btn.hasClass('active');
     const newState = !wasEnabled;
 
-    this.engine.setEffectEnabled(effectId, newState);
-
-    // Optimistic UI update
-    if (newState) {
-      $btn.addClass('active');
-    } else {
-      $btn.removeClass('active');
+    // Toggle on ALL channels simultaneously
+    const channels: TrackGroup[] = ['music', 'ambience', 'sfx'];
+    for (const channel of channels) {
+      this.engine.setChainEffectEnabled(channel, effectType, newState);
+      this.socket.broadcastEffectEnabled(channel, effectType, newState);
     }
 
-    Logger.info(`Effect ${effectId} ${newState ? 'enabled' : 'disabled'}`);
+    $btn.toggleClass('active', newState);
+    Logger.info(`Effect ${effectType} ${newState ? 'enabled' : 'disabled'} on all channels`);
   }
 
   // ─────────────────────────────────────────────────────────────

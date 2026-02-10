@@ -1,4 +1,4 @@
-import type { EffectState } from './effects';
+import type { EffectState, EffectType, ChannelChain } from './effects';
 
 export type TrackGroup = 'music' | 'ambience' | 'sfx';
 export type PlaybackState = 'stopped' | 'playing' | 'paused' | 'loading';
@@ -32,7 +32,9 @@ export interface MixerState {
   masterVolume: number;
   channelVolumes: ChannelVolumes;
   tracks: TrackState[];
-  effects: EffectState[]; // [NEW] Added for effects system
+  chains: ChannelChain[];               // New chain-based effects
+  /** @deprecated legacy field, used for migration only */
+  effects?: EffectState[];
   timestamp: number;
   syncEnabled: boolean;
 }
@@ -43,7 +45,7 @@ export type SocketMessageType =
   | 'sync-stop'
   | 'sync-state'
   | 'player-ready'
-  | 'sync-request'  // Player requesting full sync from GM
+  | 'sync-request'
   | 'track-play'
   | 'track-pause'
   | 'track-stop'
@@ -53,8 +55,9 @@ export type SocketMessageType =
   | 'channel-volume'
   | 'stop-all'
   | 'effect-param'
-  | 'effect-routing'
-  | 'effect-enabled';
+  | 'effect-enabled'
+  | 'chain-reorder'
+  | 'chain-effect-mix';
 
 export interface SocketMessage {
   type: SocketMessageType;
@@ -67,7 +70,9 @@ export interface SocketMessage {
 export interface SyncStatePayload {
   tracks: SyncTrackState[];
   channelVolumes: ChannelVolumes;
-  effects: EffectState[]; // Added effects sync
+  chains: ChannelChain[];               // New chain-based sync
+  /** @deprecated legacy field, used for migration only */
+  effects?: EffectState[];
 }
 
 export interface SyncTrackState {
@@ -110,24 +115,36 @@ export interface TrackVolumePayload {
   volume: number;
 }
 
+// ─── Chain Effect Payloads ──────────────────────────────────────
+
 export interface EffectParamPayload {
-  effectId: string;
+  channel: TrackGroup;
+  effectType: EffectType;
   paramId: string;
   value: any;
 }
 
-export interface EffectRoutingPayload {
-  effectId: string;
+export interface EffectEnabledPayload {
   channel: TrackGroup;
-  active: boolean;
+  effectType: EffectType;
+  enabled: boolean;
 }
 
-export interface EffectEnabledPayload {
-  effectId: string;
-  enabled: boolean;
+export interface ChainReorderPayload {
+  channel: TrackGroup;
+  order: EffectType[];
+}
+
+export interface ChainEffectMixPayload {
+  channel: TrackGroup;
+  effectType: EffectType;
+  mix: number;
 }
 
 export interface ChannelVolumePayload {
   channel: TrackGroup | 'master';
   volume: number;
 }
+
+// ─── Removed (legacy) ───────────────────────────────────────────
+// EffectRoutingPayload removed — routing is implicit in chain architecture

@@ -72,7 +72,7 @@ export class AdvancedSoundEngineApp extends HandlebarsApplicationMixin(Applicati
         // Initialize sub-controllers
         this.libraryApp = new LocalLibraryApp(this.libraryManager, this);
         this.mixerApp = new SoundMixerApp(this.engine, this.socket, this.libraryManager, this.queueManager);
-        this.effectsApp = new SoundEffectsApp(this.engine, this.socket, this.libraryManager.storage);
+        this.effectsApp = new SoundEffectsApp(this.engine, this.socket);
 
         // Set render callback for mixer to trigger parent re-render
         this.mixerApp.setRenderCallback(() => {

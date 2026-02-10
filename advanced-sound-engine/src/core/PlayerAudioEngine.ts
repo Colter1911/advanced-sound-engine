@@ -1,39 +1,25 @@
 import type { TrackGroup, ChannelVolumes, SyncTrackState, TrackPlayPayload } from '@t/audio';
-import type { EffectState, EffectType, EffectParam } from '@t/effects';
+import type { EffectType, ChannelChain, EffectState } from '@t/effects';
+import { DEFAULT_CHAIN_ORDER, DEFAULT_MIX } from '@t/effects';
 import { StreamingPlayer } from './StreamingPlayer';
+import { EffectChain } from './effects/EffectChain';
 import { Logger } from '@utils/logger';
 import { getServerTime } from '@utils/time';
 
-// Effects
-import { AudioEffect } from './effects/AudioEffect';
-import { ReverbEffect } from './effects/ReverbEffect';
-import { DelayEffect } from './effects/DelayEffect';
-import { FilterEffect } from './effects/FilterEffect';
-import { CompressorEffect } from './effects/CompressorEffect';
-import { DistortionEffect } from './effects/DistortionEffect';
-
 /**
- * Упрощенный движок для игроков — только получает команды
+ * Упрощенный движок для игроков — только получает команды от GM
  */
 export class PlayerAudioEngine {
   private ctx: AudioContext;
   private masterGain: GainNode;
-  private gmGain: GainNode; // Громкость от GM
+  private gmGain: GainNode;
   private channelGains: Record<TrackGroup, GainNode>;
   private players: Map<string, StreamingPlayer> = new Map();
 
-  // Effects System
-  private effects: Map<string, AudioEffect> = new Map();
-  // Sends: Channel -> EffectId -> GainNode
-  private sends: Record<TrackGroup, Map<string, GainNode>> = {
-    music: new Map(),
-    ambience: new Map(),
-    sfx: new Map()
-  };
-  // Direct Gains: Channel -> Master (Control dry level)
-  private directGains: Record<TrackGroup, GainNode>;
+  // ─── Effects Chain System ───────────────────────────────────
+  private chains: Record<TrackGroup, EffectChain>;
 
-  private _localVolume: number = 1; // Личная громкость игрока
+  private _localVolume: number = 1;
   private _gmVolumes: ChannelVolumes = {
     master: 1,
     music: 1,
@@ -44,7 +30,7 @@ export class PlayerAudioEngine {
   // Periodic sync verification
   private lastSyncState: SyncTrackState[] = [];
   private syncCheckInterval: number | null = null;
-  private socketManager: any; // Reference to SocketManager for requesting sync
+  private socketManager: any;
   private lastSyncRequestTime: number = 0;
   private readonly SYNC_REQUEST_COOLDOWN = 10000; // 10 seconds
   private syncRequestFailCount: number = 0;
@@ -54,10 +40,9 @@ export class PlayerAudioEngine {
     this.ctx = new AudioContext();
     this.socketManager = socketManager;
 
-    // Start periodic sync verification (5 seconds)
     this.startSyncVerification();
 
-    // Chain: tracks -> channels -> [direct/sends] -> gmGain -> masterGain -> destination
+    // Chain: tracks -> channels -> [chain effects] -> gmGain -> masterGain -> destination
     this.masterGain = this.ctx.createGain();
     this.masterGain.connect(this.ctx.destination);
 
@@ -70,33 +55,29 @@ export class PlayerAudioEngine {
       sfx: this.ctx.createGain()
     };
 
-    // Initialize Direct Gains
-    this.directGains = {
-      music: this.ctx.createGain(),
-      ambience: this.ctx.createGain(),
-      sfx: this.ctx.createGain()
+    // ─── Initialize Chains ────────────────────────────────────
+    // Signal flow per channel:
+    //   channelGain → chain.inputNode → [effects...] → chain.outputNode → gmGain
+
+    this.chains = {
+      music: new EffectChain(this.ctx, 'music'),
+      ambience: new EffectChain(this.ctx, 'ambience'),
+      sfx: new EffectChain(this.ctx, 'sfx')
     };
 
-    // Connect Channel -> DirectGain -> GMGain
-    this.channelGains.music.connect(this.directGains.music);
-    this.directGains.music.connect(this.gmGain);
+    for (const group of ['music', 'ambience', 'sfx'] as TrackGroup[]) {
+      this.channelGains[group].connect(this.chains[group].inputNode);
+      this.chains[group].outputNode.connect(this.gmGain);
+      this.chains[group].buildDefault();
+    }
 
-    this.channelGains.ambience.connect(this.directGains.ambience);
-    this.directGains.ambience.connect(this.gmGain);
-
-    this.channelGains.sfx.connect(this.directGains.sfx);
-    this.directGains.sfx.connect(this.gmGain);
-
-    this.initializeEffects();
-
-    Logger.info('PlayerAudioEngine initialized');
-    console.log("%c ASE PLAYER ENGINE V3 (FIXED) LOADED ", "background: #222; color: #bada55; font-size: 20px; font-weight: bold;");
+    Logger.info('PlayerAudioEngine initialized (chain architecture)');
   }
 
   private startSyncVerification(): void {
     this.syncCheckInterval = window.setInterval(() => {
       this.verifySyncState();
-    }, 5000); // Check every 5 seconds
+    }, 5000);
   }
 
   private verifySyncState(): void {
@@ -187,55 +168,19 @@ export class PlayerAudioEngine {
   }
 
   dispose(): void {
-    // Clear interval on cleanup
     if (this.syncCheckInterval !== null) {
       window.clearInterval(this.syncCheckInterval);
       this.syncCheckInterval = null;
     }
 
-    // Dispose all players
     this.clearAll();
 
-    // Dispose effects
-    for (const effect of this.effects.values()) {
-      effect.dispose();
+    for (const chain of Object.values(this.chains)) {
+      chain.dispose();
     }
-    this.effects.clear();
 
-    // Close audio context
     this.ctx.close();
     Logger.info('PlayerAudioEngine disposed');
-  }
-
-  private initializeEffects(): void {
-    // Create one instance of each effect
-    const effectClasses = [
-      ReverbEffect,
-      FilterEffect,
-      DelayEffect,
-      CompressorEffect,
-      DistortionEffect
-    ];
-
-    effectClasses.forEach(EffectClass => {
-      const effect = new EffectClass(this.ctx);
-      this.effects.set(effect.id, effect);
-
-      // Connect Effect Output to GM Gain (so it's controlled by GM master volume)
-      effect.outputNode.connect(this.gmGain);
-
-      // Create Send Gains for each channel
-      (['music', 'ambience', 'sfx'] as TrackGroup[]).forEach(group => {
-        const sendGain = this.ctx.createGain();
-        sendGain.gain.value = 0; // Default off
-
-        // Connect Channel -> SendGain -> Effect Input
-        this.channelGains[group].connect(sendGain);
-        sendGain.connect(effect.inputNode);
-
-        this.sends[group].set(effect.id, sendGain);
-      });
-    });
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -280,69 +225,33 @@ export class PlayerAudioEngine {
   }
 
   // ─────────────────────────────────────────────────────────────
-  // Effects Management (Called via Socket)
+  // Effects Chain Management (Called via Socket)
   // ─────────────────────────────────────────────────────────────
 
-  setEffectParam(effectId: string, paramId: string, value: any): void {
-    console.log('[ASE PLAYER] setEffectParam received:', effectId, paramId, value);
-    const effect = this.effects.get(effectId);
-    if (!effect) {
-      console.warn('[ASE PLAYER] Effect not found:', effectId);
-      return;
-    }
-    effect.setParam(paramId, value);
-    console.log('[ASE PLAYER] Effect param set successfully');
+  setChainEffectParam(channel: TrackGroup, effectType: EffectType, paramId: string, value: any): void {
+    this.chains[channel].setEffectParam(effectType, paramId, value);
   }
 
-  setEffectEnabled(effectId: string, enabled: boolean): void {
-    console.log('[ASE PLAYER] setEffectEnabled received:', effectId, enabled);
-    const effect = this.effects.get(effectId);
-    if (!effect) {
-      console.warn('[ASE PLAYER] Effect not found:', effectId);
-      return;
-    }
-
-    effect.setEnabled(enabled);
-    console.log('[ASE PLAYER] Effect enabled set to:', enabled);
-
-    // Update dry levels
-    (['music', 'ambience', 'sfx'] as TrackGroup[]).forEach(group => {
-      this.updateDryLevel(group);
-    });
+  setChainEffectEnabled(channel: TrackGroup, effectType: EffectType, enabled: boolean): void {
+    this.chains[channel].setEffectEnabled(effectType, enabled);
   }
 
-  setEffectRouting(effectId: string, channel: TrackGroup, active: boolean): void {
-    console.log('[ASE PLAYER] setEffectRouting received:', effectId, channel, active);
-    const channelSends = this.sends[channel];
-    const sendNode = channelSends.get(effectId);
-
-    if (sendNode) {
-      sendNode.gain.setTargetAtTime(active ? 1 : 0, this.ctx.currentTime, 0.05);
-      this.updateDryLevel(channel);
-      console.log('[ASE PLAYER] Effect routing set successfully');
-    } else {
-      console.warn('[ASE PLAYER] Send node not found for:', effectId, channel);
-    }
+  setChainEffectMix(channel: TrackGroup, effectType: EffectType, mix: number): void {
+    this.chains[channel].setEffectMix(effectType, mix);
   }
 
-  private updateDryLevel(channel: TrackGroup): void {
-    let isInsertActive = false;
-    const insertTypes: EffectType[] = ['filter', 'distortion', 'compressor'];
+  reorderChainByTypes(channel: TrackGroup, order: EffectType[]): void {
+    this.chains[channel].reorderByTypes(order);
+  }
 
-    for (const effect of this.effects.values()) {
-      if (!effect.enabled) continue;
-
-      const sendNode = this.sends[channel].get(effect.id);
-      const isRouted = (sendNode?.gain.value || 0) > 0.5;
-
-      if (isRouted && insertTypes.includes(effect.type)) {
-        isInsertActive = true;
-        break;
+  /** Restore all chains from sync state */
+  syncChains(chainsState: ChannelChain[]): void {
+    for (const chainState of chainsState) {
+      const chain = this.chains[chainState.channel];
+      if (chain) {
+        chain.restoreState(chainState);
       }
     }
-
-    const targetGain = isInsertActive ? 0 : 1;
-    this.directGains[channel].gain.setTargetAtTime(targetGain, this.ctx.currentTime, 0.1);
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -373,16 +282,13 @@ export class PlayerAudioEngine {
   async handlePlay(payload: TrackPlayPayload): Promise<void> {
     let player = this.players.get(payload.trackId);
 
-    // If player exists with different URL, dispose it first
     if (player && player.url !== payload.url) {
-      Logger.debug(`Player: Disposing existing track ${payload.trackId} (URL changed)`);
       player.stop();
       player.dispose();
       this.players.delete(payload.trackId);
       player = undefined;
     }
 
-    // Create if doesn't exist
     if (!player) {
       player = new StreamingPlayer(
         payload.trackId,
@@ -397,14 +303,10 @@ export class PlayerAudioEngine {
 
     player.setVolume(payload.volume);
 
-    // Calculate offset based on time elapsed since GM started
     const elapsed = (getServerTime() - payload.startTimestamp) / 1000;
     const adjustedOffset = Math.max(0, payload.offset + elapsed);
 
-    Logger.debug(`Player: Handling Play. TrackId=${payload.trackId}, Vol=${payload.volume}, Offset=${adjustedOffset}s`);
-
     await player.play(adjustedOffset);
-    Logger.debug(`Player: track ${payload.trackId} playing at ${adjustedOffset.toFixed(2)}s`);
   }
 
   handlePause(trackId: string): void {
@@ -431,7 +333,7 @@ export class PlayerAudioEngine {
     this.players.get(trackId)?.setVolume(volume);
   }
 
-
+  // ─────────────────────────────────────────────────────────────
   // Sync State (full state from GM)
   // ─────────────────────────────────────────────────────────────
 
@@ -442,43 +344,16 @@ export class PlayerAudioEngine {
     this.lastSyncState = tracks;
     this.syncRequestFailCount = 0;
 
-    // Set volumes
     this.setAllGMVolumes(volumes);
 
-    // Check GM Gain after setting
-    Logger.debug(`Player: GM Gain set to ${this.gmGain.gain.value}`);
-
-    // Sync Effect States
-    if (effectsState && effectsState.length > 0) {
-      for (const effectState of effectsState) {
-        const effect = this.effects.get(effectState.id);
-        if (!effect) {
-          console.warn('[ASE PLAYER] Effect not found during sync:', effectState.id);
-          continue;
-        }
-
-        // Apply enabled state
-        this.setEffectEnabled(effectState.id, effectState.enabled);
-
-        // Apply routing
-        (['music', 'ambience', 'sfx'] as TrackGroup[]).forEach(group => {
-          const active = effectState.routing[group] || false;
-          this.setEffectRouting(effectState.id, group, active);
-        });
-
-        // Apply params
-        Object.entries(effectState.params).forEach(([paramId, value]) => {
-          this.setEffectParam(effectState.id, paramId, value);
-        });
-
-        Logger.debug(`Player: synced ${effect.type} state from GM`);
-      }
+    // Sync chains
+    if (chainsState && chainsState.length > 0) {
+      this.syncChains(chainsState);
     }
 
     // Handle tracks
     const newTrackIds = new Set(tracks.map(t => t.id));
 
-    // Remove tracks not in sync
     for (const [id, player] of this.players) {
       if (!newTrackIds.has(id)) {
         player.dispose();
@@ -486,19 +361,16 @@ export class PlayerAudioEngine {
       }
     }
 
-    // Add/update tracks
     for (const trackState of tracks) {
       let player = this.players.get(trackState.id);
 
-      // CRITICAL FIX: Stop tracks that should not be playing
       if (player && !trackState.isPlaying && player.state === 'playing') {
         Logger.debug('Player: Stopping track that should not be playing:', trackState.id);
         player.stop();
-        continue; // Skip further processing for this track as it's now stopped
+        continue;
       }
 
       if (!player) {
-        // Create if doesn't exist and should be playing
         if (trackState.isPlaying) {
           await this.handlePlay({
             trackId: trackState.id,
@@ -509,10 +381,9 @@ export class PlayerAudioEngine {
             startTimestamp: trackState.startTimestamp
           });
         }
-        continue; // If player was just created (and played) or doesn't need to be created, move to next track
+        continue;
       }
 
-      // For existing players (that weren't stopped above)
       player.setVolume(trackState.volume);
 
       if (trackState.isPlaying) {

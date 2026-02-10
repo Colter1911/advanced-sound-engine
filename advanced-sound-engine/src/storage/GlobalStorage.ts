@@ -1,5 +1,8 @@
 import { Logger } from '@utils/logger';
 import type { LibraryState } from '@t/library';
+import type { EffectPreset } from '@t/effects';
+import { DEFAULT_MIX } from '@t/effects';
+import { BUILTIN_PRESETS } from '@core/effects/presets';
 
 const MODULE_ID = 'advanced-sound-engine';
 
@@ -16,53 +19,96 @@ export class GlobalStorage {
     private static readonly DIRECTORY = 'ase_library';
 
     /**
-     * Load presets from global JSON file
+     * Load presets from global JSON file.
+     * Returns built-in presets merged with user-saved custom presets.
      */
-    static async loadPresets(): Promise<any[]> {
+    static async loadPresets(): Promise<EffectPreset[]> {
         try {
             const response = await fetch(`${this.PRESETS_FILE_PATH}?t=${Date.now()}`);
-            if (!response.ok) return this.getDefaultPresets();
-            const data = await response.json();
-            return data.length > 0 ? data : this.getDefaultPresets();
+            if (!response.ok) return [...BUILTIN_PRESETS];
+
+            const data = await response.json() as any[];
+            if (!data || data.length === 0) return [...BUILTIN_PRESETS];
+
+            // Migrate legacy presets and merge with built-ins
+            const customPresets = this.migratePresets(data);
+            return [...BUILTIN_PRESETS, ...customPresets];
         } catch (error) {
             Logger.warn('Failed to load presets:', error);
-            return this.getDefaultPresets();
+            return [...BUILTIN_PRESETS];
         }
     }
 
-    private static getDefaultPresets(): any[] {
-        return [
-            {
-                id: 'preset-cave',
-                name: 'Cave',
-                effects: [
-                    { type: 'reverb', params: { ir: 'cave', level: 1.2 }, routing: { music: false, sfx: true, ambience: true } },
-                    { type: 'delay', params: { time: 0.15, feedback: 0.3, level: 0.5 }, routing: { music: false, sfx: true, ambience: false } }
-                ]
-            },
-            {
-                id: 'preset-underwater',
-                name: 'Underwater',
-                effects: [
-                    { type: 'filter', params: { type: 'lowpass', frequency: 600, Q: 1.0, level: 1.0 }, routing: { music: true, sfx: true, ambience: true } }
-                ]
-            },
-            {
-                id: 'preset-radio',
-                name: 'Old Radio',
-                effects: [
-                    { type: 'filter', params: { type: 'bandpass', frequency: 2000, Q: 2.0, level: 1.5 }, routing: { music: true, sfx: true, ambience: true } },
-                    { type: 'distortion', params: { drive: 20, level: 0.8 }, routing: { music: true, sfx: true, ambience: true } }
-                ]
+    /**
+     * Migrate old-format presets (flat effects[] with routing) to chain format.
+     * Filters out any presets that match built-in IDs to avoid duplicates.
+     */
+    private static migratePresets(rawPresets: any[]): EffectPreset[] {
+        const builtInIds = new Set(BUILTIN_PRESETS.map(p => p.id));
+        const result: EffectPreset[] = [];
+
+        for (const raw of rawPresets) {
+            // Skip built-in presets (they come from BUILTIN_PRESETS)
+            if (builtInIds.has(raw.id)) continue;
+
+            // Already in new format (has chains[])
+            if (raw.chains && Array.isArray(raw.chains) && raw.chains.length > 0) {
+                result.push(raw as EffectPreset);
+                continue;
             }
-        ];
+
+            // Legacy format: flat effects[] with routing per channel
+            if (raw.effects && Array.isArray(raw.effects)) {
+                const migrated = this.migrateLegacyPreset(raw);
+                if (migrated) result.push(migrated);
+                continue;
+            }
+
+            Logger.warn(`Skipping unrecognized preset format: ${raw.id || raw.name}`);
+        }
+
+        return result;
     }
 
     /**
-     * Save presets to global JSON file
+     * Convert a single legacy preset (effects[] with routing) to chain format
      */
-    static async savePresets(presets: any[]): Promise<void> {
-        return this.saveFile(this.PRESETS_FILE_PATH, presets);
+    private static migrateLegacyPreset(raw: any): EffectPreset | null {
+        try {
+            const channels: ('music' | 'ambience' | 'sfx')[] = ['music', 'ambience', 'sfx'];
+            const chains = channels.map(channel => ({
+                channel,
+                effects: (raw.effects as any[])
+                    .filter((e: any) => e.routing?.[channel])
+                    .map((e: any) => ({
+                        type: e.type,
+                        enabled: true,
+                        mix: DEFAULT_MIX[e.type as keyof typeof DEFAULT_MIX] ?? 1.0,
+                        params: { level: 1.0, ...e.params },
+                    })),
+            }));
+
+            return {
+                id: raw.id,
+                name: raw.name,
+                description: raw.description || `Migrated from legacy format`,
+                builtIn: false,
+                chains,
+            };
+        } catch (error) {
+            Logger.error(`Failed to migrate preset ${raw.id}:`, error);
+            return null;
+        }
+    }
+
+    /**
+     * Save custom presets to global JSON file.
+     * Built-in presets are NOT saved (they are always loaded from code).
+     */
+    static async savePresets(presets: EffectPreset[]): Promise<void> {
+        // Only save non-built-in presets
+        const customOnly = presets.filter(p => !p.builtIn);
+        return this.saveFile(this.PRESETS_FILE_PATH, customOnly);
     }
 
     /**
