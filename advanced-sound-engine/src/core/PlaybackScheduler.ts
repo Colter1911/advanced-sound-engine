@@ -21,7 +21,7 @@ export class PlaybackScheduler {
 
     // Stored callbacks for proper cleanup
     private _onTrackEndedBound: (trackId: string) => void;
-    private _onContextChangedBound: (context: PlaybackContext) => void;
+    private _onContextChangedBound: (context: PlaybackContext | null) => void;
 
     constructor(engine: AudioEngine, library: LibraryManager, queue: PlaybackQueueManager) {
         this.engine = engine;
@@ -29,7 +29,7 @@ export class PlaybackScheduler {
         this.queue = queue;
 
         this._onTrackEndedBound = (trackId: string) => this.handleTrackEnded(trackId);
-        this._onContextChangedBound = (context: PlaybackContext) => this.setContext(context);
+        this._onContextChangedBound = (context: PlaybackContext | null) => this.setContext(context);
 
         this.setupListeners();
     }
@@ -53,7 +53,12 @@ export class PlaybackScheduler {
     /**
      * Set the current playback context (e.g., user clicked "Play" on a playlist)
      */
-    setContext(context: PlaybackContext): void {
+    setContext(context: PlaybackContext | null): void {
+        if (!context) {
+            this.clearContext();
+            return;
+        }
+
         this.currentContext = context;
         this._stopped = false;
         Logger.debug('Playback Context set:', context);
