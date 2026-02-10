@@ -6098,6 +6098,15 @@ __publicField(_GlobalStorage, "PRESETS_FILE_PATH", "/ase_library/presets.json");
 __publicField(_GlobalStorage, "FILE_SOURCE", "data");
 __publicField(_GlobalStorage, "DIRECTORY", "ase_library");
 let GlobalStorage = _GlobalStorage;
+const ALL_EFFECT_TYPES = ["filter", "compressor", "distortion", "delay", "reverb"];
+const EFFECT_META = {
+  filter: { label: "Filter", icon: "fa-wave-square" },
+  compressor: { label: "Compressor", icon: "fa-compress" },
+  distortion: { label: "Distortion", icon: "fa-bolt" },
+  delay: { label: "Delay", icon: "fa-clock" },
+  reverb: { label: "Reverb", icon: "fa-water" },
+  modulation: { label: "Modulation", icon: "fa-wave-square" }
+};
 const _SoundEffectsApp = class _SoundEffectsApp {
   constructor(engine, socket) {
     __publicField(this, "engine");
@@ -6106,6 +6115,9 @@ const _SoundEffectsApp = class _SoundEffectsApp {
     __publicField(this, "renderParent", null);
     __publicField(this, "activeChannel", "music");
     __publicField(this, "selectedEffectType", null);
+    __publicField(this, "constructorOpen", false);
+    __publicField(this, "chainBypassed", false);
+    __publicField(this, "savedEnabledStates", /* @__PURE__ */ new Map());
     this.engine = engine;
     this.socket = socket;
   }
@@ -6126,12 +6138,14 @@ const _SoundEffectsApp = class _SoundEffectsApp {
         const params = [];
         for (const [key, param] of effect.getAllParams()) {
           if (key === "level") continue;
+          const fillPercent = param.type === "float" && param.min !== void 0 && param.max !== void 0 ? (Number(param.value) - param.min) / (param.max - param.min) * 100 : 50;
           params.push({
             id: param.id,
             name: param.name,
             type: param.type,
             value: param.value,
             displayValue: this.formatParamValue(param),
+            fillPercent: Math.round(fillPercent),
             min: param.min,
             max: param.max,
             step: param.step,
@@ -6150,6 +6164,15 @@ const _SoundEffectsApp = class _SoundEffectsApp {
           params
         };
       });
+      const usedTypes = new Set(effects.map((e) => e.type));
+      const availableEffects = ALL_EFFECT_TYPES.filter((t) => !usedTypes.has(t)).map((t) => {
+        var _a, _b;
+        return {
+          type: t,
+          label: ((_a = EFFECT_META[t]) == null ? void 0 : _a.label) || t,
+          icon: ((_b = EFFECT_META[t]) == null ? void 0 : _b.icon) || "fa-circle"
+        };
+      });
       const allPresets = await GlobalStorage.loadPresets();
       const builtinPresets = allPresets.filter((p) => p.builtIn);
       const customPresets = allPresets.filter((p) => !p.builtIn);
@@ -6161,7 +6184,10 @@ const _SoundEffectsApp = class _SoundEffectsApp {
         ambienceActiveCount: this.engine.getChain("ambience").getActiveCount(),
         sfxActiveCount: this.engine.getChain("sfx").getActiveCount(),
         builtinPresets,
-        customPresets
+        customPresets,
+        availableEffects,
+        constructorOpen: this.constructorOpen,
+        chainBypassed: this.chainBypassed
       };
     } catch (error) {
       Logger.error("SoundEffectsApp getData failed:", error);
@@ -6173,7 +6199,17 @@ const _SoundEffectsApp = class _SoundEffectsApp {
         ambienceActiveCount: 0,
         sfxActiveCount: 0,
         builtinPresets: [...BUILTIN_PRESETS],
-        customPresets: []
+        customPresets: [],
+        availableEffects: ALL_EFFECT_TYPES.map((t) => {
+          var _a, _b;
+          return {
+            type: t,
+            label: ((_a = EFFECT_META[t]) == null ? void 0 : _a.label) || t,
+            icon: ((_b = EFFECT_META[t]) == null ? void 0 : _b.icon) || "fa-circle"
+          };
+        }),
+        constructorOpen: this.constructorOpen,
+        chainBypassed: this.chainBypassed
       };
     }
   }
@@ -6190,11 +6226,19 @@ const _SoundEffectsApp = class _SoundEffectsApp {
   activateListeners(html) {
     this.html = html;
     html.off("click", ".ase-channel-tab").on("click", ".ase-channel-tab", (e) => this.onChannelSwitch(e));
+    html.off("click", '[data-action="toggle-chain-bypass"]').on("click", '[data-action="toggle-chain-bypass"]', (e) => this.onToggleChainBypass(e));
     html.off("click", ".ase-pedal-card").on("click", ".ase-pedal-card", (e) => this.onPedalSelect(e));
     html.off("click", ".ase-pedal-footswitch").on("click", ".ase-pedal-footswitch", (e) => {
       e.stopPropagation();
       this.onToggleBypass(e);
     });
+    html.off("click", ".ase-pedal-remove").on("click", ".ase-pedal-remove", (e) => {
+      e.stopPropagation();
+      this.onRemoveEffect(e);
+    });
+    html.off("click", '[data-action="open-constructor"]').on("click", '[data-action="open-constructor"]', () => this.onOpenConstructor());
+    html.off("click", '[data-action="close-constructor"]').on("click", '[data-action="close-constructor"]', () => this.onCloseConstructor());
+    html.off("click", '[data-action="add-effect"]').on("click", '[data-action="add-effect"]', (e) => this.onAddEffect(e));
     html.find(".ase-pedal-knob").on("mousedown", (e) => {
       e.stopPropagation();
       this.onKnobDrag(e, "pedal");
@@ -6206,6 +6250,9 @@ const _SoundEffectsApp = class _SoundEffectsApp {
     html.off("click", '[data-action="save-preset"]').on("click", '[data-action="save-preset"]', (e) => this.onSavePreset(e));
     html.off("click", '[data-action="reset-chain"]').on("click", '[data-action="reset-chain"]', (e) => this.onResetChain(e));
     this.initDragAndDrop(html);
+    if (this.chainBypassed) {
+      html.find(".ase-effects-layout").addClass("chain-bypassed");
+    }
   }
   // ─────────────────────────────────────────────────────────────
   // Channel Switch
@@ -6217,6 +6264,40 @@ const _SoundEffectsApp = class _SoundEffectsApp {
     if (channel === this.activeChannel) return;
     this.activeChannel = channel;
     this.selectedEffectType = null;
+    this.constructorOpen = false;
+    (_a = this.renderParent) == null ? void 0 : _a.call(this);
+  }
+  // ─────────────────────────────────────────────────────────────
+  // Master Chain Bypass
+  // ─────────────────────────────────────────────────────────────
+  onToggleChainBypass(event) {
+    var _a;
+    event.preventDefault();
+    this.chainBypassed = !this.chainBypassed;
+    const chain = this.engine.getChain(this.activeChannel);
+    const effects = chain.getEffects();
+    if (this.chainBypassed) {
+      const stateMap = /* @__PURE__ */ new Map();
+      for (const effect of effects) {
+        stateMap.set(effect.type, effect.enabled);
+        if (effect.enabled) {
+          this.engine.setChainEffectEnabled(this.activeChannel, effect.type, false);
+        }
+      }
+      this.savedEnabledStates.set(this.activeChannel, stateMap);
+    } else {
+      const stateMap = this.savedEnabledStates.get(this.activeChannel);
+      if (stateMap) {
+        for (const effect of effects) {
+          const wasEnabled = stateMap.get(effect.type);
+          if (wasEnabled) {
+            this.engine.setChainEffectEnabled(this.activeChannel, effect.type, true);
+          }
+        }
+        this.savedEnabledStates.delete(this.activeChannel);
+      }
+    }
+    this.socket.broadcastFullState();
     (_a = this.renderParent) == null ? void 0 : _a.call(this);
   }
   // ─────────────────────────────────────────────────────────────
@@ -6236,15 +6317,57 @@ const _SoundEffectsApp = class _SoundEffectsApp {
   // Footswitch (Bypass Toggle)
   // ─────────────────────────────────────────────────────────────
   onToggleBypass(event) {
+    var _a;
     const $card = $(event.currentTarget).closest(".ase-pedal-card");
     const effectType = $card.data("effect-type");
     const wasActive = $card.hasClass("active");
     const newEnabled = !wasActive;
     this.engine.setChainEffectEnabled(this.activeChannel, effectType, newEnabled);
     this.socket.broadcastEffectEnabled(this.activeChannel, effectType, newEnabled);
-    $card.toggleClass("active", newEnabled);
-    $card.find(".ase-pedal-led").toggleClass("on", newEnabled);
-    $card.find(".ase-pedal-footswitch").toggleClass("engaged", newEnabled);
+    (_a = this.renderParent) == null ? void 0 : _a.call(this);
+  }
+  // ─────────────────────────────────────────────────────────────
+  // Remove Effect
+  // ─────────────────────────────────────────────────────────────
+  onRemoveEffect(event) {
+    var _a;
+    const $card = $(event.currentTarget).closest(".ase-pedal-card");
+    const effectType = $card.data("effect-type");
+    this.engine.removeChainEffect(this.activeChannel, effectType);
+    if (this.selectedEffectType === effectType) {
+      this.selectedEffectType = null;
+    }
+    const newOrder = this.engine.getChain(this.activeChannel).getOrder();
+    this.socket.broadcastChainReorder(this.activeChannel, newOrder);
+    (_a = this.renderParent) == null ? void 0 : _a.call(this);
+  }
+  // ─────────────────────────────────────────────────────────────
+  // Constructor Panel (Add Effects)
+  // ─────────────────────────────────────────────────────────────
+  onOpenConstructor() {
+    var _a;
+    this.constructorOpen = true;
+    (_a = this.renderParent) == null ? void 0 : _a.call(this);
+  }
+  onCloseConstructor() {
+    var _a;
+    this.constructorOpen = false;
+    (_a = this.renderParent) == null ? void 0 : _a.call(this);
+  }
+  onAddEffect(event) {
+    var _a;
+    const effectType = $(event.currentTarget).data("effect-type");
+    this.engine.addChainEffect(this.activeChannel, effectType);
+    const newOrder = this.engine.getChain(this.activeChannel).getOrder();
+    this.socket.broadcastChainReorder(this.activeChannel, newOrder);
+    this.selectedEffectType = effectType;
+    const chain = this.engine.getChain(this.activeChannel);
+    const usedTypes = new Set(chain.getEffects().map((e) => e.type));
+    const remaining = ALL_EFFECT_TYPES.filter((t) => !usedTypes.has(t));
+    if (remaining.length === 0) {
+      this.constructorOpen = false;
+    }
+    (_a = this.renderParent) == null ? void 0 : _a.call(this);
   }
   // ─────────────────────────────────────────────────────────────
   // Knob Drag (shared for pedal & detail mix knobs)
@@ -6274,7 +6397,7 @@ const _SoundEffectsApp = class _SoundEffectsApp {
         $pedalCard.find(".ase-pedal-knob").css("--knob-rotation", `${rotation}deg`);
         $pedalCard.find(".ase-pedal-mix-value").text(`${Math.round(newMix * 100)}%`);
         this.html.find(".ase-detail-knob").css("--knob-rotation", `${rotation}deg`);
-        this.html.find(".ase-detail-knob-label").text(`Mix ${Math.round(newMix * 100)}%`);
+        this.html.find(".ase-detail-knob-label").text(`MIX ${Math.round(newMix * 100)}%`);
       }
       this.engine.setChainEffectMix(this.activeChannel, effectType, newMix);
       this.socket.broadcastChainEffectMix(this.activeChannel, effectType, newMix);
@@ -6327,45 +6450,64 @@ const _SoundEffectsApp = class _SoundEffectsApp {
   initDragAndDrop(html) {
     const $pedalboard = html.find(".ase-pedalboard");
     if (!$pedalboard.length) return;
+    let draggedType = null;
+    let draggedIndex = -1;
     html.find(".ase-pedal-card").each((_, el) => {
       el.addEventListener("dragstart", (e) => {
         if (!e.dataTransfer) return;
+        draggedType = el.dataset.effectType || null;
+        draggedIndex = parseInt(el.dataset.chainIndex || "-1", 10);
         e.dataTransfer.setData("text/plain", JSON.stringify({
-          effectType: el.dataset.effectType,
-          chainIndex: el.dataset.chainIndex
+          effectType: draggedType,
+          chainIndex: draggedIndex
         }));
         e.dataTransfer.effectAllowed = "move";
+        const ghost = el.cloneNode(true);
+        ghost.style.position = "absolute";
+        ghost.style.top = "-9999px";
+        ghost.classList.add("ase-drag-ghost");
+        document.body.appendChild(ghost);
+        e.dataTransfer.setDragImage(ghost, 80, 115);
+        requestAnimationFrame(() => ghost.remove());
         $(el).addClass("dragging");
       });
       el.addEventListener("dragend", () => {
         $(el).removeClass("dragging");
         html.find(".ase-drop-zone").removeClass("drag-over");
+        draggedType = null;
+        draggedIndex = -1;
       });
     });
     html.find(".ase-drop-zone").each((_, zone) => {
       zone.addEventListener("dragover", (e) => {
         e.preventDefault();
         if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+        const dropIndex = parseInt(zone.dataset.dropIndex || "0", 10);
+        if (draggedIndex >= 0 && (dropIndex === draggedIndex || dropIndex === draggedIndex + 1)) {
+          return;
+        }
+        html.find(".ase-drop-zone").not(zone).removeClass("drag-over");
         $(zone).addClass("drag-over");
       });
-      zone.addEventListener("dragleave", () => {
+      zone.addEventListener("dragleave", (e) => {
+        const related = e.relatedTarget;
+        if (related && zone.contains(related)) return;
         $(zone).removeClass("drag-over");
       });
       zone.addEventListener("drop", (e) => {
         var _a;
         e.preventDefault();
-        $(zone).removeClass("drag-over");
+        html.find(".ase-drop-zone").removeClass("drag-over");
         if (!e.dataTransfer) return;
         const data = JSON.parse(e.dataTransfer.getData("text/plain"));
         const fromIndex = parseInt(data.chainIndex, 10);
         const toIndex = parseInt(zone.dataset.dropIndex || "0", 10);
-        if (fromIndex !== toIndex && fromIndex !== toIndex - 1) {
-          const adjustedTo = fromIndex < toIndex ? toIndex - 1 : toIndex;
-          this.engine.reorderChainEffect(this.activeChannel, fromIndex, adjustedTo);
-          const newOrder = this.engine.getChain(this.activeChannel).getOrder();
-          this.socket.broadcastChainReorder(this.activeChannel, newOrder);
-          (_a = this.renderParent) == null ? void 0 : _a.call(this);
-        }
+        if (fromIndex === toIndex || fromIndex === toIndex - 1) return;
+        const adjustedTo = fromIndex < toIndex ? toIndex - 1 : toIndex;
+        this.engine.reorderChainEffect(this.activeChannel, fromIndex, adjustedTo);
+        const newOrder = this.engine.getChain(this.activeChannel).getOrder();
+        this.socket.broadcastChainReorder(this.activeChannel, newOrder);
+        (_a = this.renderParent) == null ? void 0 : _a.call(this);
       });
     });
   }
@@ -6436,6 +6578,8 @@ const _SoundEffectsApp = class _SoundEffectsApp {
     const chain = this.engine.getChain(this.activeChannel);
     chain.buildDefault();
     this.selectedEffectType = null;
+    this.chainBypassed = false;
+    this.constructorOpen = false;
     this.socket.broadcastFullState();
     (_a = this.renderParent) == null ? void 0 : _a.call(this);
   }

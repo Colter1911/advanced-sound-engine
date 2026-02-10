@@ -13,57 +13,105 @@
             SFX
             {{#if sfxActiveCount}}<span class="ase-tab-badge">{{sfxActiveCount}}</span>{{/if}}
         </div>
+
+        {{!-- Master Bypass Button --}}
+        <div class="ase-master-bypass {{#if chainBypassed}}bypassed{{/if}}" data-action="toggle-chain-bypass"
+             title="{{#if chainBypassed}}Enable pedalboard{{else}}Bypass pedalboard{{/if}}">
+            <i class="fa-solid fa-power-off"></i>
+        </div>
     </div>
 
     {{!-- Pedalboard --}}
     <div class="ase-pedalboard">
-        {{!-- INPUT Terminal --}}
-        <div class="ase-chain-terminal input">
-            <div class="ase-terminal-icon"><i class="fa-solid fa-plug"></i></div>
-            <span class="ase-terminal-label">INPUT</span>
-        </div>
+        <div class="ase-pedalboard-inner">
+            {{!-- INPUT Terminal --}}
+            <div class="ase-chain-terminal input">
+                <div class="ase-terminal-icon"><i class="fa-solid fa-plug"></i></div>
+                <span class="ase-terminal-label">INPUT</span>
+            </div>
 
-        {{#each pedals}}
-        <div class="ase-cable {{#if this.enabled}}active{{/if}}"></div>
-        <div class="ase-drop-zone" data-drop-index="{{this.chainIndex}}">
-            <div class="ase-drop-zone-indicator"></div>
-        </div>
+            {{!-- Cable from INPUT --}}
+            <div class="ase-cable {{#if pedals.length}}{{#with (lookup pedals 0)}}{{#if this.enabled}}active{{/if}}{{/with}}{{/if}}"></div>
 
-        {{!-- Pedal Card --}}
-        <div class="ase-pedal-card {{#if this.enabled}}active{{/if}} {{#if this.selected}}selected{{/if}}"
-             draggable="true"
-             data-effect-type="{{this.type}}"
-             data-chain-index="{{this.chainIndex}}">
+            {{#each pedals}}
+            {{!-- Drop Zone before each pedal --}}
+            <div class="ase-drop-zone" data-drop-index="{{this.chainIndex}}">
+                <div class="ase-drop-zone-indicator"></div>
+            </div>
 
-            <div class="ase-pedal-name-top">{{this.type}}</div>
+            {{!-- Pedal Card --}}
+            <div class="ase-pedal-card {{#if this.enabled}}active{{/if}} {{#if this.selected}}selected{{/if}}"
+                 draggable="true"
+                 data-effect-type="{{this.type}}"
+                 data-chain-index="{{this.chainIndex}}">
 
-            <div class="ase-pedal-knob-area">
-                <div class="ase-pedal-knob" style="--knob-rotation: {{this.mixRotation}}deg">
-                    <div class="ase-knob-indicator"></div>
+                {{!-- Remove Button --}}
+                <button class="ase-pedal-remove" data-action="remove-effect" title="Remove from chain">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+
+                <div class="ase-pedal-name-top">{{this.type}}</div>
+
+                <div class="ase-pedal-knob-area">
+                    <div class="ase-pedal-knob" style="--knob-rotation: {{this.mixRotation}}deg">
+                        <div class="ase-knob-indicator"></div>
+                    </div>
+                    <div class="ase-pedal-mix-value">{{this.mixPercent}}%</div>
                 </div>
-                <div class="ase-pedal-mix-value">{{this.mixPercent}}%</div>
+
+                <div class="ase-pedal-footer">
+                    <div class="ase-pedal-led {{#if this.enabled}}on{{/if}}"></div>
+                    <button class="ase-pedal-footswitch {{#if this.enabled}}engaged{{/if}}"
+                            data-action="toggle-bypass"></button>
+                    <div class="ase-pedal-name-bottom">{{this.type}}</div>
+                </div>
             </div>
 
-            <div class="ase-pedal-footer">
-                <div class="ase-pedal-led {{#if this.enabled}}on{{/if}}"></div>
-                <button class="ase-pedal-footswitch {{#if this.enabled}}engaged{{/if}}"
-                        data-action="toggle-bypass"></button>
-                <div class="ase-pedal-name-bottom">{{this.type}}</div>
+            {{!-- Cable after pedal --}}
+            <div class="ase-cable {{#if this.enabled}}active{{/if}}"></div>
+            {{/each}}
+
+            {{!-- Final drop zone --}}
+            <div class="ase-drop-zone" data-drop-index="{{pedals.length}}">
+                <div class="ase-drop-zone-indicator"></div>
+            </div>
+
+            {{!-- Add Effect Button --}}
+            {{#if availableEffects.length}}
+            <button class="ase-add-effect-btn" data-action="open-constructor" title="Add effect to chain">
+                <i class="fa-solid fa-plus"></i>
+            </button>
+            {{/if}}
+
+            {{!-- OUTPUT Terminal --}}
+            <div class="ase-chain-terminal output">
+                <div class="ase-terminal-icon"><i class="fa-solid fa-volume-high"></i></div>
+                <span class="ase-terminal-label">OUTPUT</span>
             </div>
         </div>
-        {{/each}}
+    </div>
 
-        {{!-- Final cable + drop zone --}}
-        <div class="ase-cable"></div>
-        <div class="ase-drop-zone" data-drop-index="{{pedals.length}}">
-            <div class="ase-drop-zone-indicator"></div>
+    {{!-- Effects Constructor Drawer --}}
+    <div class="ase-constructor {{#if constructorOpen}}open{{/if}}">
+        <div class="ase-constructor-header">
+            <h4>ADD EFFECT</h4>
+            <button class="ase-constructor-close" data-action="close-constructor">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
         </div>
-
-        {{!-- OUTPUT Terminal --}}
-        <div class="ase-chain-terminal output">
-            <div class="ase-terminal-icon"><i class="fa-solid fa-volume-high"></i></div>
-            <span class="ase-terminal-label">OUTPUT</span>
+        <div class="ase-constructor-grid">
+            {{#each availableEffects}}
+            <button class="ase-constructor-item" data-action="add-effect" data-effect-type="{{this.type}}">
+                <div class="ase-constructor-item-icon">
+                    <i class="fa-solid {{this.icon}}"></i>
+                </div>
+                <span class="ase-constructor-item-label">{{this.label}}</span>
+            </button>
+            {{/each}}
         </div>
+        {{#unless availableEffects.length}}
+        <div class="ase-constructor-empty">All effects are in the chain</div>
+        {{/unless}}
     </div>
 
     {{!-- Detail Panel --}}
@@ -78,7 +126,7 @@
                 <div class="ase-detail-knob" style="--knob-rotation: {{selectedEffect.mixRotation}}deg">
                     <div class="ase-knob-indicator"></div>
                 </div>
-                <div class="ase-detail-knob-label">Mix {{selectedEffect.mixPercent}}%</div>
+                <div class="ase-detail-knob-label">MIX {{selectedEffect.mixPercent}}%</div>
             </div>
 
             {{!-- Right: Parameter Grid --}}
@@ -101,7 +149,8 @@
                            data-param-id="{{this.id}}"
                            data-suffix="{{this.suffix}}"
                            min="{{this.min}}" max="{{this.max}}"
-                           step="{{this.step}}" value="{{this.value}}">
+                           step="{{this.step}}" value="{{this.value}}"
+                           style="--slider-fill: {{this.fillPercent}}%">
                     {{/if}}
                 </div>
                 {{/each}}
