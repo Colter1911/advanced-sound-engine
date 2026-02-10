@@ -1,12 +1,8 @@
 {
 	"folders": [
 		{
-			"name": ".agent",
-			"path": ".agent"
-		},
-		{
-			"name": "advanced-sound-engine",
-			"path": "advanced-sound-engine"
+			"path": "."
 		}
-	]
+	],
+	"settings": {}
 }
