@@ -1024,6 +1024,8 @@ const _AudioEngine = class _AudioEngine extends SimpleEventEmitter {
     __publicField(this, "channelGains");
     __publicField(this, "players", /* @__PURE__ */ new Map());
     __publicField(this, "_activeContext", null);
+    __publicField(this, "scheduler", null);
+    __publicField(this, "socketManager", null);
     // ─── Effects Chain System ───────────────────────────────────
     __publicField(this, "chains");
     __publicField(this, "_volumes", {
@@ -1191,9 +1193,20 @@ const _AudioEngine = class _AudioEngine extends SimpleEventEmitter {
     this.scheduleSave();
   }
   stopAll() {
+    var _a, _b;
+    (_a = this.scheduler) == null ? void 0 : _a.clearContext();
     for (const player of this.players.values()) {
       player.stop();
     }
+    this._activeContext = null;
+    this.emit("contextChanged", null);
+    (_b = this.socketManager) == null ? void 0 : _b.broadcastStopAll();
+  }
+  setScheduler(scheduler) {
+    this.scheduler = scheduler;
+  }
+  setSocketManager(socketManager2) {
+    this.socketManager = socketManager2;
   }
   // ─────────────────────────────────────────────────────────────
   // Volume Control
@@ -7894,6 +7907,10 @@ const _PlaybackScheduler = class _PlaybackScheduler {
    * Set the current playback context (e.g., user clicked "Play" on a playlist)
    */
   setContext(context) {
+    if (!context) {
+      this.clearContext();
+      return;
+    }
     this.currentContext = context;
     this._stopped = false;
     Logger.debug("Playback Context set:", context);

@@ -16,9 +16,7 @@
     "dist/module.js"
   ],
   "styles": [
-    "dist/styles/fontawesome-fallback.css",
-    "dist/styles/sound-engine-v5.css",
-    "dist/styles/effects.css"
+    "dist/styles/sound-engine-v5.css"
   ],
   "languages": [
     {
