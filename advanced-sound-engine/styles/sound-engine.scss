@@ -510,6 +510,9 @@
     flex: 1;
     overflow: hidden;
 
+    margin-right: 5px;
+    /* Spacing before buttons */
+
     .ase-type-icon {
       color: var(--ase-border-gold);
       font-size: 12px;
@@ -522,6 +525,11 @@
       white-space: nowrap;
       font-family: var(--ase-font-body);
       color: var(--ase-text-body);
+      transition: transform 0s linear;
+      /* Prepared for JS-driven scroll */
+      will-change: transform;
+      display: block;
+      /* Ensure transform works */
     }
   }
 }
@@ -663,8 +671,11 @@
 
   // Ensure Playlist Mode icon matches Play icon color explicitly
   i.ase-mode-icon {
-    color: var(--ase-text-muted); // Default match for play button
+    color: var(--ase-text-muted);
     font-size: 13px;
+    width: 14px;
+    text-align: center;
+    display: inline-block;
 
     &:hover {
       color: var(--ase-text-highlight);
@@ -710,22 +721,107 @@
   cursor: pointer;
 }
 
-// Drag & Drop visual feedback
+// ─── Drag Handle (shared) ───
+.drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  flex-shrink: 0;
+  color: #444;
+  cursor: grab;
+  transition: color 0.15s ease;
+  font-size: 14px;
+  user-select: none;
+
+  &:hover {
+    color: var(--ase-accent-main);
+  }
+
+  &:active {
+    cursor: grabbing;
+  }
+}
+
+.drag-handle-sm {
+  width: 14px;
+  font-size: 11px;
+  margin-right: -4px;
+}
+
+// ─── Drag & Drop visual feedback (Favorites) ───
 .ase-list-item.dragging {
-  opacity: 0.5;
-  background: #000;
+  opacity: 0.4;
+  background: #0a0a0a;
+  border-color: transparent !important;
+  box-shadow: none !important;
 }
 
 .ase-list-item.drag-over {
-  background: rgba(255, 100, 0, 0.1);
+  background: rgba(255, 100, 0, 0.06);
 }
 
+// Drop indicator — line with circle anchor
 .ase-list-item.drag-above {
-  border-top: 2px solid var(--ase-border-accent);
+  position: relative;
+  z-index: 10;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: -2px;
+    left: 8px;
+    right: 0;
+    height: 2px;
+    background: var(--ase-accent-main);
+    z-index: 100;
+    pointer-events: none;
+  }
+
+  &::after {
+    content: '';
+    position: absolute;
+    top: -5px;
+    left: 2px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    border: 2px solid var(--ase-accent-main);
+    background: #0d0d0d;
+    z-index: 101;
+    pointer-events: none;
+  }
 }
 
 .ase-list-item.drag-below {
-  border-bottom: 2px solid var(--ase-border-accent);
+  position: relative;
+  z-index: 10;
+
+  &::before {
+    content: '';
+    position: absolute;
+    bottom: -2px;
+    left: 8px;
+    right: 0;
+    height: 2px;
+    background: var(--ase-accent-main);
+    z-index: 100;
+    pointer-events: none;
+  }
+
+  &::after {
+    content: '';
+    position: absolute;
+    bottom: -5px;
+    left: 2px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    border: 2px solid var(--ase-accent-main);
+    background: #0d0d0d;
+    z-index: 101;
+    pointer-events: none;
+  }
 }
 
 /* --- Content Area --- */
@@ -1507,38 +1603,6 @@
   }
 }
 
-.ase-queue-playlist-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
-  background: var(--bg-header);
-  cursor: pointer;
-  border-bottom: 1px solid var(--border-prominent);
-
-  &:hover {
-    background: var(--bg-active);
-  }
-
-  .ase-collapse-icon {
-    color: var(--text-muted);
-    font-size: 10px;
-    transition: transform 0.2s ease;
-  }
-
-  .ase-playlist-name {
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--text-main);
-    flex: 1;
-  }
-
-  .ase-playlist-count {
-    font-size: 11px;
-    color: var(--text-muted);
-  }
-}
-
 // ─── Queue Track Item (Wide Player Style) ───
 .ase-queue-track {
   background-color: #171717;
@@ -1572,6 +1636,82 @@
 
   // Hide tracks when playlist is collapsed (unless playing/paused)
   // CRITICAL: High specificity to override .ase-mixer-workspace .ase-queue-track
+
+  // Dragging state
+  &.dragging {
+    opacity: 0.35;
+    background: #0a0a0a !important;
+    border-color: transparent !important;
+    box-shadow: none !important;
+    transform: none !important;
+  }
+
+  // Drop indicator — line with circle anchor (Queue Tracks)
+  &.drag-above {
+    position: relative;
+    z-index: 100;
+    transform: none !important;
+
+    &::before {
+      content: '';
+      position: absolute;
+      top: -5px;
+      left: 16px;
+      right: 0;
+      height: 2px;
+      background: var(--ase-accent-main);
+      box-shadow: 0 1px 6px rgba(255, 100, 0, 0.4);
+      z-index: 200;
+      pointer-events: none;
+    }
+
+    &::after {
+      content: '';
+      position: absolute;
+      top: -9px;
+      left: 8px;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      border: 2px solid var(--ase-accent-main);
+      background: #111;
+      z-index: 201;
+      pointer-events: none;
+    }
+  }
+
+  &.drag-below {
+    position: relative;
+    z-index: 100;
+    transform: none !important;
+
+    &::before {
+      content: '';
+      position: absolute;
+      bottom: -5px;
+      left: 16px;
+      right: 0;
+      height: 2px;
+      background: var(--ase-accent-main);
+      box-shadow: 0 1px 6px rgba(255, 100, 0, 0.4);
+      z-index: 200;
+      pointer-events: none;
+    }
+
+    &::after {
+      content: '';
+      position: absolute;
+      bottom: -9px;
+      left: 8px;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      border: 2px solid var(--ase-accent-main);
+      background: #111;
+      z-index: 201;
+      pointer-events: none;
+    }
+  }
 }
 
 // CRITICAL: Must have higher specificity than .ase-mixer-workspace .ase-queue-track (0,2,0)
@@ -1591,6 +1731,11 @@
   display: flex;
   align-items: center;
   gap: 12px;
+
+  .drag-handle {
+    margin-left: -6px;
+    margin-right: -4px;
+  }
 
   .track-icon {
     width: 36px;
@@ -2264,40 +2409,6 @@
   }
 }
 
-.ase-queue-playlist-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  background: rgba(255, 255, 255, 0.03);
-  border-bottom: 1px solid var(--border-prominent);
-  cursor: pointer;
-  margin-bottom: 8px;
-  border-radius: 4px;
-
-  &:hover {
-    background: rgba(255, 255, 255, 0.05);
-  }
-
-  .ase-collapse-icon {
-    font-size: 10px;
-    color: var(--text-muted);
-    transition: transform 0.2s ease;
-  }
-
-  .ase-playlist-name {
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--text-main);
-    flex: 1;
-  }
-
-  .ase-playlist-count {
-    font-size: 11px;
-    color: var(--text-muted);
-  }
-}
-
 // Timeline slider for queue tracks
 .ase-queue-track-timeline {
   display: flex;
@@ -2648,6 +2759,32 @@
 
 /* Mixer Favorites Panel - Full Height */
 .ase-mixer-workspace {
+
+  // Fixed-size mode button across all mixer contexts (prevents layout shift)
+  .btn-icon [data-action="track-mode-dropdown"] i,
+  .btn-icon[data-action="playlist-mode-dropdown"] i,
+  [data-action="track-mode-dropdown"],
+  [data-action="playlist-mode-dropdown"],
+  [data-action="favorite-mode-dropdown"] {
+
+    &.btn-icon,
+    & {
+      i.fa-solid {
+        width: 14px;
+        text-align: center;
+        display: inline-block;
+      }
+    }
+  }
+
+  // Global fixed-width for mode buttons in playback-buttons and header controls
+  .playback-buttons .btn-icon[data-action="track-mode-dropdown"],
+  .ase-playlist-header-controls .btn-icon[data-action="playlist-mode-dropdown"] {
+    min-width: 28px;
+    text-align: center;
+    justify-content: center;
+  }
+
   .ase-mixer-favorites {
     flex: 1;
     max-height: none;
@@ -2761,32 +2898,86 @@
 .ase-queue-playlist-header {
   display: flex;
   align-items: center;
-  gap: 10px;
+  justify-content: space-between;
   padding: 8px 12px;
   background: var(--ase-bg-header);
   border-bottom: 1px solid var(--ase-border-dark);
-  cursor: pointer;
   transition: background 0.2s;
 
   &:hover {
     background: rgba(255, 255, 255, 0.05);
   }
 
+  .ase-playlist-header-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    flex: 1;
+    min-width: 0;
+  }
+
   .ase-collapse-icon {
     color: var(--ase-text-muted);
     font-size: 12px;
     transition: transform 0.2s;
+    flex-shrink: 0;
   }
 
   .ase-playlist-name {
     font-weight: 600;
     color: var(--ase-text-header);
     font-size: 13px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .ase-playlist-count {
     font-size: 11px;
     color: var(--ase-text-muted);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .ase-playlist-header-controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+    margin-left: 8px;
+
+    .btn-icon {
+      background: none;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 4px;
+      color: #999;
+      font-size: 11px;
+      cursor: pointer;
+      padding: 4px 6px;
+      transition: color 0.2s, background 0.2s, border-color 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+
+      &:hover {
+        background: rgba(255, 255, 255, 0.1);
+        border-color: rgba(255, 255, 255, 0.3);
+        color: #fff;
+      }
+
+      &:active {
+        transform: scale(0.95);
+      }
+    }
+
+    .btn-delete-inline {
+      &:hover {
+        color: #f87171;
+        border-color: rgba(248, 113, 113, 0.35);
+        background: rgba(248, 113, 113, 0.1);
+      }
+    }
   }
 }
 

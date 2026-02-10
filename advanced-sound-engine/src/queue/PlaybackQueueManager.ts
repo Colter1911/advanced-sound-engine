@@ -152,6 +152,28 @@ export class PlaybackQueueManager {
         Logger.debug('Queue cleared');
     }
 
+    /**
+     * Move a queue item to a new position
+     */
+    moveItem(queueItemId: string, newIndex: number): void {
+        const currentIndex = this.items.findIndex(i => i.id === queueItemId);
+        if (currentIndex === -1) {
+            Logger.warn('Cannot move: item not in queue', queueItemId);
+            return;
+        }
+
+        // Clamp newIndex
+        const clampedIndex = Math.max(0, Math.min(newIndex, this.items.length - 1));
+        if (currentIndex === clampedIndex) return;
+
+        const [item] = this.items.splice(currentIndex, 1);
+        this.items.splice(clampedIndex, 0, item);
+
+        this.emit('change', { items: this.items });
+        this.scheduleSave();
+        Logger.debug('Moved queue item:', queueItemId, 'to index:', clampedIndex);
+    }
+
     // ─────────────────────────────────────────────────────────────
     // Playback Control
     // ─────────────────────────────────────────────────────────────
@@ -258,6 +280,18 @@ export class PlaybackQueueManager {
     // ─────────────────────────────────────────────────────────────
     // Event System
     // ─────────────────────────────────────────────────────────────
+
+    /**
+     * Dispose: clear pending save timer and all event listeners
+     */
+    dispose(): void {
+        if (this.saveTimeout !== null) {
+            window.clearTimeout(this.saveTimeout);
+            this.saveTimeout = null;
+        }
+        this.eventListeners.clear();
+        Logger.debug('PlaybackQueueManager disposed');
+    }
 
     on(event: QueueEventType, callback: QueueEventCallback): void {
         if (!this.eventListeners.has(event)) {

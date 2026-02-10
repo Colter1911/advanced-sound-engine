@@ -33,6 +33,7 @@ const _StreamingPlayer = class _StreamingPlayer {
     __publicField(this, "_state", "stopped");
     __publicField(this, "_volume", 1);
     __publicField(this, "_ready", false);
+    __publicField(this, "_stopRequested", false);
     __publicField(this, "onEnded");
     this.id = id;
     this.ctx = ctx;
@@ -115,13 +116,22 @@ const _StreamingPlayer = class _StreamingPlayer {
       Logger.warn(`Track ${this.id} not ready`);
       return;
     }
+    this._stopRequested = false;
     try {
       this.audio.currentTime = Math.max(0, Math.min(offset, this.audio.duration || 0));
       this.audio.loop = false;
       await this.audio.play();
+      if (this._stopRequested) {
+        Logger.debug(`Track ${this.id} play resolved but stop was requested — staying stopped`);
+        return;
+      }
       this._state = "playing";
       Logger.debug(`Track ${this.id} playing from ${offset.toFixed(2)}s`);
     } catch (error) {
+      if ((error == null ? void 0 : error.name) === "AbortError") {
+        Logger.debug(`Track ${this.id} play aborted (stop was called)`);
+        return;
+      }
       Logger.error(`Failed to play ${this.id}:`, error);
     }
   }
@@ -132,6 +142,7 @@ const _StreamingPlayer = class _StreamingPlayer {
     Logger.debug(`Track ${this.id} paused at ${this.audio.currentTime.toFixed(2)}s`);
   }
   stop() {
+    this._stopRequested = true;
     this.audio.pause();
     this.audio.currentTime = 0;
     this._state = "stopped";
@@ -169,8 +180,10 @@ const _StreamingPlayer = class _StreamingPlayer {
   }
   dispose() {
     var _a;
+    this._stopRequested = true;
     this.audio.pause();
     this.audio.src = "";
+    this.onEnded = void 0;
     (_a = this.sourceNode) == null ? void 0 : _a.disconnect();
     this.gainNode.disconnect();
     this.outputNode.disconnect();
@@ -756,7 +769,8 @@ const _AudioEngine = class _AudioEngine extends SimpleEventEmitter {
     __publicField(this, "channelGains");
     __publicField(this, "players", /* @__PURE__ */ new Map());
     __publicField(this, "_activeContext", null);
-    // Effects System
+    __publicField(this, "_scheduler", null);
+    __publicField(this, "_socketManager", null);
     // Effects System
     __publicField(this, "effects", /* @__PURE__ */ new Map());
     // Sends: Channel -> EffectId -> GainNode
@@ -820,6 +834,16 @@ const _AudioEngine = class _AudioEngine extends SimpleEventEmitter {
         this.sends[group].set(effectId, sendGain);
       });
     });
+  }
+  /**
+   * Wire up references after construction to avoid circular dependencies.
+   * Called from main.ts after all managers are created.
+   */
+  setScheduler(scheduler) {
+    this._scheduler = scheduler;
+  }
+  setSocketManager(socketManager2) {
+    this._socketManager = socketManager2;
   }
   // ─────────────────────────────────────────────────────────────
   // Persistence (GM only)
@@ -956,9 +980,15 @@ const _AudioEngine = class _AudioEngine extends SimpleEventEmitter {
     this.scheduleSave();
   }
   stopAll() {
+    var _a, _b;
+    (_a = this._scheduler) == null ? void 0 : _a.clearContext();
+    this._activeContext = null;
     for (const player of this.players.values()) {
       player.stop();
     }
+    (_b = this._socketManager) == null ? void 0 : _b.broadcastStopAll();
+    this.scheduleSave();
+    Logger.info("All tracks stopped");
   }
   // ─────────────────────────────────────────────────────────────
   // Volume Control
@@ -1162,7 +1192,6 @@ const _AudioEngine = class _AudioEngine extends SimpleEventEmitter {
 __name(_AudioEngine, "AudioEngine");
 let AudioEngine = _AudioEngine;
 const _PlayerAudioEngine = class _PlayerAudioEngine {
-  // 10 seconds
   constructor(socketManager2) {
     __publicField(this, "ctx");
     __publicField(this, "masterGain");
@@ -1195,6 +1224,9 @@ const _PlayerAudioEngine = class _PlayerAudioEngine {
     // Reference to SocketManager for requesting sync
     __publicField(this, "lastSyncRequestTime", 0);
     __publicField(this, "SYNC_REQUEST_COOLDOWN", 1e4);
+    // 10 seconds
+    __publicField(this, "syncRequestFailCount", 0);
+    __publicField(this, "MAX_SYNC_RETRIES", 3);
     this.ctx = new AudioContext();
     this.socketManager = socketManager2;
     this.startSyncVerification();
@@ -1230,43 +1262,45 @@ const _PlayerAudioEngine = class _PlayerAudioEngine {
   verifySyncState() {
     let needsResync = false;
     if (this.lastSyncState.length === 0) {
-      if (this.players.size > 0) {
-        console.warn("[ASE PLAYER] Sync verification: Have", this.players.size, "players but sync state is empty");
+      const hasActivePlayers = Array.from(this.players.values()).some(
+        (p) => p.state === "playing" || p.state === "paused"
+      );
+      if (hasActivePlayers) {
+        Logger.warn("Sync verification: Active players exist but sync state is empty");
         needsResync = true;
       } else {
-        console.log("[ASE PLAYER] Sync verification OK (no tracks)");
         return;
       }
     }
-    for (const expectedTrack of this.lastSyncState) {
-      const player = this.players.get(expectedTrack.id);
-      if (!player) {
-        if (expectedTrack.isPlaying) {
-          console.warn("[ASE PLAYER] Sync verification: Expected track not found", expectedTrack.id);
-          needsResync = true;
-          break;
+    if (!needsResync) {
+      for (const expectedTrack of this.lastSyncState) {
+        const player = this.players.get(expectedTrack.id);
+        if (!player) {
+          if (expectedTrack.isPlaying) {
+            Logger.warn(`Sync verification: Expected playing track not found: ${expectedTrack.id}`);
+            needsResync = true;
+            break;
+          }
+          continue;
         }
-        continue;
-      }
-      if (player) {
         const actuallyPlaying = player.state === "playing";
         if (expectedTrack.isPlaying && !actuallyPlaying) {
-          console.warn("[ASE PLAYER] Sync verification: Track should be playing but is", player.state, expectedTrack.id);
+          Logger.warn(`Sync verification: Track should be playing but is ${player.state}: ${expectedTrack.id}`);
           needsResync = true;
           break;
         }
         if (!expectedTrack.isPlaying && actuallyPlaying) {
-          console.warn("[ASE PLAYER] Sync verification: Track should be stopped but is playing", expectedTrack.id);
+          Logger.warn(`Sync verification: Track should be stopped but is playing: ${expectedTrack.id}`);
           needsResync = true;
           break;
         }
       }
     }
-    if (!needsResync) {
+    if (!needsResync && this.lastSyncState.length > 0) {
       const expectedIds = new Set(this.lastSyncState.map((t) => t.id));
       for (const [id, player] of this.players) {
-        if (!expectedIds.has(id)) {
-          console.warn("[ASE PLAYER] Sync verification: Unexpected track exists:", id, "state:", player.state);
+        if (!expectedIds.has(id) && player.state === "playing") {
+          Logger.warn(`Sync verification: Unexpected playing track: ${id}`);
           needsResync = true;
           break;
         }
@@ -1275,18 +1309,22 @@ const _PlayerAudioEngine = class _PlayerAudioEngine {
     if (needsResync) {
       const now = Date.now();
       if (now - this.lastSyncRequestTime < this.SYNC_REQUEST_COOLDOWN) {
-        console.warn("[ASE PLAYER] Sync request on cooldown, skipping");
         return;
       }
-      console.log("[ASE PLAYER] Sync verification failed - requesting full sync from GM");
+      this.syncRequestFailCount++;
+      if (this.syncRequestFailCount > this.MAX_SYNC_RETRIES) {
+        Logger.warn(`Sync verification: Exceeded ${this.MAX_SYNC_RETRIES} retries, stopping requests`);
+        return;
+      }
+      Logger.info(`Sync verification failed — requesting full sync (attempt ${this.syncRequestFailCount}/${this.MAX_SYNC_RETRIES})`);
       this.lastSyncRequestTime = now;
       if (this.socketManager) {
         this.socketManager.requestFullSync();
       } else {
-        console.warn("[ASE PLAYER] Cannot request sync: socketManager not set");
+        Logger.warn("Cannot request sync: socketManager not set");
       }
     } else {
-      console.log("[ASE PLAYER] Sync verification OK");
+      this.syncRequestFailCount = 0;
     }
   }
   dispose() {
@@ -1483,8 +1521,8 @@ const _PlayerAudioEngine = class _PlayerAudioEngine {
   // ─────────────────────────────────────────────────────────────
   async syncState(tracks, volumes, effectsState = []) {
     Logger.debug(`Player: Sync State Received. Tracks=${tracks.length}, Effects=${(effectsState == null ? void 0 : effectsState.length) || 0}`);
-    Logger.debug("Player: Volumes", volumes);
     this.lastSyncState = tracks;
+    this.syncRequestFailCount = 0;
     this.setAllGMVolumes(volumes);
     Logger.debug(`Player: GM Gain set to ${this.gmGain.gain.value}`);
     if (effectsState && effectsState.length > 0) {
@@ -1515,7 +1553,7 @@ const _PlayerAudioEngine = class _PlayerAudioEngine {
     for (const trackState of tracks) {
       let player = this.players.get(trackState.id);
       if (player && !trackState.isPlaying && player.state === "playing") {
-        console.log("[ASE PLAYER] Stopping track that should not be playing:", trackState.id);
+        Logger.debug("Player: Stopping track that should not be playing:", trackState.id);
         player.stop();
         continue;
       }
@@ -1536,6 +1574,14 @@ const _PlayerAudioEngine = class _PlayerAudioEngine {
       if (trackState.isPlaying) {
         const elapsed = (getServerTime() - trackState.startTimestamp) / 1e3;
         const adjustedTime = trackState.currentTime + elapsed;
+        if (player.state === "playing") {
+          const drift = Math.abs(player.getCurrentTime() - adjustedTime);
+          if (drift < 2) {
+            Logger.debug(`Player: Track ${trackState.id} already playing, drift=${drift.toFixed(2)}s — skipping re-play`);
+            continue;
+          }
+          Logger.debug(`Player: Track ${trackState.id} drift=${drift.toFixed(2)}s — re-syncing`);
+        }
         await player.play(adjustedTime);
       } else {
         player.stop();
@@ -1546,28 +1592,28 @@ const _PlayerAudioEngine = class _PlayerAudioEngine {
   // ─────────────────────────────────────────────────────────────
   // Sync Off
   // ─────────────────────────────────────────────────────────────
-  // Stop all tracks without disposing
+  // Stop all tracks — full cleanup to prevent phantom sound and sync loops
   stopAll() {
-    console.log("[ASE PLAYER] Stopping all tracks");
-    for (const player of this.players.values()) {
-      if (player.state === "playing" || player.state === "paused") {
-        player.stop();
-      }
-    }
-    this.lastSyncState = [];
-    console.log("[ASE PLAYER] Cleared lastSyncState after stopAll");
-  }
-  // Clear all tracks (stop + dispose)
-  clearAll() {
-    console.log("[ASE PLAYER] Clearing all tracks");
+    Logger.info("Player: Stopping all tracks");
     for (const player of this.players.values()) {
       player.stop();
       player.dispose();
     }
     this.players.clear();
     this.lastSyncState = [];
+    this.syncRequestFailCount = 0;
+    Logger.info("Player: All tracks stopped and cleared");
+  }
+  // Clear all tracks (stop + dispose) — used on sync-stop
+  clearAll() {
+    for (const player of this.players.values()) {
+      player.stop();
+      player.dispose();
+    }
+    this.players.clear();
+    this.lastSyncState = [];
+    this.syncRequestFailCount = 0;
     Logger.info("Player: all tracks cleared");
-    console.log("[ASE PLAYER] Cleared lastSyncState after clearAll");
   }
   // ─────────────────────────────────────────────────────────────
   // Audio Context
@@ -1590,6 +1636,8 @@ const _SocketManager = class _SocketManager {
     __publicField(this, "socket", null);
     __publicField(this, "_syncEnabled", false);
     __publicField(this, "isGM", false);
+    __publicField(this, "throttleTimers", /* @__PURE__ */ new Map());
+    __publicField(this, "throttlePending", /* @__PURE__ */ new Map());
   }
   initializeAsGM(engine) {
     var _a;
@@ -1636,11 +1684,14 @@ const _SocketManager = class _SocketManager {
   handleGMMessage(message) {
     var _a;
     if (message.senderId === ((_a = game.user) == null ? void 0 : _a.id)) return;
+    if (message.version && message.version !== _SocketManager.PROTOCOL_VERSION) {
+      Logger.warn(`Protocol mismatch: received v${message.version}, expected v${_SocketManager.PROTOCOL_VERSION}. Player may need to refresh.`);
+    }
     if (message.type === "player-ready" && this._syncEnabled) {
       this.sendStateTo(message.senderId);
     }
     if (message.type === "sync-request" && this._syncEnabled) {
-      console.log("[ASE GM] Received sync request from player:", message.senderId);
+      Logger.debug("Received sync request from player:", message.senderId);
       this.sendStateTo(message.senderId);
     }
   }
@@ -1651,6 +1702,9 @@ const _SocketManager = class _SocketManager {
     var _a;
     if (message.senderId === ((_a = game.user) == null ? void 0 : _a.id)) return;
     if (!this.playerEngine) return;
+    if (message.version && message.version !== _SocketManager.PROTOCOL_VERSION) {
+      Logger.warn(`Protocol mismatch: received v${message.version}, expected v${_SocketManager.PROTOCOL_VERSION}. Try refreshing the page.`);
+    }
     Logger.debug(`Player received: ${message.type}`, message.payload);
     switch (message.type) {
       case "sync-start":
@@ -1720,7 +1774,8 @@ const _SocketManager = class _SocketManager {
       type,
       payload,
       senderId: ((_a = game.user) == null ? void 0 : _a.id) ?? "",
-      timestamp: getServerTime()
+      timestamp: getServerTime(),
+      version: _SocketManager.PROTOCOL_VERSION
     };
     if (targetUserId) {
       this.socket.emit(SOCKET_NAME, message, { recipients: [targetUserId] });
@@ -1728,6 +1783,24 @@ const _SocketManager = class _SocketManager {
       this.socket.emit(SOCKET_NAME, message);
     }
     Logger.debug(`Sent: ${type}`, payload);
+  }
+  /**
+   * Throttle a send by key — ensures high-frequency broadcasts (seek, volume, effect params)
+   * don't flood the socket. The last value always gets sent.
+   */
+  throttledSend(key, type, payload) {
+    this.throttlePending.set(key, () => this.send(type, payload));
+    if (this.throttleTimers.has(key)) return;
+    this.send(type, payload);
+    this.throttlePending.delete(key);
+    this.throttleTimers.set(key, setTimeout(() => {
+      this.throttleTimers.delete(key);
+      const pending = this.throttlePending.get(key);
+      if (pending) {
+        this.throttlePending.delete(key);
+        pending();
+      }
+    }, _SocketManager.THROTTLE_MS));
   }
   getCurrentSyncState() {
     if (!this.gmEngine) {
@@ -1803,51 +1876,56 @@ const _SocketManager = class _SocketManager {
       isPlaying,
       seekTimestamp: getServerTime()
     };
-    this.send("track-seek", payload);
+    this.throttledSend(`seek:${trackId}`, "track-seek", payload);
   }
   broadcastTrackVolume(trackId, volume) {
     if (!this._syncEnabled) return;
     const payload = { trackId, volume };
-    this.send("track-volume", payload);
+    this.throttledSend(`vol:${trackId}`, "track-volume", payload);
   }
   broadcastChannelVolume(channel, volume) {
     if (!this._syncEnabled) return;
     const payload = { channel, volume };
-    this.send("channel-volume", payload);
+    this.throttledSend(`chvol:${channel}`, "channel-volume", payload);
   }
   broadcastStopAll() {
-    if (!this._syncEnabled) return;
     this.send("stop-all", {});
   }
   dispose() {
     var _a;
+    for (const timer of this.throttleTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.throttleTimers.clear();
+    this.throttlePending.clear();
     (_a = this.socket) == null ? void 0 : _a.off(SOCKET_NAME);
   }
   // Effects
   broadcastEffectParam(effectId, paramId, value) {
     if (!this._syncEnabled) return;
-    console.log("[ASE GM] Broadcasting effect param:", effectId, paramId, value);
-    this.send("effect-param", { effectId, paramId, value });
+    this.throttledSend(`fx:${effectId}:${paramId}`, "effect-param", { effectId, paramId, value });
   }
   broadcastEffectRouting(effectId, channel, active) {
     if (!this._syncEnabled) return;
-    console.log("[ASE GM] Broadcasting effect routing:", effectId, channel, active);
     this.send("effect-routing", { effectId, channel, active });
   }
   broadcastEffectEnabled(effectId, enabled) {
     if (!this._syncEnabled) return;
-    console.log("[ASE GM] Broadcasting effect enabled:", effectId, enabled);
     this.send("effect-enabled", { effectId, enabled });
   }
   // ─────────────────────────────────────────────────────────────
   // Player Methods (request sync from GM)
   // ─────────────────────────────────────────────────────────────
   requestFullSync() {
-    console.log("[ASE PLAYER] Requesting full sync from GM");
+    Logger.debug("Requesting full sync from GM");
     this.send("sync-request", {});
   }
 };
 __name(_SocketManager, "SocketManager");
+// Protocol version — bump when message format changes
+__publicField(_SocketManager, "PROTOCOL_VERSION", 1);
+// Rate limiting for high-frequency broadcasts
+__publicField(_SocketManager, "THROTTLE_MS", 150);
 let SocketManager = _SocketManager;
 const MODULE_ID$4 = "advanced-sound-engine";
 const _PlayerVolumePanel = class _PlayerVolumePanel extends Application {
@@ -1940,10 +2018,8 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     if ((_a = window.ASE) == null ? void 0 : _a.openPanel) {
       if (this.parentApp) {
         if (options == null ? void 0 : options.resetScroll) {
-          Logger.debug("[LocalLibraryApp] Resetting scroll before render");
           this.parentApp.resetScroll("library");
         } else {
-          Logger.debug("[LocalLibraryApp] Capturing scroll before render");
           this.parentApp.captureScroll();
         }
       }
@@ -4280,16 +4356,28 @@ const _SoundMixerApp = class _SoundMixerApp {
     // Throttle for socket broadcasts
     __publicField(this, "seekThrottleTimers", /* @__PURE__ */ new Map());
     __publicField(this, "volumeThrottleTimers", /* @__PURE__ */ new Map());
+    // Stored callbacks for proper cleanup
+    __publicField(this, "_onQueueChangeBound");
+    __publicField(this, "_onTrackEndedBound");
+    __publicField(this, "_hookFavoritesId", 0);
+    __publicField(this, "_hookAutoSwitchId", 0);
+    // Drag-and-Drop State (Optimization with RAF)
+    __publicField(this, "_dragTarget", null);
+    __publicField(this, "_dragPosition", null);
+    __publicField(this, "_rafId", null);
+    __publicField(this, "_pendingDragUpdate", null);
     this.engine = engine;
     this.socket = socket;
     this.libraryManager = libraryManager2;
     this.queueManager = queueManager2;
-    this.queueManager.on("change", () => this.onQueueChange());
-    this.engine.on("trackEnded", () => this.onTrackStateChange());
-    Hooks.on("ase.favoritesChanged", () => {
+    this._onQueueChangeBound = () => this.onQueueChange();
+    this._onTrackEndedBound = () => this.onTrackStateChange();
+    this.queueManager.on("change", this._onQueueChangeBound);
+    this.engine.on("trackEnded", this._onTrackEndedBound);
+    this._hookFavoritesId = Hooks.on("ase.favoritesChanged", () => {
       this.requestRender();
     });
-    Hooks.on("ase.trackAutoSwitched", () => {
+    this._hookAutoSwitchId = Hooks.on("ase.trackAutoSwitched", () => {
       Logger.debug("[SoundMixerApp] Track auto-switched, re-rendering");
       this.requestRender();
     });
@@ -4318,21 +4406,32 @@ const _SoundMixerApp = class _SoundMixerApp {
             group: item.group,
             isPlaying: (player == null ? void 0 : player.state) === "playing",
             isPaused: (player == null ? void 0 : player.state) === "paused",
-            inQueue
+            inQueue,
+            playbackMode: item.playbackMode || "inherit",
+            isFavorite: true
           });
         }
       } else if (fav.type === "playlist") {
         const playlist = this.libraryManager.playlists.getPlaylist(fav.id);
         if (playlist) {
+          const playlistTracks = this.libraryManager.playlists.getPlaylistTracks(fav.id);
+          let isPlaying = false;
+          let isPaused = false;
+          for (const pt of playlistTracks) {
+            const player = this.engine.getTrack(pt.libraryItemId);
+            if ((player == null ? void 0 : player.state) === "playing") isPlaying = true;
+            if ((player == null ? void 0 : player.state) === "paused") isPaused = true;
+          }
           favorites.push({
             id: playlist.id,
             name: playlist.name,
             type: "playlist",
             group: void 0,
-            isPlaying: false,
-            // Playlists don't have individual play state
-            isPaused: false,
-            inQueue
+            isPlaying,
+            isPaused: !isPlaying && isPaused,
+            inQueue,
+            playbackMode: playlist.playbackMode || "loop",
+            isFavorite: true
           });
         }
       }
@@ -4362,17 +4461,29 @@ const _SoundMixerApp = class _SoundMixerApp {
     const playlists = [];
     for (const [playlistId, items] of groups) {
       let name = "Ungrouped";
+      let playbackMode = "loop";
+      const isUngrouped = !playlistId;
       if (playlistId) {
         const playlist = this.libraryManager.playlists.getPlaylist(playlistId);
         name = (playlist == null ? void 0 : playlist.name) ?? "Unknown Playlist";
+        playbackMode = (playlist == null ? void 0 : playlist.playbackMode) ?? "loop";
       }
       const collapsed = playlistId ? this.collapsedPlaylists.has(playlistId) : this.ungroupedCollapsed;
       const tracks = items.map((queueItem) => this.getQueueTrackViewData(queueItem, collapsed));
+      const activeTrackCount = tracks.filter((t) => t.isPlaying || t.isPaused).length;
+      const hasPlayingTracks = tracks.some((t) => t.isPlaying);
+      const hasPausedTracks = tracks.some((t) => t.isPaused);
       playlists.push({
         id: playlistId,
         name,
         collapsed: playlistId ? this.collapsedPlaylists.has(playlistId) : this.ungroupedCollapsed,
-        tracks
+        tracks,
+        activeTrackCount,
+        totalTrackCount: tracks.length,
+        hasPlayingTracks,
+        hasPausedTracks,
+        playbackMode,
+        isUngrouped
       });
     }
     return playlists;
@@ -4424,6 +4535,8 @@ const _SoundMixerApp = class _SoundMixerApp {
     html.find('[data-action="pause-favorite"]').on("click", (e) => this.onPauseFavorite(e));
     html.find('[data-action="stop-favorite"]').on("click", (e) => this.onStopFavorite(e));
     html.find('[data-action="add-to-queue-from-favorite"]').on("click", (e) => this.onAddToQueueFromFavorite(e));
+    html.find('[data-action="favorite-mode-dropdown"]').on("click", (e) => this.onFavoriteModeClick(e));
+    html.find('[data-action="toggle-mixer-favorite"]').on("click", (e) => this.onToggleMixerFavorite(e));
     html.find('[data-action="play-queue"]').on("click", (e) => this.onPlayQueueItem(e));
     html.find('[data-action="pause-queue"]').on("click", (e) => this.onPauseQueueItem(e));
     html.find('[data-action="stop-queue"]').on("click", (e) => this.onStopQueueItem(e));
@@ -4431,6 +4544,11 @@ const _SoundMixerApp = class _SoundMixerApp {
     html.find('[data-action="track-mode-dropdown"]').on("click", (e) => this.onTrackModeClick(e));
     html.find('[data-action="channel-dropdown"]').on("click", (e) => this.onChannelDropdown(e));
     html.find('[data-action="toggle-playlist"]').on("click", (e) => this.onTogglePlaylist(e));
+    html.find('[data-action="play-playlist"]').on("click", (e) => this.onPlayPlaylistHeader(e));
+    html.find('[data-action="pause-playlist"]').on("click", (e) => this.onPausePlaylistHeader(e));
+    html.find('[data-action="stop-playlist"]').on("click", (e) => this.onStopPlaylistHeader(e));
+    html.find('[data-action="playlist-mode-dropdown"]').on("click", (e) => this.onPlaylistModeClick(e));
+    html.find('[data-action="remove-playlist"]').on("click", (e) => this.onRemovePlaylistFromQueue(e));
     html.find('[data-action="seek"]').on("input", (e) => this.onSeek(e));
     html.find('[data-action="volume"]').on("input", (e) => this.onVolumeChange(e));
     html.find(".volume-slider").on("input", (e) => {
@@ -4468,6 +4586,7 @@ const _SoundMixerApp = class _SoundMixerApp {
       });
     });
     html.find('[data-action="toggle-effect"]').on("click", (e) => this.onToggleEffect(e));
+    this.setupDragAndDrop(html);
   }
   // ─────────────────────────────────────────────────────────────
   // Favorites Handlers
@@ -4525,6 +4644,14 @@ const _SoundMixerApp = class _SoundMixerApp {
     const type = $el.data("favorite-type");
     if (type === "track") {
       this.pauseTrack(id);
+    } else {
+      const tracks = this.libraryManager.playlists.getPlaylistTracks(id);
+      for (const track of tracks) {
+        const player = this.engine.getTrack(track.libraryItemId);
+        if ((player == null ? void 0 : player.state) === "playing") {
+          this.pauseTrack(track.libraryItemId);
+        }
+      }
     }
     this.requestRender();
   }
@@ -4538,6 +4665,53 @@ const _SoundMixerApp = class _SoundMixerApp {
       this.stopTrack(id);
     } else {
       this.stopPlaylist(id);
+    }
+    this.requestRender();
+  }
+  onFavoriteModeClick(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    const btn = $(event.currentTarget);
+    const id = btn.data("favorite-id");
+    const type = btn.data("favorite-type");
+    if (type === "track") {
+      const item = this.libraryManager.getItem(id);
+      if (!item) return;
+      const modes = [
+        { label: "Inherit (Default)", value: "inherit", icon: "fa-arrow-turn-down" },
+        { label: "Loop", value: "loop", icon: "fa-repeat" },
+        { label: "Single", value: "single", icon: "fa-arrow-right-to-line" },
+        { label: "Linear", value: "linear", icon: "fa-arrow-right" },
+        { label: "Random", value: "random", icon: "fa-shuffle" }
+      ];
+      this.showModeContextMenu(event, modes, (mode) => {
+        this.libraryManager.updateItem(id, { playbackMode: mode });
+        this.requestRender();
+      });
+    } else {
+      const playlist = this.libraryManager.playlists.getPlaylist(id);
+      if (!playlist) return;
+      const modes = [
+        { label: "Loop (Default)", value: "loop", icon: "fa-repeat" },
+        { label: "Linear", value: "linear", icon: "fa-arrow-right" },
+        { label: "Random", value: "random", icon: "fa-shuffle" }
+      ];
+      this.showModeContextMenu(event, modes, (mode) => {
+        this.libraryManager.playlists.updatePlaylist(id, { playbackMode: mode });
+        this.requestRender();
+      });
+    }
+  }
+  onToggleMixerFavorite(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    const btn = $(event.currentTarget);
+    const id = btn.data("favorite-id");
+    const type = btn.data("favorite-type");
+    if (type === "track") {
+      this.libraryManager.toggleFavorite(id);
+    } else {
+      this.libraryManager.playlists.togglePlaylistFavorite(id);
     }
     this.requestRender();
   }
@@ -4747,6 +4921,194 @@ const _SoundMixerApp = class _SoundMixerApp {
     this.requestRender();
   }
   // ─────────────────────────────────────────────────────────────
+  // Drag and Drop
+  // ─────────────────────────────────────────────────────────────
+  setupDragAndDrop(html) {
+    html.find(".ase-favorite-item .ase-icons, .ase-favorite-item button, .ase-favorite-item input").on("pointerdown", (e) => {
+      e.stopPropagation();
+      const $item = $(e.currentTarget).closest(".ase-favorite-item");
+      $item.attr("draggable", "false");
+    });
+    html.find('.ase-list-group[data-section="mixer-favorites"]').on("pointerup pointercancel", () => {
+      html.find(".ase-favorite-item").attr("draggable", "true");
+    });
+    html.find('.ase-favorite-item[draggable="true"]').on("dragstart", (event) => {
+      event.stopPropagation();
+      const favoriteId = String($(event.currentTarget).data("favorite-id"));
+      const favoriteType = String($(event.currentTarget).data("favorite-type"));
+      Logger.info(`[SoundMixerApp] DragStart Favorite: ${favoriteId} (${favoriteType})`);
+      event.originalEvent.dataTransfer.effectAllowed = "move";
+      event.originalEvent.dataTransfer.setData("application/x-mixer-favorite-id", favoriteId);
+      event.originalEvent.dataTransfer.setData("application/x-mixer-favorite-type", favoriteType);
+      $(event.currentTarget).addClass("dragging");
+    });
+    html.find('.ase-favorite-item[draggable="true"]').on("dragend", (event) => {
+      if (this._rafId) {
+        cancelAnimationFrame(this._rafId);
+        this._rafId = null;
+      }
+      this._pendingDragUpdate = null;
+      this._dragTarget = null;
+      this._dragPosition = null;
+      $(event.currentTarget).removeClass("dragging");
+      html.find(".ase-favorite-item").removeClass("drag-over drag-above drag-below");
+    });
+    html.find(".ase-favorite-item").on("dragover", (event) => {
+      const types = event.originalEvent.dataTransfer.types;
+      const hasFavoriteId = types instanceof DOMStringList && types.contains("application/x-mixer-favorite-id") || types instanceof Array && types.includes("application/x-mixer-favorite-id") || Array.from(types).includes("application/x-mixer-favorite-id");
+      if (!hasFavoriteId) return;
+      event.preventDefault();
+      event.stopPropagation();
+      event.originalEvent.dataTransfer.dropEffect = "move";
+      const rect = event.currentTarget.getBoundingClientRect();
+      const midY = rect.top + rect.height / 2;
+      const clientY = event.originalEvent.clientY ?? event.clientY;
+      const isAbove = clientY < midY;
+      const newPos = isAbove ? "above" : "below";
+      this._pendingDragUpdate = {
+        target: event.currentTarget,
+        position: newPos
+      };
+      if (!this._rafId) {
+        this._rafId = requestAnimationFrame(this._processDragUpdate.bind(this, html, ".ase-favorite-item"));
+      }
+    });
+    html.find(".ase-favorite-item").on("dragleave", (event) => {
+      if (this._dragTarget === event.currentTarget) {
+        this._dragTarget = null;
+        this._dragPosition = null;
+        $(event.currentTarget).removeClass("drag-above drag-below");
+      }
+    });
+    html.find(".ase-favorite-item").on("drop", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const dropPosition = this._dragPosition || "above";
+      if (this._rafId) {
+        cancelAnimationFrame(this._rafId);
+        this._rafId = null;
+      }
+      this._pendingDragUpdate = null;
+      this._dragTarget = null;
+      this._dragPosition = null;
+      const targetId = String($(event.currentTarget).data("favorite-id"));
+      const targetType = String($(event.currentTarget).data("favorite-type"));
+      html.find(".ase-favorite-item").removeClass("drag-above drag-below dragging");
+      const draggedId = event.originalEvent.dataTransfer.getData("application/x-mixer-favorite-id");
+      const draggedType = event.originalEvent.dataTransfer.getData("application/x-mixer-favorite-type");
+      Logger.info(`[SoundMixerApp] Drop Favorite: ${draggedId} -> ${targetId} (${dropPosition})`);
+      if (draggedId && draggedType && (draggedId !== targetId || draggedType !== targetType)) {
+        this.handleFavoriteReorder(draggedId, draggedType, targetId, targetType, dropPosition);
+      }
+    });
+    html.find(".ase-queue-track input, .ase-queue-track button, .ase-queue-track .volume-container, .ase-queue-track .progress-wrapper").on("pointerdown", (e) => {
+      e.stopPropagation();
+      const $track = $(e.currentTarget).closest(".ase-queue-track");
+      $track.attr("draggable", "false");
+    });
+    html.find(".ase-track-player-list").on("pointerup pointercancel", () => {
+      html.find(".ase-queue-track").attr("draggable", "true");
+    });
+    html.find('.ase-queue-track[draggable="true"]').on("dragstart", (event) => {
+      event.stopPropagation();
+      const queueId = String($(event.currentTarget).data("queue-id"));
+      Logger.info(`[SoundMixerApp] DragStart Queue: ${queueId}`);
+      event.originalEvent.dataTransfer.effectAllowed = "move";
+      event.originalEvent.dataTransfer.setData("application/x-mixer-queue-id", queueId);
+      $(event.currentTarget).addClass("dragging");
+    });
+    html.find('.ase-queue-track[draggable="true"]').on("dragend", (event) => {
+      if (this._rafId) {
+        cancelAnimationFrame(this._rafId);
+        this._rafId = null;
+      }
+      this._pendingDragUpdate = null;
+      this._dragTarget = null;
+      this._dragPosition = null;
+      $(event.currentTarget).removeClass("dragging");
+      html.find(".ase-queue-track").removeClass("drag-over drag-above drag-below");
+      $(event.currentTarget).attr("draggable", "true");
+    });
+    html.find(".ase-queue-track").on("dragover", (event) => {
+      const types = event.originalEvent.dataTransfer.types;
+      const hasQueueId = types instanceof DOMStringList && types.contains("application/x-mixer-queue-id") || types instanceof Array && types.includes("application/x-mixer-queue-id") || Array.from(types).includes("application/x-mixer-queue-id");
+      if (!hasQueueId) return;
+      event.preventDefault();
+      event.stopPropagation();
+      event.originalEvent.dataTransfer.dropEffect = "move";
+      const rect = event.currentTarget.getBoundingClientRect();
+      const midY = rect.top + rect.height / 2;
+      const clientY = event.originalEvent.clientY ?? event.clientY;
+      const isAbove = clientY < midY;
+      const newPos = isAbove ? "above" : "below";
+      this._pendingDragUpdate = {
+        target: event.currentTarget,
+        position: newPos
+      };
+      if (!this._rafId) {
+        this._rafId = requestAnimationFrame(this._processDragUpdate.bind(this, html, ".ase-queue-track"));
+      }
+    });
+    html.find(".ase-queue-track").on("dragleave", (event) => {
+      if (this._dragTarget === event.currentTarget) {
+        this._dragTarget = null;
+        this._dragPosition = null;
+        $(event.currentTarget).removeClass("drag-above drag-below");
+      }
+    });
+    html.find(".ase-queue-track").on("drop", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const dropPosition = this._dragPosition || "above";
+      if (this._rafId) {
+        cancelAnimationFrame(this._rafId);
+        this._rafId = null;
+      }
+      this._pendingDragUpdate = null;
+      this._dragTarget = null;
+      this._dragPosition = null;
+      html.find(".ase-queue-track").removeClass("drag-above drag-below dragging");
+      const draggedQueueId = event.originalEvent.dataTransfer.getData("application/x-mixer-queue-id");
+      const targetQueueId = String($(event.currentTarget).data("queue-id"));
+      Logger.info(`[SoundMixerApp] Drop Queue: ${draggedQueueId} -> ${targetQueueId} (${dropPosition})`);
+      if (draggedQueueId && draggedQueueId !== targetQueueId) {
+        this.handleQueueReorder(draggedQueueId, targetQueueId, dropPosition);
+      }
+    });
+  }
+  handleFavoriteReorder(draggedId, draggedType, targetId, targetType, position) {
+    const favorites = this.libraryManager.getOrderedFavorites();
+    const draggedIndex = favorites.findIndex((f) => f.id === draggedId && f.type === draggedType);
+    const targetIndex = favorites.findIndex((f) => f.id === targetId && f.type === targetType);
+    if (draggedIndex === -1 || targetIndex === -1) return;
+    const [draggedItem] = favorites.splice(draggedIndex, 1);
+    let insertIndex;
+    if (position === "above") {
+      insertIndex = draggedIndex < targetIndex ? targetIndex - 1 : targetIndex;
+    } else {
+      insertIndex = draggedIndex < targetIndex ? targetIndex : targetIndex + 1;
+    }
+    insertIndex = Math.max(0, Math.min(insertIndex, favorites.length));
+    favorites.splice(insertIndex, 0, draggedItem);
+    this.libraryManager.reorderFavorites(favorites);
+    this.requestRender();
+    Logger.debug(`[SoundMixerApp] Reordered favorite ${draggedId} to position ${insertIndex} (${position})`);
+  }
+  handleQueueReorder(draggedQueueId, targetQueueId, position) {
+    const items = this.queueManager.getItems();
+    const draggedIndex = items.findIndex((i) => i.id === draggedQueueId);
+    const targetIndex = items.findIndex((i) => i.id === targetQueueId);
+    if (draggedIndex === -1 || targetIndex === -1) return;
+    let newIndex;
+    if (position === "above") {
+      newIndex = draggedIndex < targetIndex ? targetIndex - 1 : targetIndex;
+    } else {
+      newIndex = draggedIndex < targetIndex ? targetIndex : targetIndex + 1;
+    }
+    this.queueManager.moveItem(draggedQueueId, newIndex);
+    Logger.debug(`[SoundMixerApp] Reordered queue item ${draggedQueueId} to position ${newIndex} (${position} target ${targetIndex})`);
+  }
+  // ─────────────────────────────────────────────────────────────
   // Playlist Toggle
   // ─────────────────────────────────────────────────────────────
   onTogglePlaylist(event) {
@@ -4761,6 +5123,104 @@ const _SoundMixerApp = class _SoundMixerApp {
       } else {
         this.collapsedPlaylists.add(playlistId);
       }
+    }
+    this.requestRender();
+  }
+  // ─────────────────────────────────────────────────────────────
+  // Playlist Header Controls
+  // ─────────────────────────────────────────────────────────────
+  getPlaylistHeaderInfo(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    const $playlist = $(event.currentTarget).closest(".ase-queue-playlist");
+    const rawId = $playlist.data("playlist-id");
+    const playlistId = rawId === void 0 || rawId === null || rawId === "" ? null : String(rawId);
+    return { playlistId, $playlist };
+  }
+  getQueueItemsForGroup(playlistId) {
+    return this.queueManager.getItems().filter((item) => {
+      const itemPlaylistId = item.playlistId ?? null;
+      return itemPlaylistId === playlistId;
+    });
+  }
+  async onPlayPlaylistHeader(event) {
+    var _a, _b, _c, _d;
+    const info = this.getPlaylistHeaderInfo(event);
+    if (!info) return;
+    const { playlistId } = info;
+    const groupItems = this.getQueueItemsForGroup(playlistId);
+    if (!groupItems.length) return;
+    const pausedItems = groupItems.filter((item) => {
+      const player = this.engine.getTrack(item.libraryItemId);
+      return (player == null ? void 0 : player.state) === "paused";
+    });
+    if (pausedItems.length > 0) {
+      for (const item of pausedItems) {
+        const context = playlistId ? { type: "playlist", id: playlistId, playbackMode: ((_a = this.libraryManager.playlists.getPlaylist(playlistId)) == null ? void 0 : _a.playbackMode) || "loop" } : { type: "track", playbackMode: ((_b = this.libraryManager.getItem(item.libraryItemId)) == null ? void 0 : _b.playbackMode) || "loop" };
+        await this.playTrack(item.libraryItemId, context);
+      }
+    } else {
+      const firstItem = groupItems[0];
+      const context = playlistId ? { type: "playlist", id: playlistId, playbackMode: ((_c = this.libraryManager.playlists.getPlaylist(playlistId)) == null ? void 0 : _c.playbackMode) || "loop" } : { type: "track", playbackMode: ((_d = this.libraryManager.getItem(firstItem.libraryItemId)) == null ? void 0 : _d.playbackMode) || "loop" };
+      await this.playTrack(firstItem.libraryItemId, context);
+    }
+    this.requestRender();
+  }
+  onPausePlaylistHeader(event) {
+    const info = this.getPlaylistHeaderInfo(event);
+    if (!info) return;
+    const { playlistId } = info;
+    const groupItems = this.getQueueItemsForGroup(playlistId);
+    for (const item of groupItems) {
+      const player = this.engine.getTrack(item.libraryItemId);
+      if ((player == null ? void 0 : player.state) === "playing") {
+        this.pauseTrack(item.libraryItemId);
+      }
+    }
+    this.requestRender();
+  }
+  onStopPlaylistHeader(event) {
+    const info = this.getPlaylistHeaderInfo(event);
+    if (!info) return;
+    const { playlistId } = info;
+    const groupItems = this.getQueueItemsForGroup(playlistId);
+    for (const item of groupItems) {
+      const player = this.engine.getTrack(item.libraryItemId);
+      if ((player == null ? void 0 : player.state) === "playing" || (player == null ? void 0 : player.state) === "paused") {
+        this.stopTrack(item.libraryItemId);
+      }
+    }
+    this.requestRender();
+  }
+  onPlaylistModeClick(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    const btn = $(event.currentTarget);
+    const playlistId = btn.data("playlist-id");
+    if (!playlistId) return;
+    const playlist = this.libraryManager.playlists.getPlaylist(playlistId);
+    if (!playlist) return;
+    const modes = [
+      { label: "Loop (Default)", value: "loop", icon: "fa-repeat" },
+      { label: "Linear", value: "linear", icon: "fa-arrow-right" },
+      { label: "Random", value: "random", icon: "fa-shuffle" }
+    ];
+    this.showModeContextMenu(event, modes, (mode) => {
+      this.libraryManager.playlists.updatePlaylist(playlistId, { playbackMode: mode });
+      this.requestRender();
+    });
+  }
+  onRemovePlaylistFromQueue(event) {
+    const info = this.getPlaylistHeaderInfo(event);
+    if (!info) return;
+    const { playlistId } = info;
+    const groupItems = this.getQueueItemsForGroup(playlistId);
+    for (const item of groupItems) {
+      const player = this.engine.getTrack(item.libraryItemId);
+      if ((player == null ? void 0 : player.state) === "playing" || (player == null ? void 0 : player.state) === "paused") {
+        this.stopTrack(item.libraryItemId);
+      }
+      this.queueManager.removeItem(item.id);
     }
     this.requestRender();
   }
@@ -4902,6 +5362,31 @@ const _SoundMixerApp = class _SoundMixerApp {
       this.updateInterval = null;
     }
   }
+  /**
+   * Full cleanup: stops updates, clears throttle timers, removes all event subscriptions.
+   * Called when the parent window closes.
+   */
+  dispose() {
+    this.stopUpdates();
+    for (const timer of this.seekThrottleTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.seekThrottleTimers.clear();
+    for (const timer of this.volumeThrottleTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.volumeThrottleTimers.clear();
+    this.queueManager.off("change", this._onQueueChangeBound);
+    this.engine.off("trackEnded", this._onTrackEndedBound);
+    if (this._hookFavoritesId) {
+      Hooks.off("ase.favoritesChanged", this._hookFavoritesId);
+    }
+    if (this._hookAutoSwitchId) {
+      Hooks.off("ase.trackAutoSwitched", this._hookAutoSwitchId);
+    }
+    this.html = null;
+    Logger.debug("[SoundMixerApp] Disposed");
+  }
   updateTrackDisplays() {
     if (!this.html) return;
     this.html.find(".ase-queue-track").each((_, el) => {
@@ -4932,6 +5417,81 @@ const _SoundMixerApp = class _SoundMixerApp {
         }
       }
     });
+    this.html.find(".ase-queue-playlist").each((_, el) => {
+      const $playlist = $(el);
+      const $tracks = $playlist.find(".ase-queue-track");
+      let activeCount = 0;
+      let hasPlaying = false;
+      $tracks.each((_2, trackEl) => {
+        const $track = $(trackEl);
+        const itemId = $track.data("item-id");
+        const player = this.engine.getTrack(itemId);
+        if ((player == null ? void 0 : player.state) === "playing") {
+          activeCount++;
+          hasPlaying = true;
+        } else if ((player == null ? void 0 : player.state) === "paused") {
+          activeCount++;
+        }
+      });
+      const totalCount = $tracks.length;
+      $playlist.find(".ase-playlist-count").text(`(${activeCount}/${totalCount} tracks)`);
+      const $headerBtn = $playlist.find(".ase-playlist-header-controls").find('[data-action="play-playlist"], [data-action="pause-playlist"]');
+      const $headerIcon = $headerBtn.find("i");
+      if (hasPlaying) {
+        $headerIcon.removeClass("fa-play").addClass("fa-pause");
+        $headerBtn.attr("data-action", "pause-playlist").attr("title", "Pause All");
+      } else {
+        $headerIcon.removeClass("fa-pause").addClass("fa-play");
+        $headerBtn.attr("data-action", "play-playlist").attr("title", "Play");
+      }
+    });
+    this.html.find(".ase-favorite-item").each((_, el) => {
+      const $fav = $(el);
+      const favId = $fav.data("favorite-id");
+      const favType = $fav.data("favorite-type");
+      let isPlaying = false;
+      let isPaused = false;
+      if (favType === "track") {
+        const player = this.engine.getTrack(favId);
+        isPlaying = (player == null ? void 0 : player.state) === "playing";
+        isPaused = (player == null ? void 0 : player.state) === "paused";
+      } else {
+        const tracks = this.libraryManager.playlists.getPlaylistTracks(favId);
+        for (const pt of tracks) {
+          const player = this.engine.getTrack(pt.libraryItemId);
+          if ((player == null ? void 0 : player.state) === "playing") isPlaying = true;
+          if ((player == null ? void 0 : player.state) === "paused") isPaused = true;
+        }
+        if (isPlaying) isPaused = false;
+      }
+      const $btn = $fav.find('[data-action="play-favorite"], [data-action="pause-favorite"]');
+      const $icon = $btn.find("i").length ? $btn.find("i") : $btn;
+      if (isPlaying) {
+        $fav.removeClass("is-paused").addClass("is-playing");
+        if ($icon.is("i")) {
+          $icon.removeClass("fa-play").addClass("fa-pause");
+        } else {
+          $btn.removeClass("fa-play").addClass("fa-pause");
+        }
+        $btn.attr("data-action", "pause-favorite").attr("title", "Pause");
+      } else if (isPaused) {
+        $fav.removeClass("is-playing").addClass("is-paused");
+        if ($icon.is("i")) {
+          $icon.removeClass("fa-pause").addClass("fa-play");
+        } else {
+          $btn.removeClass("fa-pause").addClass("fa-play");
+        }
+        $btn.attr("data-action", "play-favorite").attr("title", "Play");
+      } else {
+        $fav.removeClass("is-playing is-paused");
+        if ($icon.is("i")) {
+          $icon.removeClass("fa-pause").addClass("fa-play");
+        } else {
+          $btn.removeClass("fa-pause").addClass("fa-play");
+        }
+        $btn.attr("data-action", "play-favorite").attr("title", "Play");
+      }
+    });
   }
   onQueueChange() {
     Logger.debug("Queue changed, mixer should refresh");
@@ -4959,6 +5519,21 @@ const _SoundMixerApp = class _SoundMixerApp {
       $btn.removeClass("active");
     }
     Logger.info(`Effect ${effectId} ${newState ? "enabled" : "disabled"}`);
+  }
+  // ─────────────────────────────────────────────────────────────
+  // RAF Processor for Drag Events
+  // ─────────────────────────────────────────────────────────────
+  _processDragUpdate(html, selector) {
+    this._rafId = null;
+    if (!this._pendingDragUpdate) return;
+    const { target, position } = this._pendingDragUpdate;
+    if (this._dragTarget === target && this._dragPosition === position) {
+      return;
+    }
+    this._dragTarget = target;
+    this._dragPosition = position;
+    html.find(selector).removeClass("drag-above drag-below drag-over");
+    $(target).addClass(position === "above" ? "drag-above" : "drag-below");
   }
 };
 __name(_SoundMixerApp, "SoundMixerApp");
@@ -5217,7 +5792,7 @@ const _SoundEffectsApp = class _SoundEffectsApp {
   }
   activateListeners(html) {
     this.html = html;
-    console.log("AudioSoundEngine | SoundEffectsApp | View Loaded");
+    Logger.debug("SoundEffectsApp: View Loaded");
     html.off("click", ".ase-effect-toggle").on("click", ".ase-effect-toggle", (e) => this.onToggleEnable(e));
     html.off("click", '[data-action="toggle-route"]').on("click", '[data-action="toggle-route"]', (e) => this.onToggleRoute(e));
     html.find(".ase-param-slider").on("input", (e) => this.onParamChange(e));
@@ -5383,6 +5958,8 @@ const _AdvancedSoundEngineApp = class _AdvancedSoundEngineApp extends Handlebars
     __publicField(this, "libraryApp");
     __publicField(this, "mixerApp");
     __publicField(this, "effectsApp");
+    // Stored callback for cleanup
+    __publicField(this, "_onQueueChangeBound");
     __publicField(this, "state", {
       activeTab: "library",
       // Default to library as per user focus
@@ -5425,12 +6002,13 @@ const _AdvancedSoundEngineApp = class _AdvancedSoundEngineApp extends Handlebars
         this.render({ parts: ["main"] });
       }
     });
-    this.queueManager.on("change", () => {
+    this._onQueueChangeBound = () => {
       if (this.state.activeTab === "mixer") {
         this.captureScroll();
         this.render({ parts: ["main"] });
       }
-    });
+    };
+    this.queueManager.on("change", this._onQueueChangeBound);
     const savedLocalVol = localStorage.getItem("ase-gm-local-volume");
     if (savedLocalVol !== null) {
       this.engine.setLocalVolume(parseFloat(savedLocalVol));
@@ -5514,10 +6092,15 @@ const _AdvancedSoundEngineApp = class _AdvancedSoundEngineApp extends Handlebars
     this.restoreScroll();
   }
   /**
-   * V2 Close Hook
+   * V2 Close Hook — cleanup all sub-apps and event subscriptions
    */
   _onClose(options) {
     super._onClose(options);
+    this.mixerApp.dispose();
+    this.effectsApp.destroy();
+    this.libraryApp.close();
+    this.queueManager.off("change", this._onQueueChangeBound);
+    Logger.info("[AdvancedSoundEngineApp] Closed and cleaned up");
   }
   // ─────────────────────────────────────────────────────────────
   // Event Handlers
@@ -5538,7 +6121,6 @@ const _AdvancedSoundEngineApp = class _AdvancedSoundEngineApp extends Handlebars
     const targetTab = tabName || this.state.activeTab;
     const map = this.scrollStates[targetTab];
     if (!map) return;
-    Logger.debug(`[SmartScroll] Resetting scroll for ${targetTab}`);
     for (const selector of Object.keys(map)) {
       map[selector] = 0;
     }
@@ -5552,15 +6134,11 @@ const _AdvancedSoundEngineApp = class _AdvancedSoundEngineApp extends Handlebars
     const html = $(this.element);
     const map = this.scrollStates[activeTab];
     if (!map) return;
-    Logger.debug(`[SmartScroll] Capturing for ${activeTab}...`);
     for (const selector of Object.keys(map)) {
       const el = html.find(selector);
       if (el.length) {
         const scrollTop = el.scrollTop() || 0;
         map[selector] = scrollTop;
-        if (scrollTop > 0) Logger.debug(`[SmartScroll] Captured ${selector}: ${scrollTop}`);
-      } else {
-        Logger.debug(`[SmartScroll] Selector not found: ${selector}`);
       }
     }
   }
@@ -5573,18 +6151,10 @@ const _AdvancedSoundEngineApp = class _AdvancedSoundEngineApp extends Handlebars
     const html = $(this.element);
     const map = this.scrollStates[activeTab];
     if (!map) return;
-    Logger.debug(`[SmartScroll] Restoring for ${activeTab}...`);
     for (const [selector, scrollTop] of Object.entries(map)) {
       const el = html.find(selector);
       if (el.length) {
-        const currentScroll = el.scrollTop();
-        Logger.debug(`[SmartScroll] Restoring ${selector}. Stored: ${scrollTop}, Current: ${currentScroll}`);
         el.scrollTop(scrollTop);
-        if (Math.abs((el.scrollTop() || 0) - scrollTop) > 1) {
-          Logger.warn(`[SmartScroll] Failed to restore ${selector}. Wanted: ${scrollTop}, Got: ${el.scrollTop()}`);
-        }
-      } else {
-        Logger.debug(`[SmartScroll] Selector not found for restoration: ${selector}`);
       }
     }
   }
@@ -5630,9 +6200,6 @@ const _AdvancedSoundEngineApp = class _AdvancedSoundEngineApp extends Handlebars
   }
   onGlobalStop() {
     this.engine.stopAll();
-    if (this.socket.syncEnabled) {
-      this.socket.broadcastStopAll();
-    }
     this.render();
   }
   onVolumeInput(event) {
@@ -6668,6 +7235,23 @@ const _PlaybackQueueManager = class _PlaybackQueueManager {
     this.scheduleSave();
     Logger.debug("Queue cleared");
   }
+  /**
+   * Move a queue item to a new position
+   */
+  moveItem(queueItemId, newIndex) {
+    const currentIndex = this.items.findIndex((i) => i.id === queueItemId);
+    if (currentIndex === -1) {
+      Logger.warn("Cannot move: item not in queue", queueItemId);
+      return;
+    }
+    const clampedIndex = Math.max(0, Math.min(newIndex, this.items.length - 1));
+    if (currentIndex === clampedIndex) return;
+    const [item] = this.items.splice(currentIndex, 1);
+    this.items.splice(clampedIndex, 0, item);
+    this.emit("change", { items: this.items });
+    this.scheduleSave();
+    Logger.debug("Moved queue item:", queueItemId, "to index:", clampedIndex);
+  }
   // ─────────────────────────────────────────────────────────────
   // Playback Control
   // ─────────────────────────────────────────────────────────────
@@ -6757,6 +7341,17 @@ const _PlaybackQueueManager = class _PlaybackQueueManager {
   // ─────────────────────────────────────────────────────────────
   // Event System
   // ─────────────────────────────────────────────────────────────
+  /**
+   * Dispose: clear pending save timer and all event listeners
+   */
+  dispose() {
+    if (this.saveTimeout !== null) {
+      window.clearTimeout(this.saveTimeout);
+      this.saveTimeout = null;
+    }
+    this.eventListeners.clear();
+    Logger.debug("PlaybackQueueManager disposed");
+  }
   on(event, callback) {
     if (!this.eventListeners.has(event)) {
       this.eventListeners.set(event, /* @__PURE__ */ new Set());
@@ -6780,31 +7375,58 @@ const _PlaybackScheduler = class _PlaybackScheduler {
     __publicField(this, "library");
     __publicField(this, "queue");
     __publicField(this, "currentContext", null);
+    __publicField(this, "_stopped", false);
+    // Stored callbacks for proper cleanup
+    __publicField(this, "_onTrackEndedBound");
+    __publicField(this, "_onContextChangedBound");
     this.engine = engine;
     this.library = library;
     this.queue = queue;
+    this._onTrackEndedBound = (trackId) => this.handleTrackEnded(trackId);
+    this._onContextChangedBound = (context) => this.setContext(context);
     this.setupListeners();
   }
   setupListeners() {
-    this.engine.on("trackEnded", (trackId) => {
-      this.handleTrackEnded(trackId);
-    });
-    this.engine.on("contextChanged", (context) => {
-      this.setContext(context);
-    });
+    this.engine.on("trackEnded", this._onTrackEndedBound);
+    this.engine.on("contextChanged", this._onContextChangedBound);
+  }
+  /**
+   * Dispose: remove all engine event listeners
+   */
+  dispose() {
+    this.engine.off("trackEnded", this._onTrackEndedBound);
+    this.engine.off("contextChanged", this._onContextChangedBound);
+    this.currentContext = null;
+    this._stopped = true;
+    Logger.debug("[PlaybackScheduler] Disposed");
   }
   /**
    * Set the current playback context (e.g., user clicked "Play" on a playlist)
    */
   setContext(context) {
     this.currentContext = context;
+    this._stopped = false;
     Logger.debug("Playback Context set:", context);
+  }
+  /**
+   * Clear the playback context and stop scheduling.
+   * Called by AudioEngine.stopAll() to prevent race conditions
+   * where an 'ended' event fires after stopAll and Scheduler starts the next track.
+   */
+  clearContext() {
+    this.currentContext = null;
+    this._stopped = true;
+    Logger.debug("Playback Context cleared (stopAll)");
   }
   /**
    * Handle track ending
    */
   async handleTrackEnded(trackId) {
     Logger.info(`[PlaybackScheduler] Track ended: ${trackId}`);
+    if (this._stopped) {
+      Logger.debug(`[PlaybackScheduler] Ignoring ended event after stopAll for: ${trackId}`);
+      return;
+    }
     Logger.info(`[PlaybackScheduler] Current context:`, this.currentContext);
     if (!this.currentContext) {
       Logger.warn("[PlaybackScheduler] No playback context available - auto-progression disabled");
@@ -6848,11 +7470,24 @@ const _PlaybackScheduler = class _PlaybackScheduler {
     }
     Logger.debug(`Track ${track.name} inherits playlist mode`);
     const mode = playlist.playbackMode || "loop";
-    Logger.debug(`Playlist mode: ${mode}, current index: ${currentIndex}/${tracks.length}`);
+    const queueItems = this.queue.getItems().filter((i) => i.playlistId === playlistId);
+    let effectiveTracks = tracks;
+    let effectiveIndex = currentIndex;
+    if (queueItems.length > 0) {
+      effectiveTracks = queueItems.map((qi) => ({
+        libraryItemId: qi.libraryItemId,
+        volume: qi.volume
+      }));
+      effectiveIndex = effectiveTracks.findIndex((t) => t.libraryItemId === endedTrackId);
+      Logger.debug(`Using Queue order for playlist ${playlist.name}. Index: ${effectiveIndex}/${effectiveTracks.length}`);
+    } else {
+      Logger.debug(`Using Library order for playlist ${playlist.name} (not in queue). Index: ${currentIndex}/${tracks.length}`);
+    }
+    Logger.debug(`Playlist mode: ${mode}, current index: ${effectiveIndex}/${effectiveTracks.length}`);
     switch (mode) {
       case "linear":
-        if (currentIndex < tracks.length - 1) {
-          const nextItem = tracks[currentIndex + 1];
+        if (effectiveIndex < effectiveTracks.length - 1) {
+          const nextItem = effectiveTracks[effectiveIndex + 1];
           await this.engine.stopTrack(endedTrackId);
           await this.playPlaylistItem(nextItem, playlistId, playlist.playbackMode);
         } else {
@@ -6862,23 +7497,23 @@ const _PlaybackScheduler = class _PlaybackScheduler {
         }
         break;
       case "loop":
-        let nextIndex = currentIndex + 1;
-        if (nextIndex >= tracks.length) {
+        let nextIndex = effectiveIndex + 1;
+        if (nextIndex >= effectiveTracks.length) {
           nextIndex = 0;
         }
         await this.engine.stopTrack(endedTrackId);
-        await this.playPlaylistItem(tracks[nextIndex], playlistId, playlist.playbackMode);
+        await this.playPlaylistItem(effectiveTracks[nextIndex], playlistId, playlist.playbackMode);
         break;
       case "random":
         await this.engine.stopTrack(endedTrackId);
-        if (tracks.length > 1) {
+        if (effectiveTracks.length > 1) {
           let randomIndex;
           do {
-            randomIndex = Math.floor(Math.random() * tracks.length);
-          } while (randomIndex === currentIndex && tracks.length > 1);
-          await this.playPlaylistItem(tracks[randomIndex], playlistId, playlist.playbackMode);
+            randomIndex = Math.floor(Math.random() * effectiveTracks.length);
+          } while (randomIndex === effectiveIndex && effectiveTracks.length > 1);
+          await this.playPlaylistItem(effectiveTracks[randomIndex], playlistId, playlist.playbackMode);
         } else {
-          await this.playPlaylistItem(tracks[0], playlistId, playlist.playbackMode);
+          await this.playPlaylistItem(effectiveTracks[0], playlistId, playlist.playbackMode);
         }
         break;
     }
@@ -6991,12 +7626,26 @@ const _PlaybackScheduler = class _PlaybackScheduler {
         if (playlistId) {
           const playlist = this.library.playlists.getPlaylist(playlistId);
           if (playlist) {
-            const tracks = [...playlist.items].sort((a, b) => a.order - b.order);
-            const currentIndex = tracks.findIndex((t) => t.libraryItemId === trackId);
-            if (currentIndex !== -1 && currentIndex < tracks.length - 1) {
+            const queueItems = this.queue.getItems().filter((i) => i.playlistId === playlistId);
+            let effectiveTracks;
+            if (queueItems.length > 0) {
+              effectiveTracks = queueItems.map((qi) => ({
+                libraryItemId: qi.libraryItemId,
+                volume: qi.volume
+              }));
+              Logger.debug(`[handleIndividualTrackMode] Using Queue order for playlist ${playlist.name}`);
+            } else {
+              effectiveTracks = [...playlist.items].sort((a, b) => a.order - b.order).map((t) => ({
+                libraryItemId: t.libraryItemId,
+                volume: t.volume
+              }));
+              Logger.debug(`[handleIndividualTrackMode] Using Library order for playlist ${playlist.name}`);
+            }
+            const currentIndex = effectiveTracks.findIndex((t) => t.libraryItemId === trackId);
+            if (currentIndex !== -1 && currentIndex < effectiveTracks.length - 1) {
               Logger.debug(`Track ${track.name} (linear) -> launching next track in playlist`);
               await this.engine.stopTrack(trackId);
-              const nextItem = tracks[currentIndex + 1];
+              const nextItem = effectiveTracks[currentIndex + 1];
               await this.playPlaylistItem(nextItem, playlistId, playlist.playbackMode || "loop");
               return;
             }
@@ -7088,6 +7737,7 @@ let gmEngine = null;
 let mainApp = null;
 let libraryManager = null;
 let queueManager = null;
+let playbackScheduler = null;
 let playerEngine = null;
 let volumePanel = null;
 let socketManager = null;
@@ -7253,7 +7903,9 @@ async function initializeGM() {
   gmEngine = new AudioEngine();
   socketManager.initializeAsGM(gmEngine);
   await gmEngine.loadSavedState();
-  new PlaybackScheduler(gmEngine, libraryManager, queueManager);
+  playbackScheduler = new PlaybackScheduler(gmEngine, libraryManager, queueManager);
+  gmEngine.setScheduler(playbackScheduler);
+  gmEngine.setSocketManager(socketManager);
   Logger.info("PlaybackScheduler initialized");
 }
 __name(initializeGM, "initializeGM");
@@ -7342,9 +7994,11 @@ __name(registerSettings, "registerSettings");
 Hooks.once("closeGame", () => {
   mainApp == null ? void 0 : mainApp.close();
   volumePanel == null ? void 0 : volumePanel.close();
+  playbackScheduler == null ? void 0 : playbackScheduler.dispose();
   socketManager == null ? void 0 : socketManager.dispose();
   gmEngine == null ? void 0 : gmEngine.dispose();
   playerEngine == null ? void 0 : playerEngine.dispose();
+  queueManager == null ? void 0 : queueManager.dispose();
   libraryManager == null ? void 0 : libraryManager.dispose();
 });
 //# sourceMappingURL=module.js.map

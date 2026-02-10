@@ -17,29 +17,37 @@ export class PlaybackScheduler {
     private library: LibraryManager;
     private queue: PlaybackQueueManager;
     private currentContext: PlaybackContext | null = null;
+    private _stopped: boolean = false;
+
+    // Stored callbacks for proper cleanup
+    private _onTrackEndedBound: (trackId: string) => void;
+    private _onContextChangedBound: (context: PlaybackContext) => void;
 
     constructor(engine: AudioEngine, library: LibraryManager, queue: PlaybackQueueManager) {
         this.engine = engine;
         this.library = library;
         this.queue = queue;
+
+        this._onTrackEndedBound = (trackId: string) => this.handleTrackEnded(trackId);
+        this._onContextChangedBound = (context: PlaybackContext) => this.setContext(context);
+
         this.setupListeners();
     }
 
     private setupListeners(): void {
-        // We need AudioEngine to emit 'trackEnded'. 
-        // Since AudioEngine extends EventTarget or similar, we'll hook into it.
-        // For now, assuming AudioEngine has an event emitter or we inject this listener.
-        // If AudioEngine doesn't support events yet, we will need to modify it.
+        this.engine.on('trackEnded', this._onTrackEndedBound);
+        this.engine.on('contextChanged', this._onContextChangedBound);
+    }
 
-        // Placeholder for event subscription
-        // this.engine.on('trackEnded', this.handleTrackEnded.bind(this));
-        this.engine.on('trackEnded', (trackId: string) => {
-            this.handleTrackEnded(trackId);
-        });
-
-        this.engine.on('contextChanged', (context: PlaybackContext) => {
-            this.setContext(context);
-        });
+    /**
+     * Dispose: remove all engine event listeners
+     */
+    dispose(): void {
+        this.engine.off('trackEnded', this._onTrackEndedBound);
+        this.engine.off('contextChanged', this._onContextChangedBound);
+        this.currentContext = null;
+        this._stopped = true;
+        Logger.debug('[PlaybackScheduler] Disposed');
     }
 
     /**
@@ -47,7 +55,19 @@ export class PlaybackScheduler {
      */
     setContext(context: PlaybackContext): void {
         this.currentContext = context;
+        this._stopped = false;
         Logger.debug('Playback Context set:', context);
+    }
+
+    /**
+     * Clear the playback context and stop scheduling.
+     * Called by AudioEngine.stopAll() to prevent race conditions
+     * where an 'ended' event fires after stopAll and Scheduler starts the next track.
+     */
+    clearContext(): void {
+        this.currentContext = null;
+        this._stopped = true;
+        Logger.debug('Playback Context cleared (stopAll)');
     }
 
     /**
@@ -55,6 +75,13 @@ export class PlaybackScheduler {
      */
     async handleTrackEnded(trackId: string): Promise<void> {
         Logger.info(`[PlaybackScheduler] Track ended: ${trackId}`);
+
+        // Guard: if stopAll() was called, ignore any late 'ended' events
+        if (this._stopped) {
+            Logger.debug(`[PlaybackScheduler] Ignoring ended event after stopAll for: ${trackId}`);
+            return;
+        }
+
         Logger.info(`[PlaybackScheduler] Current context:`, this.currentContext);
 
         if (!this.currentContext) {
@@ -114,12 +141,33 @@ export class PlaybackScheduler {
         // Трек наследует режим плейлиста
         Logger.debug(`Track ${track.name} inherits playlist mode`);
         const mode = (playlist.playbackMode || 'loop') as PlaylistPlaybackMode;
-        Logger.debug(`Playlist mode: ${mode}, current index: ${currentIndex}/${tracks.length}`);
+
+        // ─── QUEUE SYNC FIX ───
+        // Check if this playlist exists in the Queue. If so, use the Queue's order.
+        const queueItems = this.queue.getItems().filter(i => i.playlistId === playlistId);
+        let effectiveTracks: { libraryItemId: string, volume?: number }[] = tracks;
+        let effectiveIndex = currentIndex;
+
+        if (queueItems.length > 0) {
+            // Map QueueItems to a structure compatible with our logic
+            effectiveTracks = queueItems.map(qi => ({
+                libraryItemId: qi.libraryItemId,
+                volume: qi.volume
+            }));
+
+            // Recalculate index based on Queue Order
+            effectiveIndex = effectiveTracks.findIndex(t => t.libraryItemId === endedTrackId);
+            Logger.debug(`Using Queue order for playlist ${playlist.name}. Index: ${effectiveIndex}/${effectiveTracks.length}`);
+        } else {
+            Logger.debug(`Using Library order for playlist ${playlist.name} (not in queue). Index: ${currentIndex}/${tracks.length}`);
+        }
+
+        Logger.debug(`Playlist mode: ${mode}, current index: ${effectiveIndex}/${effectiveTracks.length}`);
 
         switch (mode) {
             case 'linear':
-                if (currentIndex < tracks.length - 1) {
-                    const nextItem = tracks[currentIndex + 1];
+                if (effectiveIndex < effectiveTracks.length - 1) {
+                    const nextItem = effectiveTracks[effectiveIndex + 1];
                     // Остановить текущий трек перед запуском следующего
                     await this.engine.stopTrack(endedTrackId);
                     await this.playPlaylistItem(nextItem, playlistId, playlist.playbackMode);
@@ -131,28 +179,28 @@ export class PlaybackScheduler {
                 }
                 break;
             case 'loop':
-                let nextIndex = currentIndex + 1;
-                if (nextIndex >= tracks.length) {
+                let nextIndex = effectiveIndex + 1;
+                if (nextIndex >= effectiveTracks.length) {
                     nextIndex = 0; // Loop back to start
                 }
                 // Остановить текущий трек перед запуском следующего
                 await this.engine.stopTrack(endedTrackId);
-                await this.playPlaylistItem(tracks[nextIndex], playlistId, playlist.playbackMode);
+                await this.playPlaylistItem(effectiveTracks[nextIndex], playlistId, playlist.playbackMode);
                 break;
             case 'random':
                 // Остановить текущий трек перед запуском следующего
                 await this.engine.stopTrack(endedTrackId);
 
-                // Simple random: pick any other track. 
-                if (tracks.length > 1) {
+                // Simple random: pick any other track from EFFECTIVE list
+                if (effectiveTracks.length > 1) {
                     let randomIndex;
                     do {
-                        randomIndex = Math.floor(Math.random() * tracks.length);
-                    } while (randomIndex === currentIndex && tracks.length > 1); // Avoid repeat if possible
-                    await this.playPlaylistItem(tracks[randomIndex], playlistId, playlist.playbackMode);
+                        randomIndex = Math.floor(Math.random() * effectiveTracks.length);
+                    } while (randomIndex === effectiveIndex && effectiveTracks.length > 1);
+                    await this.playPlaylistItem(effectiveTracks[randomIndex], playlistId, playlist.playbackMode);
                 } else {
                     // If only 1 track, repeat it
-                    await this.playPlaylistItem(tracks[0], playlistId, playlist.playbackMode);
+                    await this.playPlaylistItem(effectiveTracks[0], playlistId, playlist.playbackMode);
                 }
                 break;
         }
@@ -299,15 +347,32 @@ export class PlaybackScheduler {
                 if (playlistId) {
                     const playlist = this.library.playlists.getPlaylist(playlistId);
                     if (playlist) {
-                        const tracks = [...playlist.items].sort((a, b) => a.order - b.order);
-                        const currentIndex = tracks.findIndex(t => t.libraryItemId === trackId);
+                        // Use queue order if playlist is in the queue, otherwise fall back to library order
+                        const queueItems = this.queue.getItems().filter(i => i.playlistId === playlistId);
+                        let effectiveTracks: { libraryItemId: string, volume?: number }[];
 
-                        if (currentIndex !== -1 && currentIndex < tracks.length - 1) {
+                        if (queueItems.length > 0) {
+                            effectiveTracks = queueItems.map(qi => ({
+                                libraryItemId: qi.libraryItemId,
+                                volume: qi.volume
+                            }));
+                            Logger.debug(`[handleIndividualTrackMode] Using Queue order for playlist ${playlist.name}`);
+                        } else {
+                            effectiveTracks = [...playlist.items].sort((a, b) => a.order - b.order).map(t => ({
+                                libraryItemId: t.libraryItemId,
+                                volume: t.volume
+                            }));
+                            Logger.debug(`[handleIndividualTrackMode] Using Library order for playlist ${playlist.name}`);
+                        }
+
+                        const currentIndex = effectiveTracks.findIndex(t => t.libraryItemId === trackId);
+
+                        if (currentIndex !== -1 && currentIndex < effectiveTracks.length - 1) {
                             Logger.debug(`Track ${track.name} (linear) -> launching next track in playlist`);
                             // Остановить текущий трек перед запуском следующего
                             await this.engine.stopTrack(trackId);
 
-                            const nextItem = tracks[currentIndex + 1];
+                            const nextItem = effectiveTracks[currentIndex + 1];
                             await this.playPlaylistItem(nextItem, playlistId, playlist.playbackMode || 'loop');
                             return;
                         }
