@@ -538,11 +538,21 @@ export class SoundEffectsApp {
                 requestAnimationFrame(() => ghost.remove());
 
                 $(el).addClass('dragging');
+
+                // Expand all drop zones and mark no-op ones
+                $pedalboard.addClass('drag-active');
+                html.find('.ase-drop-zone').each((_, z) => {
+                    const dropIdx = parseInt((z as HTMLElement).dataset.dropIndex || '0', 10);
+                    if (draggedIndex >= 0 && (dropIdx === draggedIndex || dropIdx === draggedIndex + 1)) {
+                        $(z).addClass('no-op');
+                    }
+                });
             });
 
             el.addEventListener('dragend', () => {
                 $(el).removeClass('dragging');
-                html.find('.ase-drop-zone').removeClass('drag-over');
+                $pedalboard.removeClass('drag-active');
+                html.find('.ase-drop-zone').removeClass('drag-over no-op');
                 draggedType = null;
                 draggedIndex = -1;
             });
@@ -553,7 +563,6 @@ export class SoundEffectsApp {
                 e.preventDefault();
                 if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
 
-                // Only highlight this zone, remove from others
                 const dropIndex = parseInt((zone as HTMLElement).dataset.dropIndex || '0', 10);
 
                 // Don't highlight zones adjacent to the dragged item (no-op positions)
@@ -566,7 +575,6 @@ export class SoundEffectsApp {
             });
 
             zone.addEventListener('dragleave', (e: DragEvent) => {
-                // Only remove if truly leaving the element
                 const related = e.relatedTarget as HTMLElement;
                 if (related && zone.contains(related)) return;
                 $(zone).removeClass('drag-over');
@@ -574,14 +582,14 @@ export class SoundEffectsApp {
 
             zone.addEventListener('drop', (e: DragEvent) => {
                 e.preventDefault();
-                html.find('.ase-drop-zone').removeClass('drag-over');
+                $pedalboard.removeClass('drag-active');
+                html.find('.ase-drop-zone').removeClass('drag-over no-op');
                 if (!e.dataTransfer) return;
 
                 const data = JSON.parse(e.dataTransfer.getData('text/plain'));
                 const fromIndex = parseInt(data.chainIndex, 10);
                 const toIndex = parseInt((zone as HTMLElement).dataset.dropIndex || '0', 10);
 
-                // Calculate the actual target position
                 if (fromIndex === toIndex || fromIndex === toIndex - 1) return;
 
                 const adjustedTo = fromIndex < toIndex ? toIndex - 1 : toIndex;

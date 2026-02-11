@@ -373,10 +373,25 @@
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    transition: width 0.25s ease, min-width 0.25s ease;
+    transition: width 0.25s ease, min-width 0.25s ease, background 0.2s;
 }
 
-.ase-drop-zone.drag-over { width: 80px; min-width: 80px; }
+/* When any drag is active, expand ALL drop zones to be easily hittable */
+.ase-pedalboard.drag-active .ase-drop-zone {
+    width: 36px;
+    min-width: 36px;
+    background: rgba(255, 100, 0, 0.03);
+    border-radius: 4px;
+}
+
+/* No-op zones (adjacent to dragged item) stay slim */
+.ase-pedalboard.drag-active .ase-drop-zone.no-op {
+    width: 6px;
+    min-width: 6px;
+    background: transparent;
+}
+
+.ase-drop-zone.drag-over { width: 80px; min-width: 80px; background: rgba(255, 100, 0, 0.06); }
 .ase-drop-zone.drag-over .ase-drop-zone-indicator { opacity: 1; width: 4px; }
 
 .ase-drop-zone-indicator {
@@ -388,6 +403,12 @@
     opacity: 0;
     transition: opacity 0.2s, width 0.2s;
     box-shadow: 0 0 10px rgba(255,100,0,0.4);
+}
+
+/* Show subtle indicator on hover during drag */
+.ase-pedalboard.drag-active .ase-drop-zone:not(.no-op) .ase-drop-zone-indicator {
+    opacity: 0.3;
+    width: 2px;
 }
 
 /* ─── Add Effect Button ─────────────────────────────────────── */
