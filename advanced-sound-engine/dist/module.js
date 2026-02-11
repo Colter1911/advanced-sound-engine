@@ -568,9 +568,9 @@ const _CompressorEffect = class _CompressorEffect extends AudioEffect {
       id: "threshold",
       name: "Threshold",
       type: "float",
-      value: -24,
-      defaultValue: -24,
-      min: -100,
+      value: -12,
+      defaultValue: -12,
+      min: -60,
       max: 0,
       step: 1,
       suffix: "dB"
@@ -579,16 +579,52 @@ const _CompressorEffect = class _CompressorEffect extends AudioEffect {
       id: "ratio",
       name: "Ratio",
       type: "float",
-      value: 12,
-      defaultValue: 12,
+      value: 4,
+      defaultValue: 4,
       min: 1,
       max: 20,
       step: 0.5,
-      suffix: ""
+      suffix: ":1"
+    });
+    this.addParam({
+      id: "knee",
+      name: "Knee",
+      type: "float",
+      value: 10,
+      defaultValue: 10,
+      min: 0,
+      max: 40,
+      step: 1,
+      suffix: "dB"
+    });
+    this.addParam({
+      id: "attack",
+      name: "Attack",
+      type: "float",
+      value: 0.01,
+      defaultValue: 0.01,
+      min: 1e-3,
+      max: 0.5,
+      step: 1e-3,
+      suffix: "s"
+    });
+    this.addParam({
+      id: "release",
+      name: "Release",
+      type: "float",
+      value: 0.15,
+      defaultValue: 0.15,
+      min: 0.01,
+      max: 1,
+      step: 0.01,
+      suffix: "s"
     });
     this.buildGraph();
-    this.applyParam("threshold", -24);
-    this.applyParam("ratio", 12);
+    this.applyParam("threshold", -12);
+    this.applyParam("ratio", 4);
+    this.applyParam("knee", 10);
+    this.applyParam("attack", 0.01);
+    this.applyParam("release", 0.15);
   }
   buildGraph() {
     this.inputNode.connect(this.compressorNode);
@@ -596,24 +632,35 @@ const _CompressorEffect = class _CompressorEffect extends AudioEffect {
     this.makeupNode.connect(this.wetNode);
   }
   applyParam(key, value) {
+    const t = this.ctx.currentTime;
     switch (key) {
       case "threshold":
-        this.compressorNode.threshold.setTargetAtTime(value, this.ctx.currentTime, 0.05);
+        this.compressorNode.threshold.setTargetAtTime(value, t, 0.05);
         this.updateMakeupGain();
         break;
       case "ratio":
-        this.compressorNode.ratio.setTargetAtTime(value, this.ctx.currentTime, 0.05);
+        this.compressorNode.ratio.setTargetAtTime(value, t, 0.05);
         this.updateMakeupGain();
+        break;
+      case "knee":
+        this.compressorNode.knee.setTargetAtTime(value, t, 0.05);
+        break;
+      case "attack":
+        this.compressorNode.attack.setTargetAtTime(value, t, 0.05);
+        break;
+      case "release":
+        this.compressorNode.release.setTargetAtTime(value, t, 0.05);
         break;
     }
   }
   updateMakeupGain() {
     const threshold = this.compressorNode.threshold.value;
-    this.compressorNode.ratio.value;
+    const ratio = this.compressorNode.ratio.value;
     let makeupDb = 0;
-    if (threshold < 0) {
-      makeupDb = -threshold * 0.5;
+    if (threshold < 0 && ratio > 1) {
+      makeupDb = -threshold * (1 - 1 / ratio) * 0.4;
     }
+    makeupDb = Math.min(makeupDb, 12);
     const makeupGain = Math.pow(10, makeupDb / 20);
     this.makeupNode.gain.setTargetAtTime(makeupGain, this.ctx.currentTime, 0.05);
   }
@@ -5717,18 +5764,18 @@ const BUILTIN_PRESETS = [
       // Music: lowpass filter + long reverb
       [
         fx("filter", true, { type: "lowpass", frequency: 800, Q: 1 }),
-        fx("reverb", true, { decay: 4, size: 2, tone: "dark" }, 0.4)
+        fx("reverb", true, { decay: 4, size: 2, tone: "dark" }, 0.35)
       ],
       // Ambience: lowpass + delay + very long reverb
       [
         fx("filter", true, { type: "lowpass", frequency: 600, Q: 0.8 }),
-        fx("delay", true, { time: 0.8, feedback: 0.5 }, 0.25),
-        fx("reverb", true, { decay: 6, size: 2.5, tone: "dark" }, 0.5)
+        fx("delay", true, { time: 0.8, feedback: 0.4 }, 0.2),
+        fx("reverb", true, { decay: 5, size: 2, tone: "dark" }, 0.4)
       ],
-      // SFX: compressor + medium reverb
+      // SFX: gentle compressor + medium reverb
       [
-        fx("compressor", true, { threshold: -24, ratio: 8 }),
-        fx("reverb", true, { decay: 3, size: 1.5, tone: "dark" }, 0.3)
+        fx("compressor", true, { threshold: -15, ratio: 3 }),
+        fx("reverb", true, { decay: 3, size: 1.5, tone: "dark" }, 0.25)
       ]
     )
   },
@@ -5741,18 +5788,18 @@ const BUILTIN_PRESETS = [
       // Music: mild filter + short delay + medium reverb
       [
         fx("filter", true, { type: "lowpass", frequency: 3e3, Q: 0.5 }),
-        fx("delay", true, { time: 0.15, feedback: 0.6 }, 0.25),
-        fx("reverb", true, { decay: 2.5, size: 1.8, tone: "default" }, 0.35)
+        fx("delay", true, { time: 0.15, feedback: 0.5 }, 0.2),
+        fx("reverb", true, { decay: 2.5, size: 1.8, tone: "default" }, 0.3)
       ],
       // Ambience: prominent delay + reverb
       [
-        fx("delay", true, { time: 0.25, feedback: 0.5 }, 0.3),
-        fx("reverb", true, { decay: 3.5, size: 2, tone: "default" }, 0.4)
+        fx("delay", true, { time: 0.25, feedback: 0.4 }, 0.25),
+        fx("reverb", true, { decay: 3, size: 1.8, tone: "default" }, 0.35)
       ],
-      // SFX: heavy delay + reverb for dramatic echoes
+      // SFX: delay + reverb for echoes
       [
-        fx("delay", true, { time: 0.12, feedback: 0.7 }, 0.35),
-        fx("reverb", true, { decay: 2, size: 1.5, tone: "default" }, 0.25)
+        fx("delay", true, { time: 0.12, feedback: 0.5 }, 0.25),
+        fx("reverb", true, { decay: 2, size: 1.5, tone: "default" }, 0.2)
       ]
     )
   },
@@ -5764,18 +5811,18 @@ const BUILTIN_PRESETS = [
     chains: chains(
       // Music: light compressor + subtle delay + short reverb
       [
-        fx("compressor", true, { threshold: -20, ratio: 4 }),
-        fx("delay", true, { time: 0.15, feedback: 0.2 }, 0.15),
-        fx("reverb", true, { decay: 1.5, size: 1, tone: "bright" }, 0.2)
+        fx("compressor", true, { threshold: -12, ratio: 2.5 }),
+        fx("delay", true, { time: 0.15, feedback: 0.15 }, 0.1),
+        fx("reverb", true, { decay: 1.5, size: 1, tone: "bright" }, 0.18)
       ],
       // Ambience: highpass (remove rumble) + gentle reverb
       [
         fx("filter", true, { type: "highpass", frequency: 200, Q: 0.7 }),
-        fx("reverb", true, { decay: 2, size: 1.2, tone: "bright" }, 0.25)
+        fx("reverb", true, { decay: 2, size: 1.2, tone: "bright" }, 0.22)
       ],
       // SFX: just compressor for punch
       [
-        fx("compressor", true, { threshold: -18, ratio: 6 })
+        fx("compressor", true, { threshold: -10, ratio: 3 })
       ]
     )
   },
@@ -5788,41 +5835,41 @@ const BUILTIN_PRESETS = [
       // Music: lowpass (warmth) + compressor + light distortion + short reverb
       [
         fx("filter", true, { type: "lowpass", frequency: 3e3, Q: 0.8 }),
-        fx("compressor", true, { threshold: -20, ratio: 6 }),
-        fx("distortion", true, { drive: 10 }, 0.8),
-        fx("reverb", true, { decay: 1, size: 0.5, tone: "dark" }, 0.2)
+        fx("compressor", true, { threshold: -12, ratio: 3 }),
+        fx("distortion", true, { drive: 5 }, 0.3),
+        fx("reverb", true, { decay: 1, size: 0.5, tone: "dark" }, 0.18)
       ],
       // Ambience: bandpass (narrow room) + short reverb
       [
         fx("filter", true, { type: "bandpass", frequency: 800, Q: 2 }),
-        fx("reverb", true, { decay: 0.8, size: 0.4, tone: "default" }, 0.15)
+        fx("reverb", true, { decay: 0.8, size: 0.4, tone: "default" }, 0.12)
       ],
       // SFX: short reverb only
       [
-        fx("reverb", true, { decay: 0.5, size: 0.3, tone: "default" }, 0.15)
+        fx("reverb", true, { decay: 0.5, size: 0.3, tone: "default" }, 0.12)
       ]
     )
   },
   {
     id: "builtin-combat",
     name: "Combat",
-    description: "Punchy, aggressive. Heavy compression, tight sound.",
+    description: "Punchy, energetic. Tight compression, focused sound.",
     builtIn: true,
     chains: chains(
-      // Music: heavy compressor + light distortion for energy
+      // Music: moderate compressor + subtle distortion for energy
       [
-        fx("compressor", true, { threshold: -30, ratio: 8 }),
-        fx("distortion", true, { drive: 15 }, 0.7)
+        fx("compressor", true, { threshold: -18, ratio: 4 }),
+        fx("distortion", true, { drive: 6 }, 0.25)
       ],
       // Ambience: highpass (cut mud) + compressor
       [
         fx("filter", true, { type: "highpass", frequency: 150, Q: 0.7 }),
-        fx("compressor", true, { threshold: -24, ratio: 6 })
+        fx("compressor", true, { threshold: -14, ratio: 3 })
       ],
       // SFX: compressor for impact + very short delay for punch
       [
-        fx("compressor", true, { threshold: -20, ratio: 6 }),
-        fx("delay", true, { time: 0.05, feedback: 0.2 }, 0.2)
+        fx("compressor", true, { threshold: -12, ratio: 3.5 }),
+        fx("delay", true, { time: 0.05, feedback: 0.15 }, 0.15)
       ]
     )
   },
@@ -5835,18 +5882,18 @@ const BUILTIN_PRESETS = [
       // Music: aggressive lowpass + reverb
       [
         fx("filter", true, { type: "lowpass", frequency: 400, Q: 2 }),
-        fx("reverb", true, { decay: 3, size: 2, tone: "dark" }, 0.45)
+        fx("reverb", true, { decay: 3, size: 2, tone: "dark" }, 0.4)
       ],
       // Ambience: same treatment
       [
         fx("filter", true, { type: "lowpass", frequency: 350, Q: 2.5 }),
-        fx("delay", true, { time: 0.4, feedback: 0.4 }, 0.2),
-        fx("reverb", true, { decay: 4, size: 2.5, tone: "dark" }, 0.5)
+        fx("delay", true, { time: 0.4, feedback: 0.3 }, 0.15),
+        fx("reverb", true, { decay: 4, size: 2.5, tone: "dark" }, 0.45)
       ],
       // SFX: lowpass + reverb
       [
         fx("filter", true, { type: "lowpass", frequency: 500, Q: 1.5 }),
-        fx("reverb", true, { decay: 2, size: 1.5, tone: "dark" }, 0.35)
+        fx("reverb", true, { decay: 2, size: 1.5, tone: "dark" }, 0.3)
       ]
     )
   },
@@ -5858,16 +5905,16 @@ const BUILTIN_PRESETS = [
     chains: chains(
       [
         fx("filter", true, { type: "bandpass", frequency: 2e3, Q: 3 }),
-        fx("compressor", true, { threshold: -30, ratio: 12 }),
-        fx("distortion", true, { drive: 25 }, 0.85)
+        fx("compressor", true, { threshold: -18, ratio: 4 }),
+        fx("distortion", true, { drive: 10 }, 0.45)
       ],
       [
         fx("filter", true, { type: "bandpass", frequency: 2e3, Q: 3 }),
-        fx("distortion", true, { drive: 20 }, 0.85)
+        fx("distortion", true, { drive: 8 }, 0.4)
       ],
       [
         fx("filter", true, { type: "bandpass", frequency: 2e3, Q: 3 }),
-        fx("distortion", true, { drive: 20 }, 0.85)
+        fx("distortion", true, { drive: 8 }, 0.4)
       ]
     )
   }
@@ -6470,10 +6517,18 @@ const _SoundEffectsApp = class _SoundEffectsApp {
         e.dataTransfer.setDragImage(ghost, 80, 115);
         requestAnimationFrame(() => ghost.remove());
         $(el).addClass("dragging");
+        $pedalboard.addClass("drag-active");
+        html.find(".ase-drop-zone").each((_2, z) => {
+          const dropIdx = parseInt(z.dataset.dropIndex || "0", 10);
+          if (draggedIndex >= 0 && (dropIdx === draggedIndex || dropIdx === draggedIndex + 1)) {
+            $(z).addClass("no-op");
+          }
+        });
       });
       el.addEventListener("dragend", () => {
         $(el).removeClass("dragging");
-        html.find(".ase-drop-zone").removeClass("drag-over");
+        $pedalboard.removeClass("drag-active");
+        html.find(".ase-drop-zone").removeClass("drag-over no-op");
         draggedType = null;
         draggedIndex = -1;
       });
@@ -6497,7 +6552,8 @@ const _SoundEffectsApp = class _SoundEffectsApp {
       zone.addEventListener("drop", (e) => {
         var _a;
         e.preventDefault();
-        html.find(".ase-drop-zone").removeClass("drag-over");
+        $pedalboard.removeClass("drag-active");
+        html.find(".ase-drop-zone").removeClass("drag-over no-op");
         if (!e.dataTransfer) return;
         const data = JSON.parse(e.dataTransfer.getData("text/plain"));
         const fromIndex = parseInt(data.chainIndex, 10);
