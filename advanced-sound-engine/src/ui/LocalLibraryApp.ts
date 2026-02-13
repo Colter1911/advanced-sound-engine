@@ -1090,24 +1090,12 @@ export class LocalLibraryApp extends Application {
     event.stopPropagation();
     const itemId = $(event.currentTarget).data('item-id') as string;
 
-    // Determine context based on current view
-    let context: any = { type: 'track' };
-    if (this.filterState.selectedPlaylistId) {
-      context = { type: 'playlist', id: this.filterState.selectedPlaylistId };
-    }
-
-    // Pass 'track' context
-    // Using cast for engine to support optional context arg until types catch up if needed
-    await (window.ASE.engine as any).playTrack(itemId, 0, context);
-    this.render();
-
     const item = this.library.getItem(itemId);
     if (!item) {
       Logger.warn('Track not found:', itemId);
       return;
     }
 
-    // Get engine and queue from window.ASE
     const engine = window.ASE?.engine;
     const queue = window.ASE?.queue;
 
@@ -1124,7 +1112,7 @@ export class LocalLibraryApp extends Application {
       });
     }
 
-    // Get or create player
+    // Get or create player (must exist BEFORE playTrack)
     let player = (engine as any).getTrack?.(itemId);
     if (!player) {
       player = await (engine as any).createTrack?.({
@@ -1141,8 +1129,14 @@ export class LocalLibraryApp extends Application {
       offset = player.getCurrentTime();
     }
 
-    // Play the track (resume from offset if paused)
-    await (engine as any).playTrack?.(itemId, offset);
+    // Determine context based on current view
+    let context: any = { type: 'track' };
+    if (this.filterState.selectedPlaylistId) {
+      context = { type: 'playlist', id: this.filterState.selectedPlaylistId };
+    }
+
+    // Play the track
+    await (engine as any).playTrack?.(itemId, offset, context);
 
     // Sync if enabled
     const socket = window.ASE?.socket;
@@ -1438,8 +1432,15 @@ export class LocalLibraryApp extends Application {
     const item = this.library.getItem(itemId);
     if (!item) return;
 
-    // Update group field directly (not as a tag)
-    this.library.updateItem(itemId, { group: channel as TrackGroup });
+    const group = channel as TrackGroup;
+    this.library.updateItem(itemId, { group });
+
+    // Re-route the live audio graph if a player already exists
+    const engine = window.ASE?.engine;
+    if (engine && typeof (engine as any).setTrackChannel === 'function') {
+      (engine as any).setTrackChannel(itemId, group);
+    }
+
     if (this.parentApp) this.parentApp.captureScroll();
     this.render();
     ui.notifications?.info(`Channel set to ${channel}`);

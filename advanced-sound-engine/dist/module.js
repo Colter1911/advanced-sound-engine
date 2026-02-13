@@ -2856,12 +2856,6 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     event.preventDefault();
     event.stopPropagation();
     const itemId = $(event.currentTarget).data("item-id");
-    let context = { type: "track" };
-    if (this.filterState.selectedPlaylistId) {
-      context = { type: "playlist", id: this.filterState.selectedPlaylistId };
-    }
-    await window.ASE.engine.playTrack(itemId, 0, context);
-    this.render();
     const item = this.library.getItem(itemId);
     if (!item) {
       Logger.warn("Track not found:", itemId);
@@ -2892,7 +2886,11 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     if (player && player.state === "paused") {
       offset = player.getCurrentTime();
     }
-    await ((_e = engine.playTrack) == null ? void 0 : _e.call(engine, itemId, offset));
+    let context = { type: "track" };
+    if (this.filterState.selectedPlaylistId) {
+      context = { type: "playlist", id: this.filterState.selectedPlaylistId };
+    }
+    await ((_e = engine.playTrack) == null ? void 0 : _e.call(engine, itemId, offset, context));
     const socket = (_f = window.ASE) == null ? void 0 : _f.socket;
     if (socket && socket.syncEnabled) {
       Logger.debug("LocalLibrary: Broadcasting Play for track", itemId);
@@ -3122,13 +3120,18 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     }, 10);
   }
   updateTrackChannel(itemId, channel) {
-    var _a;
+    var _a, _b;
     const item = this.library.getItem(itemId);
     if (!item) return;
-    this.library.updateItem(itemId, { group: channel });
+    const group = channel;
+    this.library.updateItem(itemId, { group });
+    const engine = (_a = window.ASE) == null ? void 0 : _a.engine;
+    if (engine && typeof engine.setTrackChannel === "function") {
+      engine.setTrackChannel(itemId, group);
+    }
     if (this.parentApp) this.parentApp.captureScroll();
     this.render();
-    (_a = ui.notifications) == null ? void 0 : _a.info(`Channel set to ${channel}`);
+    (_b = ui.notifications) == null ? void 0 : _b.info(`Channel set to ${channel}`);
   }
   onDeleteTrack(event) {
     event.preventDefault();
@@ -5058,7 +5061,9 @@ const _SoundMixerApp = class _SoundMixerApp {
     var _a;
     const item = this.libraryManager.getItem(itemId);
     if (!item) return;
-    this.libraryManager.updateItem(itemId, { group: channel });
+    const group = channel;
+    this.libraryManager.updateItem(itemId, { group });
+    this.engine.setTrackChannel(itemId, group);
     this.requestRender();
     (_a = ui.notifications) == null ? void 0 : _a.info(`Channel set to ${channel}`);
   }

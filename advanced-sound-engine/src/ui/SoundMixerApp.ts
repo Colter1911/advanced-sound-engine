@@ -840,14 +840,12 @@ export class SoundMixerApp {
     const item = this.libraryManager.getItem(itemId);
     if (!item) return;
 
-    this.libraryManager.updateItem(itemId, { group: channel as any });
+    const group = channel as TrackGroup;
+    this.libraryManager.updateItem(itemId, { group });
 
-    // Also update queue item logic if needed? 
-    // LibraryManager update should trigger re-renders via hooks/events eventually, 
-    // but Mixer subscribes to queue changes mostly.
-    // However, LibraryItem update doesn't automatically trigger "queue change" event unless
-    // something in queue manager reacts to library updates.
-    // Let's force render.
+    // Re-route the live audio graph if a player already exists
+    this.engine.setTrackChannel(itemId, group);
+
     this.requestRender();
     ui.notifications?.info(`Channel set to ${channel}`);
   }
