@@ -1,3 +1,4 @@
+@charset "UTF-8";
 /* -----------------------------------------------------------
  * Foundry V13 Aesthetic - Advanced Sound Engine
  * Theme: Dark Iron & Gold
@@ -55,7 +56,6 @@
   --ase-accent-cyan: #22d3ee;
   --ase-bg-deep: #050505;
 }
-
 #advanced-sound-engine-app,
 .ase-window-layout,
 .ase-window-layout .window-content {
@@ -68,41 +68,33 @@
   box-shadow: none !important;
   font-family: var(--ase-font-body);
 }
-
 /* --- Utilities --- */
 .ase-disabled {
   opacity: 0.5;
   cursor: default !important;
   pointer-events: none;
 }
-
 .ase-ml-sm {
   margin-left: 10px;
 }
-
 .ase-ml-auto {
   margin-left: auto;
 }
-
 .ase-mt-0 {
   margin-top: 0 !important;
 }
-
 .ase-text-label-sm {
   color: var(--ase-text-muted);
   font-size: 11px;
 }
-
 .ase-empty-state-container {
   opacity: 0.5;
   text-align: center;
 }
-
 .ase-empty-state-icon {
   font-size: 48px;
   margin-bottom: 20px;
 }
-
 /* Force Context Menu to be above everything and match V13 Theme */
 /* --- Sync Button Active State (Explicit Orange) --- */
 .ase-sync-light.active {
@@ -111,7 +103,6 @@
   box-shadow: 0 0 15px var(--ase-accent-main), inset 0 2px 5px rgba(0, 0, 0, 0.4) !important;
   border-color: #ffb86c !important;
 }
-
 /* --- Mixer Channel Group Borders (Foundry Style) --- */
 .ase-mixer-group {
   flex: 1;
@@ -146,7 +137,6 @@
   -webkit-mask-composite: xor;
   mask-composite: exclude;
 }
-
 .ase-window-layout * {
   box-sizing: border-box;
   font-family: var(--ase-font-body);
@@ -373,7 +363,6 @@
 .ase-window-layout .ase-tags-row-top {
   display: none;
 }
-
 /* --- Tags --- */
 .ase-tag {
   background: rgba(255, 255, 255, 0.1);
@@ -397,7 +386,6 @@
   background: rgba(255, 255, 255, 0.2);
   border-color: var(--ase-border-light);
 }
-
 .ase-tag.selected {
   background: var(--ase-border-accent);
   /* Orange/Red background */
@@ -405,7 +393,6 @@
   border-color: #000;
   box-shadow: 0 0 5px rgba(255, 100, 0, 0.6);
 }
-
 .ase-add-tag-mini {
   background: rgba(255, 255, 255, 0.1);
   border: 1px solid var(--ase-border-light);
@@ -424,7 +411,6 @@
   color: #fff;
   background: rgba(255, 255, 255, 0.2);
 }
-
 /* --- Workspace (Sidebar + Main) --- */
 .ase-workspace {
   position: relative;
@@ -433,7 +419,6 @@
   flex: 1;
   overflow: hidden;
 }
-
 .ase-sidebar {
   width: 390px;
   background: rgba(0, 0, 0, 0.2);
@@ -444,20 +429,17 @@
   padding-top: 8px;
   /* Match gap between Playlists and Favorites */
 }
-
 .ase-sidebar-section, .ase-mixer-favorites {
   display: flex;
   flex-direction: column;
   flex: 1;
   overflow: hidden;
 }
-
 .ase-favorites-section {
   flex: 0 0 auto;
   border-top: 1px solid var(--ase-border-gold);
   max-height: 40%;
 }
-
 .ase-favorite-item .ase-favorite-info {
   display: flex;
   align-items: center;
@@ -487,7 +469,6 @@
   text-overflow: clip;
   /* Show text while scrolling */
 }
-
 @keyframes ase-scroll-text {
   0% {
     transform: translateX(0);
@@ -527,7 +508,6 @@
   color: var(--ase-border-gold);
   font-size: 14px;
 }
-
 .ase-btn-compact {
   padding: 2px 8px !important;
   height: 22px !important;
@@ -549,7 +529,6 @@
   color: #fff !important;
   transform: none !important;
 }
-
 .ase-btn-small-blue {
   /* Renamed conceptually, but keeping class for now. Mapped to V13 neutral style */
   background: rgba(255, 255, 255, 0.1);
@@ -563,7 +542,6 @@
 .ase-btn-small-blue:hover {
   background: rgba(255, 255, 255, 0.2);
 }
-
 .ase-icon-add-queue {
   width: 16px;
   height: 16px;
@@ -584,12 +562,10 @@
   background-color: var(--ase-border-accent);
   box-shadow: 0 0 8px rgba(255, 100, 0, 0.6);
 }
-
 .ase-queue-btn.active .ase-icon-add-queue {
   background-color: var(--ase-border-accent);
   box-shadow: 0 0 8px rgba(255, 100, 0, 0.6);
 }
-
 .ase-list-group {
   list-style: none;
   overflow-y: auto;
@@ -597,7 +573,6 @@
   margin: 0;
   padding: 0;
 }
-
 .ase-list-item {
   padding: 8px 10px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
@@ -609,18 +584,15 @@
   color: var(--ase-text-body);
   transition: background 0.1s;
 }
-
 .ase-list-item:hover {
   background: rgba(255, 255, 255, 0.05);
   color: var(--ase-text-header);
 }
-
 .ase-list-item.active {
   background: rgba(255, 100, 0, 0.1);
   border-left: 3px solid var(--ase-border-accent);
   color: #fff;
 }
-
 .ase-list-item .ase-icons {
   color: var(--ase-text-muted);
   gap: 8px;
@@ -647,7 +619,6 @@
   animation: pulse-glow-text 2s ease-in-out infinite;
   filter: none;
 }
-
 .ase-track-controls i.fa-star.active,
 .ase-track-controls i.fa-star[style*="color: var(--accent-cyan)"] {
   color: var(--ase-text-cyan, var(--ase-accent-cyan)) !important;
@@ -655,7 +626,6 @@
   animation: pulse-glow-text 2s ease-in-out infinite;
   filter: none;
 }
-
 @keyframes pulse-glow-text {
   0%, 100% {
     text-shadow: 0 0 4px rgba(34, 211, 238, 0.6);
@@ -667,7 +637,6 @@
 .ase-list-item .ase-icons i {
   cursor: pointer;
 }
-
 .drag-handle {
   display: flex;
   align-items: center;
@@ -686,24 +655,20 @@
 .drag-handle:active {
   cursor: grabbing;
 }
-
 .drag-handle-sm {
   width: 14px;
   font-size: 11px;
   margin-right: -4px;
 }
-
 .ase-list-item.dragging {
   opacity: 0.4;
   background: #0a0a0a;
   border-color: transparent !important;
   box-shadow: none !important;
 }
-
 .ase-list-item.drag-over {
   background: rgba(255, 100, 0, 0.06);
 }
-
 .ase-list-item.drag-above {
   position: relative;
   z-index: 10;
@@ -732,7 +697,6 @@
   z-index: 101;
   pointer-events: none;
 }
-
 .ase-list-item.drag-below {
   position: relative;
   z-index: 10;
@@ -761,7 +725,6 @@
   z-index: 101;
   pointer-events: none;
 }
-
 /* --- Content Area --- */
 .ase-main-content {
   flex: 1;
@@ -770,7 +733,6 @@
   flex-direction: column;
   position: relative;
 }
-
 .ase-content-area {
   flex: 1;
   background: rgba(0, 0, 0, 0.1);
@@ -778,7 +740,6 @@
   flex-direction: column;
   overflow: hidden;
 }
-
 .ase-content-controls {
   display: grid;
   grid-template-columns: 1fr 350px 1fr;
@@ -789,7 +750,6 @@
   flex-shrink: 0;
   border-top: 1px solid var(--ase-border-dark);
 }
-
 .ase-btn-text {
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid transparent;
@@ -805,7 +765,6 @@
   color: var(--ase-text-body);
   border-color: var(--ase-border-light);
 }
-
 .ase-btn-all-tracks {
   justify-self: start;
   width: 100px;
@@ -826,7 +785,6 @@
   color: #fff;
   border-color: #fff;
 }
-
 .ase-sort-dropdown {
   justify-self: end;
   margin-left: 0;
@@ -834,7 +792,6 @@
   align-items: center;
   gap: 8px;
 }
-
 .ase-sort-select {
   background: rgba(0, 0, 0, 0.5);
   color: var(--ase-text-body);
@@ -859,7 +816,6 @@
   background: #111;
   color: var(--ase-text-body);
 }
-
 .ase-track-player-list {
   flex: 1;
   overflow-y: auto;
@@ -871,7 +827,6 @@
   background-color: rgba(34, 211, 238, 0.05);
   box-shadow: inset 0 0 20px rgba(34, 211, 238, 0.1);
 }
-
 .ase-track-player-item {
   position: relative;
   background: linear-gradient(to right, rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.3));
@@ -895,11 +850,9 @@
   background: #000;
   border: 1px dashed var(--ase-border-light);
 }
-
 .ase-queue-track.ase-track-player-item {
   padding-left: 10px;
 }
-
 /* Image container */
 .ase-track-image {
   position: absolute;
@@ -924,19 +877,16 @@
   color: var(--ase-border-gold);
   /* Changed to gold */
 }
-
 .ase-track-player-item.is-playing {
   background: linear-gradient(to right, rgba(34, 197, 94, 0.25), rgba(34, 197, 94, 0.08)) !important;
   border-color: #22c55e !important;
   box-shadow: inset 0 0 20px rgba(34, 197, 94, 0.15);
 }
-
 .ase-track-player-item.is-paused {
   background: linear-gradient(to right, rgba(234, 179, 8, 0.25), rgba(234, 179, 8, 0.08)) !important;
   border-color: #eab308 !important;
   box-shadow: inset 0 0 20px rgba(234, 179, 8, 0.15);
 }
-
 .ase-track-controls {
   position: absolute;
   right: 12px;
@@ -946,14 +896,12 @@
   align-items: center;
   gap: 12px;
 }
-
 .ase-track-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
 }
-
 .ase-track-title-block {
   display: flex;
   align-items: baseline;
@@ -961,7 +909,6 @@
   flex: 1;
   min-width: 0;
 }
-
 .ase-track-name {
   font-size: 13px;
   font-weight: 600;
@@ -970,13 +917,11 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-
 .ase-track-duration {
   font-size: 11px;
   color: #666;
   flex-shrink: 0;
 }
-
 .ase-channel-select {
   display: flex;
   align-items: center;
@@ -999,7 +944,6 @@
   font-size: 9px;
   color: #64748b;
 }
-
 .ase-playback-controls {
   display: flex;
   align-items: center;
@@ -1014,7 +958,6 @@
 .ase-playback-controls i:hover {
   color: #fff;
 }
-
 .ase-track-controls > i,
 .ase-track-controls > .ase-icon-add-queue {
   font-size: 18px;
@@ -1029,13 +972,11 @@
 .ase-track-controls > .ase-icon-add-queue.active {
   color: var(--accent-cyan, var(--ase-accent-cyan));
 }
-
 .ase-track-controls > i[data-action=track-mode-dropdown] {
   width: 18px;
   display: inline-block;
   text-align: center;
 }
-
 .ase-btn-delete {
   color: #4a5568 !important;
   margin-left: 8px;
@@ -1043,7 +984,6 @@
 .ase-btn-delete:hover {
   color: #f87171 !important;
 }
-
 .ase-track-tags {
   display: flex;
   flex-wrap: wrap;
@@ -1051,7 +991,6 @@
   margin-top: 6px;
   align-items: center;
 }
-
 .ase-add-tag-btn {
   display: inline-flex;
   align-items: center;
@@ -1068,14 +1007,12 @@
   background: var(--neutral-500);
   color: var(--neutral-200);
 }
-
 .ase-track-row2 {
   display: flex;
   align-items: center;
   gap: 10px;
   margin-top: 6px;
 }
-
 .ase-empty-list-area {
   flex: 1;
   background-color: #0b0e14;
@@ -1084,7 +1021,6 @@
   justify-content: center;
   color: #333;
 }
-
 /* --- Footer (Mixer) --- */
 .ase-mixer-footer {
   height: 100px;
@@ -1096,7 +1032,6 @@
   gap: 10px;
   flex-shrink: 0;
 }
-
 .ase-mixer-group {
   flex: 1;
   background-color: var(--neutral-750);
@@ -1108,7 +1043,6 @@
   height: 80px;
   border: 1px solid var(--border-subtle);
 }
-
 .ase-mixer-top {
   display: flex;
   align-items: center;
@@ -1118,7 +1052,6 @@
   font-size: 11px;
   color: var(--text-dim);
 }
-
 .ase-status-light {
   width: 6px;
   height: 6px;
@@ -1127,17 +1060,14 @@
   position: absolute;
   left: 10px;
 }
-
 .ase-status-light.active {
   background-color: var(--ase-warning);
   box-shadow: 0 0 5px var(--ase-warning);
 }
-
 .ase-status-light.active-green {
   background-color: var(--ase-success);
   box-shadow: 0 0 5px var(--ase-success);
 }
-
 .ase-mixer-controls {
   flex: 1;
   font-weight: bold;
@@ -1145,24 +1075,20 @@
   align-items: center;
   justify-content: center;
 }
-
 .ase-mixer-controls i {
   margin-right: 5px;
 }
-
 .play-controls {
   display: flex;
   gap: 8px;
   font-size: 10px;
 }
-
 /* Custom Range Slider Styling */
 .ase-slider-wrapper {
   display: flex;
   flex-direction: column;
   align-items: center;
 }
-
 .ase-volume-slider {
   -webkit-appearance: none;
   appearance: none;
@@ -1173,7 +1099,6 @@
   margin: 10px 0;
   border-radius: 2px;
 }
-
 .ase-volume-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
@@ -1186,30 +1111,24 @@
   /* Align thumb */
   box-shadow: 0 0 5px var(--accent-main);
 }
-
 /* Specific colors for specific sliders */
 .ase-mixer-group:nth-child(2) .ase-volume-slider::-webkit-slider-thumb {
   background: var(--accent-main);
 }
-
 .ase-mixer-group:nth-child(2) .ase-volume-slider {
   background: linear-gradient(to right, var(--accent-main) 0%, #333 0%);
 }
-
 .ase-mixer-group:nth-child(1) .ase-volume-slider::-webkit-slider-thumb {
   background: var(--accent-main);
 }
-
 .ase-mixer-group:nth-child(1) .ase-volume-slider {
   background: linear-gradient(to right, var(--accent-main) 0%, #333 0%);
 }
-
 .ase-percentage {
   color: var(--accent-main);
   font-size: 12px;
   font-weight: bold;
 }
-
 /* Master Section */
 .ase-master-group {
   flex: 1.5;
@@ -1219,24 +1138,20 @@
   justify-content: center;
   color: var(--text-dim);
 }
-
 .ase-master-label {
   margin-bottom: 5px;
   font-weight: bold;
   font-size: 12px;
 }
-
 .ase-master-slider {
   width: 80%;
   background: linear-gradient(to right, var(--accent-main) 0%, #333 0%);
   height: 6px;
 }
-
 .ase-master-perc {
   color: var(--accent-main);
   font-size: 14px;
 }
-
 /* Global Controls */
 .ase-global-controls {
   flex: 1;
@@ -1247,7 +1162,6 @@
   padding-left: 0;
   gap: 30px;
 }
-
 .ase-sync-wrapper {
   display: flex;
   flex-direction: column;
@@ -1257,7 +1171,6 @@
   transform: scale(1.1);
   /* Slightly larger */
 }
-
 .ase-sync-light {
   width: 24px;
   /* Larger light */
@@ -1268,28 +1181,23 @@
   border: 2px solid #333;
   box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.5);
 }
-
 .ase-sync-light.active {
   background-color: var(--accent-blue);
   box-shadow: 0 0 12px var(--accent-blue), inset 0 2px 5px rgba(0, 0, 0, 0.2);
   border-color: var(--accent-blue);
 }
-
 .ase-sync-label {
   font-size: 11px;
   /* Larger font */
   font-weight: bold;
   color: #666;
 }
-
 .ase-sync-wrapper:hover .ase-sync-label {
   color: var(--text-main);
 }
-
 .ase-sync-wrapper:hover .ase-sync-light:not(.active) {
   background-color: #555;
 }
-
 .ase-big-buttons {
   font-size: 28px;
   /* Larger icons */
@@ -1297,11 +1205,9 @@
   gap: 20px;
   color: var(--text-dim);
 }
-
 .ase-big-buttons i:hover {
   color: white;
 }
-
 .ase-bottom-bar-info {
   background-color: var(--neutral-900);
   padding: 2px 10px;
@@ -1311,42 +1217,33 @@
   justify-content: flex-start;
   flex-shrink: 0;
 }
-
 /* Scrollbar styling */
 ::-webkit-scrollbar {
   width: 6px;
 }
-
 ::-webkit-scrollbar-track {
   background: #111;
 }
-
 ::-webkit-scrollbar-thumb {
   background: var(--neutral-500);
   border-radius: 3px;
 }
-
 ::-webkit-scrollbar-thumb:hover {
   background: var(--accent-main);
 }
-
 .ase-window-layout ::-webkit-scrollbar-thumb {
   background: var(--neutral-500);
 }
-
 .ase-window-layout ::-webkit-scrollbar-thumb:hover {
   background: var(--ase-border-accent);
 }
-
 #advanced-sound-engine-app *::-webkit-scrollbar-thumb {
   background-color: var(--ase-border-gold) !important;
 }
-
 #advanced-sound-engine-app *::-webkit-scrollbar {
   width: 6px;
   /* Force width */
 }
-
 .ase-list-item.highlight-contains-track {
   background: rgba(255, 100, 0, 0.15) !important;
   border-left-color: var(--ase-border-accent) !important;
@@ -1357,7 +1254,6 @@
 .ase-list-item.highlight-contains-track {
   transition: all 0.15s ease;
 }
-
 .ase-mixer-block {
   display: flex;
   flex: 1;
@@ -1367,7 +1263,6 @@
   background: var(--bg-app);
   overflow: hidden;
 }
-
 .ase-section-header {
   padding: 8px 12px;
   background: var(--ase-bg-header);
@@ -1385,7 +1280,6 @@
   margin-right: 8px;
   color: var(--ase-border-gold);
 }
-
 .ase-sidebar-section, .ase-mixer-favorites {
   display: flex;
   flex-direction: column;
@@ -1403,7 +1297,6 @@
   overflow-y: auto;
   padding: 8px;
 }
-
 .ase-mixer-favorite-item {
   display: flex;
   align-items: center;
@@ -1454,7 +1347,6 @@
   background: rgba(255, 255, 255, 0.1);
   color: var(--accent-highlight);
 }
-
 .ase-mixer-queue {
   flex: 1;
   display: flex;
@@ -1471,7 +1363,6 @@
   overflow-y: auto;
   padding: 8px;
 }
-
 .ase-queue-playlist {
   margin-bottom: 12px;
   background: var(--bg-app);
@@ -1481,7 +1372,6 @@
 .ase-queue-playlist.is-collapsed .ase-collapse-icon {
   transform: rotate(-90deg);
 }
-
 .ase-queue-track {
   background-color: #171717;
   border: 1px solid transparent;
@@ -1576,7 +1466,6 @@
   z-index: 201;
   pointer-events: none;
 }
-
 .ase-mixer-workspace .ase-queue-track.collapsed-hidden,
 .ase-queue-tracks .ase-queue-track.collapsed-hidden {
   display: none !important;
@@ -1586,7 +1475,6 @@
   margin: 0 !important;
   padding: 0 !important;
 }
-
 .track-identity-row {
   display: flex;
   align-items: center;
@@ -1746,7 +1634,6 @@
   outline: 2px solid var(--ase-accent-main);
   outline-offset: 2px;
 }
-
 .progress-wrapper {
   display: flex;
   flex-direction: column;
@@ -1754,7 +1641,6 @@
   gap: 4px;
   width: 100%;
 }
-
 .progress-section {
   position: relative;
   height: 11px;
@@ -1812,14 +1698,12 @@
   border: 4px solid transparent;
   border-top-color: rgba(0, 0, 0, 0.9);
 }
-
 .track-timer {
   font-family: var(--ase-font-mono);
   color: #666;
   font-size: 12px;
   white-space: nowrap;
 }
-
 .controls-row {
   display: flex;
   align-items: center;
@@ -1881,7 +1765,6 @@
   text-align: right;
   flex-shrink: 0;
 }
-
 /* --- Mixer Footer Frame (Foundry Style) --- */
 .ase-mixer-footer {
   height: 100px;
@@ -1897,7 +1780,6 @@
   gap: 10px;
   flex-shrink: 0;
 }
-
 /* --- Mixer Group Borders (Explicit Gold) --- */
 .ase-mixer-group {
   flex: 1;
@@ -1913,7 +1795,6 @@
   height: 80px;
   margin: 0 4px;
 }
-
 /* --- Dropdown Styling (V13 Match) --- */
 .ase-channel-select {
   background: var(--ase-bg-input);
@@ -1933,7 +1814,6 @@
   border-color: var(--ase-border-accent);
   box-shadow: 0 0 5px var(--ase-glow-gold);
 }
-
 .ase-queue-track-row1 {
   display: flex;
   align-items: center;
@@ -1983,7 +1863,6 @@
   border-radius: 4px;
   cursor: pointer;
 }
-
 .ase-queue-track-row2 {
   margin-bottom: 8px;
 }
@@ -1992,7 +1871,6 @@
   flex-wrap: wrap;
   gap: 4px;
 }
-
 .ase-queue-track-row3 {
   display: flex;
   align-items: center;
@@ -2025,7 +1903,6 @@
   border-radius: 50%;
   cursor: pointer;
 }
-
 .ase-queue-track-row4 {
   display: flex;
   align-items: center;
@@ -2095,7 +1972,6 @@
 .ase-queue-track-row4 .ase-track-options .ase-btn-remove:hover {
   color: var(--ase-danger);
 }
-
 .ase-empty-section {
   display: flex;
   flex-direction: column;
@@ -2118,14 +1994,12 @@
   font-size: 11px;
   opacity: 0.7;
 }
-
 /* --- Mixer Effects Panel (Moved from Inline) --- */
 .ase-mixer-effects-panel {
   padding: 12px;
   border-top: 1px solid var(--ase-border-gold);
   background: rgba(0, 0, 0, 0.3);
 }
-
 .ase-effects-header {
   font-size: 12px;
   font-weight: 600;
@@ -2133,13 +2007,11 @@
   margin-bottom: 8px;
   text-transform: uppercase;
 }
-
 .ase-effects-toggles {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
 }
-
 .ase-effect-toggle-item {
   display: flex;
   align-items: center;
@@ -2153,7 +2025,6 @@
   font-size: 11px;
   color: var(--ase-text-body);
 }
-
 .ase-mixer-favorite-controls {
   display: flex;
   gap: 4px;
@@ -2170,14 +2041,12 @@
   background: rgba(255, 255, 255, 0.1);
   color: var(--accent-highlight);
 }
-
 .ase-queue-playlist {
   margin-bottom: 16px;
 }
 .ase-queue-playlist.is-collapsed .ase-collapse-icon {
   transform: rotate(-90deg);
 }
-
 .ase-queue-track-timeline {
   display: flex;
   align-items: center;
@@ -2225,7 +2094,6 @@
   border: none;
   cursor: pointer;
 }
-
 .ase-queue-track-volume {
   display: flex;
   align-items: center;
@@ -2270,17 +2138,14 @@
   min-width: 35px;
   font-family: monospace;
 }
-
 .ase-mixer-favorite-item.is-playing {
   border-left: 3px solid var(--ase-success);
   background: rgba(34, 197, 94, 0.08);
 }
-
 .ase-mixer-favorite-item.is-paused {
   border-left: 3px solid var(--ase-warning);
   background: rgba(251, 191, 36, 0.08);
 }
-
 .ase-track-player-item {
   border-left: 3px solid transparent;
   transition: border-left-color 0.2s ease;
@@ -2291,7 +2156,6 @@
 .ase-track-player-item.is-paused {
   border-left-color: var(--ase-warning) !important;
 }
-
 .ase-effect-card {
   background: rgba(20, 20, 20, 0.6);
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -2306,14 +2170,12 @@
   border-color: var(--ase-accent-main);
   box-shadow: 0 0 20px rgba(255, 100, 0, 0.4);
 }
-
 .ase-effect-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 0.5rem;
 }
-
 .ase-effect-title {
   margin: 0;
   font-size: 1.1rem;
@@ -2322,13 +2184,11 @@
   letter-spacing: 0.05em;
   color: var(--ase-text-header);
 }
-
 .ase-effect-viz {
   display: flex;
   justify-content: center;
   padding: 1rem 0;
 }
-
 .ase-knob-circle {
   width: 120px;
   height: 120px;
@@ -2357,20 +2217,17 @@
   background: var(--ase-accent-main);
   border-radius: 2px;
 }
-
 .ase-knob-value {
   font-size: 1.2rem;
   font-weight: bold;
   color: #fff;
   font-family: monospace;
 }
-
 .ase-effect-params {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
 }
-
 .ase-param-control {
   display: flex;
   align-items: center;
@@ -2423,13 +2280,11 @@
   min-width: 50px;
   text-align: right;
 }
-
 .ase-effect-routing {
   display: flex;
   gap: 0.5rem;
   margin-top: 0.5rem;
 }
-
 .ase-route-btn {
   flex: 1;
   padding: 0.5rem;
@@ -2452,7 +2307,6 @@
   color: var(--ase-accent-main);
   box-shadow: 0 0 8px rgba(255, 100, 0, 0.3);
 }
-
 /* Effect Toggle Button Styles */
 .ase-effect-toggle {
   width: 30px;
@@ -2471,13 +2325,11 @@
   pointer-events: none;
   /* Ensure clicks go to the container */
 }
-
 .ase-effect-toggle:hover {
   opacity: 1;
   background: rgba(255, 255, 255, 0.1);
   transform: scale(1.1);
 }
-
 .ase-effect-card.enabled .ase-effect-toggle {
   opacity: 1;
   color: var(--ase-accent-main);
@@ -2485,7 +2337,6 @@
   border-color: var(--ase-accent-main);
   box-shadow: 0 0 10px rgba(255, 100, 0, 0.3);
 }
-
 /* -----------------------------------------------------------
  * Mixer-Specific Styles
  * ----------------------------------------------------------- */
@@ -2610,7 +2461,6 @@
   gap: 10px;
   width: 100%;
 }
-
 /* Playlist header */
 .ase-queue-playlist-header {
   display: flex;
@@ -2685,11 +2535,9 @@
   border-color: rgba(248, 113, 113, 0.35);
   background: rgba(248, 113, 113, 0.1);
 }
-
 .ase-queue-playlist.is-collapsed .ase-collapse-icon {
   transform: rotate(-90deg);
 }
-
 /* Timeline row with seek slider */
 .ase-queue-track-timeline {
   display: flex;
@@ -2748,7 +2596,6 @@
   transform: scale(1.15);
   box-shadow: 0 0 8px rgba(159, 146, 117, 0.6);
 }
-
 /* Volume row */
 .ase-queue-track-volume {
   display: flex;
@@ -2808,7 +2655,6 @@
   min-width: 42px;
   text-align: right;
 }
-
 .ase-mixer-effects-panel {
   padding: 12px;
   border-top: 1px solid var(--ase-border-gold);
@@ -2819,7 +2665,6 @@
   align-items: center;
   min-height: 80px;
 }
-
 .ase-effects-header {
   font-size: 12px;
   font-weight: 600;
@@ -2828,14 +2673,12 @@
   text-transform: uppercase;
   font-family: var(--ase-font-header);
 }
-
 .ase-effects-toggles {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
   justify-content: center;
 }
-
 .ase-effect-btn {
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid var(--ase-border-light);
@@ -2863,7 +2706,6 @@
   color: var(--ase-text-body);
   background: rgba(255, 255, 255, 0.1);
 }
-
 .ase-mode-icon {
   font-size: 14px;
   color: #cca477;
@@ -2876,7 +2718,6 @@
   text-shadow: 0 0 5px rgba(204, 164, 119, 0.5);
   transform: scale(1.1);
 }
-
 .ase-master-group {
   display: flex;
   flex-direction: column;
@@ -2894,7 +2735,6 @@
   margin: 0 12px;
   padding: 0 8px;
 }
-
 .ase-master-row {
   display: flex;
   align-items: center;
@@ -2944,7 +2784,6 @@
   text-shadow: 2px 2px 0px #000;
   /* Strong shadow */
 }
-
 .ase-context-menu,
 .ase-dropdown-menu {
   background: #110f1c;
@@ -3010,7 +2849,6 @@
   background: var(--ase-border-dark);
   margin: 4px 0;
 }
-
 .ase-mode-icon {
   position: relative;
   z-index: var(--z-index-context-menu);
@@ -3023,7 +2861,6 @@
   color: var(--ase-text-highlight);
   text-shadow: 0 0 5px rgba(255, 100, 0, 0.5);
 }
-
 .ase-context-menu {
   position: fixed;
   z-index: var(--z-index-context-menu);
@@ -3033,7 +2870,6 @@
   padding: 5px 0;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
 }
-
 .ase-ctx-item {
   padding: 8px 15px;
   cursor: pointer;
@@ -3050,7 +2886,809 @@
 .ase-ctx-item:hover {
   background: var(--ase-bg-hover);
 }
-
 .notransition {
   transition: none !important;
+}
+/* ═══════════════════════════════════════════════════════════════
+   Pedalboard Effects Chain UI
+   ═══════════════════════════════════════════════════════════════ */
+/* ─── Layout Container ──────────────────────────────────────── */
+.ase-effects-layout {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #1a1a1a;
+  overflow: hidden;
+  color: #e0e0e0;
+  position: relative;
+}
+/* ─── Channel Tabs ──────────────────────────────────────────── */
+.ase-channel-tabs {
+  display: flex;
+  height: 44px;
+  background: #1a1a1a;
+  border-bottom: 2px solid #2a2a2a;
+  padding: 0 1rem;
+  gap: 0;
+  flex-shrink: 0;
+  align-items: stretch;
+}
+.ase-channel-tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-family: "Signika", sans-serif;
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #7a7971;
+  cursor: pointer;
+  position: relative;
+  transition: color 0.2s;
+}
+.ase-channel-tab:hover {
+  color: #cec4b0;
+}
+.ase-channel-tab.active {
+  color: #f0f0e0;
+}
+.ase-channel-tab.active::after {
+  content: "";
+  position: absolute;
+  bottom: -2px;
+  left: 10%;
+  width: 80%;
+  height: 3px;
+  background: #ff6400;
+  border-radius: 2px 2px 0 0;
+  box-shadow: 0 0 8px rgba(255, 100, 0, 0.4);
+}
+.ase-tab-badge {
+  background: #ff6400;
+  color: #000;
+  font-size: 0.65rem;
+  font-weight: 800;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+/* ─── Master Bypass Button (Legacy - repurposed if needed, but likely replaced) ─────────────────────────────────── */
+.ase-master-bypass {
+  display: none;
+  /* Hidden as per new design */
+}
+/* ─── NEW: Effects Control Bar (Enable/Disable) ──────────────── */
+.ase-effects-control-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  /* Force full width */
+  flex: 0 0 auto;
+  /* Prevent shrinking */
+  padding: 0.8rem 0;
+  /* Slightly more breathing room */
+  background: #151515;
+  border-bottom: 1px solid #2a2a2a;
+  z-index: 5;
+  /* Ensure above pedalboard scrolling */
+}
+.ase-bypass-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 60%;
+  padding: 8px 16px;
+  font-family: "Signika", sans-serif;
+  font-size: 1rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid transparent;
+  /* Default: ACTIVE (Disable button shown) */
+  background: rgba(20, 20, 20, 0.8);
+  color: #e74c3c;
+  /* Red text for "Disable" action/warning */
+  border-color: #551a1a;
+  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);
+}
+.ase-bypass-btn:hover {
+  background: rgba(40, 20, 20, 0.8);
+  color: #ff6b6b;
+  border-color: #e74c3c;
+}
+/* Bypassed State: (Enable button shown) */
+.ase-bypass-btn.bypassed {
+  background: rgba(20, 40, 20, 0.8);
+  color: #2ecc71;
+  /* Green text for "Enable" action */
+  border-color: #1a552a;
+  box-shadow: 0 0 10px rgba(46, 204, 113, 0.1);
+}
+.ase-bypass-btn.bypassed:hover {
+  background: rgba(30, 60, 30, 0.8);
+  color: #58d68d;
+  border-color: #2ecc71;
+  box-shadow: 0 0 15px rgba(46, 204, 113, 0.2);
+}
+.ase-bypass-btn i {
+  font-size: 1.1em;
+}
+/* ─── Pedalboard Area ───────────────────────────────────────── */
+.ase-pedalboard {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem 1rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  background: radial-gradient(ellipse at 50% 0%, rgba(40, 40, 40, 0.5) 0%, transparent 70%), linear-gradient(180deg, #181818 0%, #111 100%);
+  scrollbar-width: thin;
+  scrollbar-color: #333 transparent;
+}
+.ase-pedalboard-inner {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex-shrink: 0;
+}
+/* ─── Chain Terminals ───────────────────────────────────────── */
+.ase-chain-terminal {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 64px;
+  height: 90px;
+  background: #1e1e1e;
+  border: 1px solid #333;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+.ase-terminal-icon {
+  font-size: 1.5rem;
+  color: #7a7971;
+}
+.ase-terminal-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #7a7971;
+}
+/* ─── Cables ────────────────────────────────────────────────── */
+.ase-cable {
+  width: 40px;
+  min-width: 30px;
+  flex-shrink: 0;
+  height: 4px;
+  align-self: center;
+  position: relative;
+}
+.ase-cable::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: #2a2a2a;
+  border-radius: 2px;
+  transform: translateY(-50%);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03), 0 -1px 0 rgba(0, 0, 0, 0.5);
+}
+.ase-cable.active::before {
+  background: linear-gradient(90deg, #3a2a1a, #4a3520);
+  box-shadow: 0 0 6px rgba(255, 100, 0, 0.2), 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+.ase-cable::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 8px;
+  height: 8px;
+  background: #3a3a3a;
+  border: 1px solid #444;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+.ase-cable.active::after {
+  background: #4a3520;
+  border-color: #6a4a2a;
+  box-shadow: 0 0 4px rgba(255, 100, 0, 0.15);
+}
+/* ─── Pedal Card ────────────────────────────────────────────── */
+.ase-pedal-card {
+  width: 160px;
+  min-width: 160px;
+  height: 230px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px 12px;
+  background: linear-gradient(145deg, #2a2a2a 0%, #1a1a1a 50%, #222 100%);
+  border: 1px solid #3a3a3a;
+  border-radius: 10px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05), inset 0 -1px 0 rgba(0, 0, 0, 0.3);
+  cursor: grab;
+  transition: border-color 0.2s, box-shadow 0.2s, opacity 0.2s, transform 0.2s;
+  position: relative;
+}
+.ase-pedal-card:hover {
+  border-color: #555;
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+.ase-pedal-card:hover .ase-pedal-remove {
+  opacity: 1;
+}
+.ase-pedal-card.selected {
+  border-color: #ff6400;
+  box-shadow: 0 0 15px rgba(255, 100, 0, 0.3), 0 4px 8px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+.ase-pedal-card:not(.active) {
+  opacity: 0.5;
+  filter: saturate(0.3);
+}
+.ase-pedal-card.dragging {
+  opacity: 0.4;
+  transform: scale(0.95);
+  cursor: grabbing;
+}
+/* ─── Pedal Remove Button ──────────────────────────────────── */
+.ase-pedal-remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #c0392b;
+  border: 2px solid #1a1a1a;
+  color: #fff;
+  font-size: 0.55rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s, transform 0.1s;
+  z-index: 10;
+  padding: 0;
+  line-height: 1;
+}
+.ase-pedal-remove:hover {
+  background: #e74c3c;
+  transform: scale(1.15);
+}
+/* ─── Pedal Name ────────────────────────────────────────────── */
+.ase-pedal-name-top {
+  font-family: "Signika", sans-serif;
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: #7a7971;
+  margin-bottom: 4px;
+}
+.ase-pedal-name-bottom {
+  font-family: "Signika", sans-serif;
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #cec4b0;
+}
+/* ─── Pedal Knob (Metallic Chrome) ──────────────────────────── */
+.ase-pedal-knob-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.ase-pedal-knob {
+  width: 70px;
+  height: 70px;
+  border-radius: 50%;
+  position: relative;
+  cursor: pointer;
+  transform: rotate(var(--knob-rotation, 0deg));
+  background: radial-gradient(circle at 35% 30%, #8a8a8a 0%, #555 25%, #333 50%, #444 75%, #3a3a3a 100%);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.6), inset 0 1px 2px rgba(255, 255, 255, 0.15), inset 0 -1px 2px rgba(0, 0, 0, 0.4), 0 0 0 3px #222, 0 0 0 4px #3a3a3a;
+}
+.ase-knob-indicator {
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  width: 3px;
+  height: 14px;
+  background: #f0f0e0;
+  border-radius: 2px;
+  transform: translateX(-50%);
+  box-shadow: 0 0 3px rgba(255, 255, 255, 0.3);
+}
+.ase-pedal-mix-value {
+  font-family: monospace;
+  font-size: 0.8rem;
+  color: #cec4b0;
+  letter-spacing: 0.05em;
+}
+/* ─── Footswitch ────────────────────────────────────────────── */
+.ase-pedal-footer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin-top: auto;
+}
+.ase-pedal-footswitch {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  position: relative;
+  background: radial-gradient(circle at 40% 35%, #c4956a 0%, #8b6842 40%, #6b4c30 70%, #5a3d25 100%);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5), inset 0 1px 2px rgba(255, 255, 255, 0.2), 0 0 0 2px #333;
+  transition: box-shadow 0.15s, transform 0.1s;
+}
+.ase-pedal-footswitch:hover {
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5), inset 0 1px 2px rgba(255, 255, 255, 0.2), 0 0 0 2px #555;
+}
+.ase-pedal-footswitch:active {
+  transform: scale(0.95);
+}
+.ase-pedal-footswitch.engaged {
+  background: radial-gradient(circle at 40% 35%, #d4a57a 0%, #9b7852 40%, #7b5c40 70%, #6a4d35 100%);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5), inset 0 1px 2px rgba(255, 255, 255, 0.3), 0 0 8px rgba(255, 140, 50, 0.2), 0 0 0 2px #555;
+}
+/* ─── LED Indicator ─────────────────────────────────────────── */
+.ase-pedal-led {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #222;
+  border: 1px solid #333;
+  transition: all 0.2s;
+}
+.ase-pedal-led.on {
+  background: #ff6400;
+  border-color: #ff6400;
+  box-shadow: 0 0 6px rgba(255, 100, 0, 0.6);
+}
+/* ─── Drop Zone ─────────────────────────────────────────────── */
+.ase-drop-zone {
+  width: 6px;
+  min-width: 6px;
+  height: 230px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: width 0.25s ease, min-width 0.25s ease, background 0.2s;
+}
+/* When any drag is active, expand ALL drop zones to be easily hittable */
+.ase-pedalboard.drag-active .ase-drop-zone {
+  width: 36px;
+  min-width: 36px;
+  background: rgba(255, 100, 0, 0.03);
+  border-radius: 4px;
+}
+/* No-op zones (adjacent to dragged item) stay slim */
+.ase-pedalboard.drag-active .ase-drop-zone.no-op {
+  width: 6px;
+  min-width: 6px;
+  background: transparent;
+}
+.ase-drop-zone.drag-over {
+  width: 80px;
+  min-width: 80px;
+  background: rgba(255, 100, 0, 0.06);
+}
+.ase-drop-zone.drag-over .ase-drop-zone-indicator {
+  opacity: 1;
+  width: 4px;
+}
+.ase-drop-zone-indicator {
+  width: 0;
+  height: 210px;
+  border: none;
+  border-radius: 2px;
+  background: #ff6400;
+  opacity: 0;
+  transition: opacity 0.2s, width 0.2s;
+  box-shadow: 0 0 10px rgba(255, 100, 0, 0.4);
+}
+/* Show subtle indicator on hover during drag */
+.ase-pedalboard.drag-active .ase-drop-zone:not(.no-op) .ase-drop-zone-indicator {
+  opacity: 0.3;
+  width: 2px;
+}
+/* ─── Add Effect Button ─────────────────────────────────────── */
+.ase-add-effect-btn {
+  width: 48px;
+  height: 48px;
+  min-width: 48px;
+  border-radius: 50%;
+  border: 2px dashed #555;
+  background: rgba(255, 100, 0, 0.05);
+  color: #777;
+  font-size: 1.2rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  margin: 0 8px;
+  flex-shrink: 0;
+}
+.ase-add-effect-btn:hover {
+  border-color: #ff6400;
+  color: #ff6400;
+  background: rgba(255, 100, 0, 0.1);
+  box-shadow: 0 0 12px rgba(255, 100, 0, 0.2);
+  transform: scale(1.1);
+}
+/* ─── Constructor Drawer ────────────────────────────────────── */
+.ase-constructor {
+  position: absolute;
+  top: 46px;
+  right: 0;
+  width: 260px;
+  max-height: 0;
+  overflow: hidden;
+  background: #1e1e1e;
+  border-left: 1px solid #333;
+  border-bottom: 1px solid #333;
+  border-radius: 0 0 0 10px;
+  z-index: 200;
+  transition: max-height 0.3s ease, box-shadow 0.3s;
+  box-shadow: none;
+}
+.ase-constructor.open {
+  max-height: 400px;
+  box-shadow: -4px 4px 16px rgba(0, 0, 0, 0.5);
+}
+.ase-constructor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid #2a2a2a;
+}
+.ase-constructor-header h4 {
+  font-family: "Signika", sans-serif;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  color: #f0f0e0;
+  margin: 0;
+}
+.ase-constructor-close {
+  background: none;
+  border: none;
+  color: #7a7971;
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 4px;
+  transition: color 0.15s;
+}
+.ase-constructor-close:hover {
+  color: #f0f0e0;
+}
+.ase-constructor-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 12px 16px;
+}
+.ase-constructor-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 14px 8px;
+  background: #252525;
+  border: 1px solid #333;
+  border-radius: 8px;
+  color: #cec4b0;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.ase-constructor-item:hover {
+  background: #2a2a2a;
+  border-color: #ff6400;
+  color: #f0f0e0;
+  box-shadow: 0 0 8px rgba(255, 100, 0, 0.15);
+}
+.ase-constructor-item-icon {
+  font-size: 1.3rem;
+  color: #ff6400;
+}
+.ase-constructor-item-label {
+  font-family: "Signika", sans-serif;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+.ase-constructor-empty {
+  padding: 24px 16px;
+  text-align: center;
+  color: #7a7971;
+  font-style: italic;
+  font-size: 0.85rem;
+}
+/* ─── Detail Panel ──────────────────────────────────────────── */
+.ase-detail-panel {
+  height: 200px;
+  min-height: 200px;
+  background: linear-gradient(180deg, #1a1a1a 0%, #151515 100%);
+  border-top: 2px solid #2a2a2a;
+  padding: 1rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: height 0.3s, min-height 0.3s, padding 0.3s;
+  flex-shrink: 0;
+}
+.ase-detail-panel.collapsed {
+  height: 50px;
+  min-height: 50px;
+  padding: 0.8rem 1.5rem;
+}
+.ase-detail-header h3 {
+  font-family: "Signika", sans-serif;
+  font-size: 1rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: #f0f0e0;
+  margin: 0 0 0.8rem 0;
+  text-align: center;
+}
+.ase-detail-content {
+  display: flex;
+  gap: 2rem;
+  flex: 1;
+  align-items: center;
+}
+/* Detail: Mix Knob */
+.ase-detail-knob-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  min-width: 120px;
+}
+.ase-detail-knob {
+  width: 90px;
+  height: 90px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #7a7a7a 0%, #4a4a4a 30%, #2a2a2a 60%, #333 100%);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.6), inset 0 1px 3px rgba(255, 255, 255, 0.12), 0 0 0 4px #1a1a1a, 0 0 0 5px #3a3a3a;
+  position: relative;
+  cursor: pointer;
+  transform: rotate(var(--knob-rotation, 0deg));
+}
+.ase-detail-knob .ase-knob-indicator {
+  top: 8px;
+  height: 18px;
+  width: 3px;
+}
+.ase-detail-knob-label {
+  font-family: "Signika", sans-serif;
+  font-size: 0.85rem;
+  color: #ff6400;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-weight: 700;
+}
+/* Detail: Parameter Grid */
+.ase-detail-params {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem 2rem;
+  align-content: center;
+}
+.ase-detail-param-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ase-detail-param-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #7a7971;
+  min-width: 55px;
+  white-space: nowrap;
+}
+.ase-detail-param-value {
+  font-family: monospace;
+  font-size: 0.8rem;
+  color: #cec4b0;
+  min-width: 45px;
+}
+/* Detail: Orange Range Slider */
+.ase-detail-slider {
+  flex: 1;
+  height: 6px;
+  appearance: none;
+  -webkit-appearance: none;
+  background: #333;
+  border-radius: 3px;
+  outline: none;
+  cursor: pointer;
+}
+.ase-detail-slider::-webkit-slider-runnable-track {
+  height: 6px;
+  background: linear-gradient(to right, #ff6400 0%, #ff6400 var(--slider-fill, 50%), #333 var(--slider-fill, 50%), #333 100%);
+  border-radius: 3px;
+}
+.ase-detail-slider::-moz-range-track {
+  height: 6px;
+  background: #333;
+  border-radius: 3px;
+  border: none;
+}
+.ase-detail-slider::-moz-range-progress {
+  height: 6px;
+  background: #ff6400;
+  border-radius: 3px;
+}
+.ase-detail-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  background: linear-gradient(135deg, #eee 0%, #999 100%);
+  border-radius: 50%;
+  border: 2px solid #555;
+  cursor: pointer;
+  margin-top: -5px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+.ase-detail-slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  background: linear-gradient(135deg, #eee 0%, #999 100%);
+  border-radius: 50%;
+  border: 2px solid #555;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+/* Detail: Segmented Control */
+.ase-detail-param-segmented {
+  display: flex;
+  border: 1px solid #444;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.ase-seg-btn {
+  background: #1e1e1e;
+  border: none;
+  border-right: 1px solid #444;
+  color: #7a7971;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.ase-seg-btn:last-child {
+  border-right: none;
+}
+.ase-seg-btn.active {
+  background: rgba(255, 100, 0, 0.15);
+  color: #f0f0e0;
+  font-weight: 700;
+}
+.ase-seg-btn:hover:not(.active) {
+  background: #2a2a2a;
+  color: #cec4b0;
+}
+/* Detail: Empty */
+.ase-detail-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  width: 100%;
+  color: #7a7971;
+  font-style: italic;
+  font-size: 0.9rem;
+}
+/* ─── Chain Bypassed State ─────────────────────────────────── */
+.ase-effects-layout.chain-bypassed .ase-pedalboard {
+  opacity: 0.35;
+  filter: saturate(0.2);
+  pointer-events: none;
+}
+.ase-effects-layout.chain-bypassed .ase-detail-panel {
+  opacity: 0.35;
+  pointer-events: none;
+}
+/* ─── Footer ────────────────────────────────────────────────── */
+.ase-effects-footer {
+  height: 48px;
+  display: flex;
+  align-items: center;
+  padding: 0 1.5rem;
+  gap: 1rem;
+  background: #111;
+  border-top: 1px solid #2a2a2a;
+  flex-shrink: 0;
+}
+.ase-preset-section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ase-preset-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #7a7971;
+}
+.ase-preset-select {
+  background: #1e1e1e;
+  color: #cec4b0;
+  border: 1px solid #444;
+  border-radius: 4px;
+  padding: 6px 10px;
+  min-width: 200px;
+  font-size: 0.8rem;
+}
+.ase-footer-btn {
+  background: #ff6400;
+  color: #000;
+  border: none;
+  border-radius: 4px;
+  padding: 6px 14px;
+  font-weight: 700;
+  font-size: 0.8rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: background 0.15s;
+}
+.ase-footer-btn:hover {
+  background: #ff8533;
+}
+.ase-footer-btn.secondary {
+  background: transparent;
+  color: #7a7971;
+  border: 1px solid #444;
+  margin-left: auto;
+}
+.ase-footer-btn.secondary:hover {
+  color: #cec4b0;
+  border-color: #666;
+}
+/* ─── Drag Ghost ────────────────────────────────────────────── */
+.ase-drag-ghost {
+  position: fixed;
+  pointer-events: none;
+  z-index: 9999;
+  opacity: 0.85;
+  transform: rotate(3deg) scale(1.05);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.7);
+  border: 2px solid #ff6400;
+  border-radius: 10px;
 }
