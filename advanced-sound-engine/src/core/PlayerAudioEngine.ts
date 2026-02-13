@@ -173,8 +173,15 @@ export class PlayerAudioEngine {
   // GM Volume (from sync)
   // ─────────────────────────────────────────────────────────────
 
+  private sanitizeVolume(value: any, fallback: number): number {
+    if (value === null || value === undefined || typeof value !== 'number' || !isFinite(value)) {
+      return fallback;
+    }
+    return Math.max(0, Math.min(1, value));
+  }
+
   setGMVolume(channel: TrackGroup | 'master', value: number): void {
-    const safeValue = Math.max(0, Math.min(1, value));
+    const safeValue = this.sanitizeVolume(value, 1);
 
     if (channel === 'master') {
       this._gmVolumes.master = safeValue;
@@ -188,10 +195,10 @@ export class PlayerAudioEngine {
   setAllGMVolumes(volumes: ChannelVolumes): void {
     this._gmVolumes = { ...volumes };
 
-    this.gmGain.gain.setValueAtTime(volumes.master ?? 1, this.ctx.currentTime);
-    this.channelGains.music.gain.setValueAtTime(volumes.music ?? 1, this.ctx.currentTime);
-    this.channelGains.ambience.gain.setValueAtTime(volumes.ambience ?? 1, this.ctx.currentTime);
-    this.channelGains.sfx.gain.setValueAtTime(volumes.sfx ?? 1, this.ctx.currentTime);
+    this.gmGain.gain.setValueAtTime(this.sanitizeVolume(volumes.master, 1), this.ctx.currentTime);
+    this.channelGains.music.gain.setValueAtTime(this.sanitizeVolume(volumes.music, 1), this.ctx.currentTime);
+    this.channelGains.ambience.gain.setValueAtTime(this.sanitizeVolume(volumes.ambience, 1), this.ctx.currentTime);
+    this.channelGains.sfx.gain.setValueAtTime(this.sanitizeVolume(volumes.sfx, 1), this.ctx.currentTime);
   }
 
   // ─────────────────────────────────────────────────────────────

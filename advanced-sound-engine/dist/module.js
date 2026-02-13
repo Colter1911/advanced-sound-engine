@@ -1105,6 +1105,16 @@ const _AudioEngine = class _AudioEngine extends SimpleEventEmitter {
     }
     Logger.info("AudioEngine initialized (chain architecture)");
   }
+  /**
+   * Validate a volume value: must be a finite number in [0, 1].
+   * Returns fallback if the value is missing, NaN, or out of range.
+   */
+  sanitizeVolume(value, fallback) {
+    if (value === null || value === void 0 || typeof value !== "number" || !isFinite(value)) {
+      return fallback;
+    }
+    return Math.max(0, Math.min(1, value));
+  }
   // ─────────────────────────────────────────────────────────────
   // Persistence (GM only)
   // ─────────────────────────────────────────────────────────────
@@ -1356,13 +1366,21 @@ const _AudioEngine = class _AudioEngine extends SimpleEventEmitter {
     };
   }
   async restoreState(state) {
-    this._volumes.master = state.masterVolume ?? 1;
+    let needsResave = false;
+    this._volumes.master = this.sanitizeVolume(state.masterVolume, 1);
+    if (this._volumes.master !== state.masterVolume) needsResave = true;
     this.masterGain.gain.setValueAtTime(this._volumes.master, this.ctx.currentTime);
     if (state.channelVolumes) {
       for (const channel of ["music", "ambience", "sfx"]) {
-        this._volumes[channel] = state.channelVolumes[channel] ?? 1;
+        const raw = state.channelVolumes[channel];
+        this._volumes[channel] = this.sanitizeVolume(raw, 1);
+        if (this._volumes[channel] !== raw) needsResave = true;
         this.channelGains[channel].gain.setValueAtTime(this._volumes[channel], this.ctx.currentTime);
       }
+    }
+    if (needsResave) {
+      Logger.warn("Mixer state had invalid volume values — sanitized and will re-save");
+      this.scheduleSave();
     }
     if (state.chains && state.chains.length > 0) {
       for (const chainState of state.chains) {
@@ -1574,8 +1592,14 @@ const _PlayerAudioEngine = class _PlayerAudioEngine {
   // ─────────────────────────────────────────────────────────────
   // GM Volume (from sync)
   // ─────────────────────────────────────────────────────────────
+  sanitizeVolume(value, fallback) {
+    if (value === null || value === void 0 || typeof value !== "number" || !isFinite(value)) {
+      return fallback;
+    }
+    return Math.max(0, Math.min(1, value));
+  }
   setGMVolume(channel, value) {
-    const safeValue = Math.max(0, Math.min(1, value));
+    const safeValue = this.sanitizeVolume(value, 1);
     if (channel === "master") {
       this._gmVolumes.master = safeValue;
       this.gmGain.gain.linearRampToValueAtTime(safeValue, this.ctx.currentTime + 0.01);
@@ -1586,10 +1610,10 @@ const _PlayerAudioEngine = class _PlayerAudioEngine {
   }
   setAllGMVolumes(volumes) {
     this._gmVolumes = { ...volumes };
-    this.gmGain.gain.setValueAtTime(volumes.master ?? 1, this.ctx.currentTime);
-    this.channelGains.music.gain.setValueAtTime(volumes.music ?? 1, this.ctx.currentTime);
-    this.channelGains.ambience.gain.setValueAtTime(volumes.ambience ?? 1, this.ctx.currentTime);
-    this.channelGains.sfx.gain.setValueAtTime(volumes.sfx ?? 1, this.ctx.currentTime);
+    this.gmGain.gain.setValueAtTime(this.sanitizeVolume(volumes.master, 1), this.ctx.currentTime);
+    this.channelGains.music.gain.setValueAtTime(this.sanitizeVolume(volumes.music, 1), this.ctx.currentTime);
+    this.channelGains.ambience.gain.setValueAtTime(this.sanitizeVolume(volumes.ambience, 1), this.ctx.currentTime);
+    this.channelGains.sfx.gain.setValueAtTime(this.sanitizeVolume(volumes.sfx, 1), this.ctx.currentTime);
   }
   // ─────────────────────────────────────────────────────────────
   // Effects Chain Management (Called via Socket)

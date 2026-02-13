@@ -131,6 +131,17 @@ export class AudioEngine extends SimpleEventEmitter {
     Logger.info('AudioEngine initialized (chain architecture)');
   }
 
+  /**
+   * Validate a volume value: must be a finite number in [0, 1].
+   * Returns fallback if the value is missing, NaN, or out of range.
+   */
+  private sanitizeVolume(value: any, fallback: number): number {
+    if (value === null || value === undefined || typeof value !== 'number' || !isFinite(value)) {
+      return fallback;
+    }
+    return Math.max(0, Math.min(1, value));
+  }
+
   // ─────────────────────────────────────────────────────────────
   // Persistence (GM only)
   // ─────────────────────────────────────────────────────────────
@@ -441,15 +452,27 @@ export class AudioEngine extends SimpleEventEmitter {
   }
 
   async restoreState(state: MixerState): Promise<void> {
-    // Restore volumes (with safe fallbacks for missing/undefined values)
-    this._volumes.master = state.masterVolume ?? 1;
+    let needsResave = false;
+
+    // Restore master volume with validation
+    this._volumes.master = this.sanitizeVolume(state.masterVolume, 1);
+    if (this._volumes.master !== state.masterVolume) needsResave = true;
     this.masterGain.gain.setValueAtTime(this._volumes.master, this.ctx.currentTime);
 
+    // Restore per-channel volumes with validation
     if (state.channelVolumes) {
       for (const channel of ['music', 'ambience', 'sfx'] as TrackGroup[]) {
-        this._volumes[channel] = state.channelVolumes[channel] ?? 1;
+        const raw = state.channelVolumes[channel];
+        this._volumes[channel] = this.sanitizeVolume(raw, 1);
+        if (this._volumes[channel] !== raw) needsResave = true;
         this.channelGains[channel].gain.setValueAtTime(this._volumes[channel], this.ctx.currentTime);
       }
+    }
+
+    // If volumes were missing/corrupted, save the cleaned state
+    if (needsResave) {
+      Logger.warn('Mixer state had invalid volume values — sanitized and will re-save');
+      this.scheduleSave();
     }
 
     // Restore chains (new format)
