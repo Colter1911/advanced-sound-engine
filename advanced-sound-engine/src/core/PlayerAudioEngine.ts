@@ -188,10 +188,10 @@ export class PlayerAudioEngine {
   setAllGMVolumes(volumes: ChannelVolumes): void {
     this._gmVolumes = { ...volumes };
 
-    this.gmGain.gain.setValueAtTime(volumes.master, this.ctx.currentTime);
-    this.channelGains.music.gain.setValueAtTime(volumes.music, this.ctx.currentTime);
-    this.channelGains.ambience.gain.setValueAtTime(volumes.ambience, this.ctx.currentTime);
-    this.channelGains.sfx.gain.setValueAtTime(volumes.sfx, this.ctx.currentTime);
+    this.gmGain.gain.setValueAtTime(volumes.master ?? 1, this.ctx.currentTime);
+    this.channelGains.music.gain.setValueAtTime(volumes.music ?? 1, this.ctx.currentTime);
+    this.channelGains.ambience.gain.setValueAtTime(volumes.ambience ?? 1, this.ctx.currentTime);
+    this.channelGains.sfx.gain.setValueAtTime(volumes.sfx ?? 1, this.ctx.currentTime);
   }
 
   // ─────────────────────────────────────────────────────────────

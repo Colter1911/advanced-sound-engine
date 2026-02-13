@@ -336,7 +336,7 @@ export class AudioEngine extends SimpleEventEmitter {
   }
 
   setChannelVolume(channel: TrackGroup, value: number): void {
-    this._volumes[channel] = Math.max(0, Math.min(1, value));
+    this._volumes[channel] = Math.max(0, Math.min(1, value || 0));
     this.channelGains[channel].gain.linearRampToValueAtTime(
       this._volumes[channel],
       this.ctx.currentTime + 0.01
@@ -441,13 +441,13 @@ export class AudioEngine extends SimpleEventEmitter {
   }
 
   async restoreState(state: MixerState): Promise<void> {
-    // Restore volumes
-    this._volumes.master = state.masterVolume;
+    // Restore volumes (with safe fallbacks for missing/undefined values)
+    this._volumes.master = state.masterVolume ?? 1;
     this.masterGain.gain.setValueAtTime(this._volumes.master, this.ctx.currentTime);
 
     if (state.channelVolumes) {
       for (const channel of ['music', 'ambience', 'sfx'] as TrackGroup[]) {
-        this._volumes[channel] = state.channelVolumes[channel];
+        this._volumes[channel] = state.channelVolumes[channel] ?? 1;
         this.channelGains[channel].gain.setValueAtTime(this._volumes[channel], this.ctx.currentTime);
       }
     }

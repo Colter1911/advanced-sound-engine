@@ -1270,7 +1270,7 @@ const _AudioEngine = class _AudioEngine extends SimpleEventEmitter {
     this.scheduleSave();
   }
   setChannelVolume(channel, value) {
-    this._volumes[channel] = Math.max(0, Math.min(1, value));
+    this._volumes[channel] = Math.max(0, Math.min(1, value || 0));
     this.channelGains[channel].gain.linearRampToValueAtTime(
       this._volumes[channel],
       this.ctx.currentTime + 0.01
@@ -1356,11 +1356,11 @@ const _AudioEngine = class _AudioEngine extends SimpleEventEmitter {
     };
   }
   async restoreState(state) {
-    this._volumes.master = state.masterVolume;
+    this._volumes.master = state.masterVolume ?? 1;
     this.masterGain.gain.setValueAtTime(this._volumes.master, this.ctx.currentTime);
     if (state.channelVolumes) {
       for (const channel of ["music", "ambience", "sfx"]) {
-        this._volumes[channel] = state.channelVolumes[channel];
+        this._volumes[channel] = state.channelVolumes[channel] ?? 1;
         this.channelGains[channel].gain.setValueAtTime(this._volumes[channel], this.ctx.currentTime);
       }
     }
@@ -1586,10 +1586,10 @@ const _PlayerAudioEngine = class _PlayerAudioEngine {
   }
   setAllGMVolumes(volumes) {
     this._gmVolumes = { ...volumes };
-    this.gmGain.gain.setValueAtTime(volumes.master, this.ctx.currentTime);
-    this.channelGains.music.gain.setValueAtTime(volumes.music, this.ctx.currentTime);
-    this.channelGains.ambience.gain.setValueAtTime(volumes.ambience, this.ctx.currentTime);
-    this.channelGains.sfx.gain.setValueAtTime(volumes.sfx, this.ctx.currentTime);
+    this.gmGain.gain.setValueAtTime(volumes.master ?? 1, this.ctx.currentTime);
+    this.channelGains.music.gain.setValueAtTime(volumes.music ?? 1, this.ctx.currentTime);
+    this.channelGains.ambience.gain.setValueAtTime(volumes.ambience ?? 1, this.ctx.currentTime);
+    this.channelGains.sfx.gain.setValueAtTime(volumes.sfx ?? 1, this.ctx.currentTime);
   }
   // ─────────────────────────────────────────────────────────────
   // Effects Chain Management (Called via Socket)
