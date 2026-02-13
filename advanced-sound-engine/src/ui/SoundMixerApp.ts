@@ -19,7 +19,7 @@ const MODULE_ID = 'advanced-sound-engine';
 interface MixerViewData {
   favorites: FavoriteViewData[];
   queuePlaylists: QueuePlaylistViewData[];
-  effects: EffectViewData[];
+  channelEffects: ChannelEffectsViewData;
 }
 
 interface FavoriteViewData {
@@ -34,10 +34,10 @@ interface FavoriteViewData {
   isFavorite: boolean;           // Always true in favorites, but needed for star state
 }
 
-interface EffectViewData {
-  id: string;
-  name: string;
-  enabled: boolean;
+interface ChannelEffectsViewData {
+  music: boolean;
+  ambience: boolean;
+  sfx: boolean;
 }
 
 interface QueuePlaylistViewData {
@@ -208,33 +208,17 @@ export class SoundMixerApp {
     const queueItems = this.queueManager.getItems();
     const queuePlaylists = this.groupQueueByPlaylist(queueItems);
 
-    // Get effect types from chains (deduplicated, show enabled if active on ANY channel)
-    const effectTypes = new Set<string>();
-    const effects: EffectViewData[] = [];
-    const channels: TrackGroup[] = ['music', 'ambience', 'sfx'];
-
-    for (const channel of channels) {
-      const chain = this.engine.getChain(channel);
-      for (const effect of chain.getEffects()) {
-        if (!effectTypes.has(effect.type)) {
-          effectTypes.add(effect.type);
-          const isEnabled = channels.some(ch => {
-            const e = this.engine.getChain(ch).getEffect(effect.type as EffectType);
-            return e?.enabled ?? false;
-          });
-          effects.push({
-            id: effect.type,
-            name: effect.type,
-            enabled: isEnabled,
-          });
-        }
-      }
-    }
+    // Get channel bypass states
+    const channelEffects: ChannelEffectsViewData = {
+      music: !this.engine.getChain('music').isBypassed,
+      ambience: !this.engine.getChain('ambience').isBypassed,
+      sfx: !this.engine.getChain('sfx').isBypassed
+    };
 
     return {
       favorites,
       queuePlaylists,
-      effects,
+      channelEffects,
     };
   }
 
@@ -418,7 +402,7 @@ export class SoundMixerApp {
     });
 
     // Effects controls
-    html.find('[data-action="toggle-effect"]').on('click', (e) => this.onToggleEffect(e));
+    html.find('[data-action="toggle-channel-effects"]').on('click', (e) => this.onToggleChannelEffects(e));
 
     // Drag and Drop
     this.setupDragAndDrop(html);
@@ -1698,6 +1682,25 @@ export class SoundMixerApp {
     if (this.renderParent) {
       this.renderParent();
     }
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // Effect Handlers
+  // ─────────────────────────────────────────────────────────────
+
+  private onToggleChannelEffects(event: JQuery.ClickEvent): void {
+    event.preventDefault();
+    const btn = $(event.currentTarget);
+    const channel = btn.data('channel') as TrackGroup;
+
+    // If button is active, it means effects are ON (not bypassed).
+    // Clicking it should turn them OFF (bypass = true).
+    const isCurrentlyActive = btn.hasClass('active');
+    const shouldBypass = isCurrentlyActive;
+
+    this.engine.toggleChainBypass(channel, shouldBypass);
+    this.socket.broadcastFullState();
+    this.requestRender();
   }
 
   private onToggleEffect(event: JQuery.ClickEvent): void {

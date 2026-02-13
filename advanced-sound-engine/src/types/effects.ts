@@ -41,6 +41,8 @@ export interface ChainEffectState {
 export interface ChannelChain {
     channel: TrackGroup;
     effects: ChainEffectState[];                      // index = position in chain
+    bypassed?: boolean;
+    savedEnabledStates?: Record<string, boolean>;     // Snapshot of enabled states before bypass
 }
 
 /** Default mix values per effect type */

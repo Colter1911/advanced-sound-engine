@@ -217,11 +217,17 @@
     {{!-- Effects Control Panel --}}
     <div class="ase-mixer-effects-panel">
       <div class="ase-effects-toggles">
-        {{#each effects}}
-        <button class="ase-effect-btn {{#if enabled}}active{{/if}}" data-action="toggle-effect" data-effect-id="{{id}}">
-          {{name}}
+      <div class="ase-effects-toggles">
+        <button class="ase-effect-btn {{#if channelEffects.music}}active{{/if}}" data-action="toggle-channel-effects" data-channel="music">
+          <i class="fa-solid fa-music"></i> Music Effects
         </button>
-        {{/each}}
+        <button class="ase-effect-btn {{#if channelEffects.ambience}}active{{/if}}" data-action="toggle-channel-effects" data-channel="ambience">
+          <i class="fa-solid fa-cloud"></i> Ambience Effects
+        </button>
+        <button class="ase-effect-btn {{#if channelEffects.sfx}}active{{/if}}" data-action="toggle-channel-effects" data-channel="sfx">
+          <i class="fa-solid fa-bolt"></i> SFX Effects
+        </button>
+      </div>
       </div>
     </div>
   </main>

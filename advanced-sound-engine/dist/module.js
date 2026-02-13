@@ -781,6 +781,8 @@ const _EffectChain = class _EffectChain {
     __publicField(this, "effects", []);
     /** Mute node used during chain rebuild to prevent clicks */
     __publicField(this, "muteNode");
+    __publicField(this, "_bypassed", false);
+    __publicField(this, "_savedEnabledStates", /* @__PURE__ */ new Map());
     this.ctx = ctx;
     this.channel = channel;
     this.inputNode = ctx.createGain();
@@ -789,6 +791,34 @@ const _EffectChain = class _EffectChain {
     this.muteNode.gain.value = 1;
     this.muteNode.connect(this.outputNode);
     this.inputNode.connect(this.muteNode);
+  }
+  // ─── Bypass Logic ───────────────────────────────────────────
+  get isBypassed() {
+    return this._bypassed;
+  }
+  bypass() {
+    if (this._bypassed) return;
+    this._savedEnabledStates.clear();
+    for (const effect of this.effects) {
+      this._savedEnabledStates.set(effect.type, effect.enabled);
+      if (effect.enabled) {
+        effect.setEnabled(false);
+      }
+    }
+    this._bypassed = true;
+    Logger.debug(`EffectChain [${this.channel}]: bypassed`);
+  }
+  restore() {
+    if (!this._bypassed) return;
+    for (const effect of this.effects) {
+      const wasEnabled = this._savedEnabledStates.get(effect.type);
+      if (wasEnabled) {
+        effect.setEnabled(true);
+      }
+    }
+    this._savedEnabledStates.clear();
+    this._bypassed = false;
+    Logger.debug(`EffectChain [${this.channel}]: restored from bypass`);
   }
   // ─── Chain Building ─────────────────────────────────────────
   /** Build a chain with default effect order, all disabled */
@@ -799,6 +829,8 @@ const _EffectChain = class _EffectChain {
   buildFromTypes(types) {
     this.disposeEffects();
     this.effects = types.map((type) => createEffect(this.ctx, type));
+    this._bypassed = false;
+    this._savedEnabledStates.clear();
     this.rebuildConnections();
     Logger.debug(`EffectChain [${this.channel}]: built with ${types.join(" → ")}`);
   }
@@ -810,6 +842,16 @@ const _EffectChain = class _EffectChain {
       effect.restoreChainState(es);
       return effect;
     });
+    if (state.bypassed) {
+      this._bypassed = true;
+      if (state.savedEnabledStates) {
+        this._savedEnabledStates = new Map(Object.entries(state.savedEnabledStates));
+      }
+      Logger.debug(`EffectChain [${this.channel}]: restored in bypassed state`);
+    } else {
+      this._bypassed = false;
+      this._savedEnabledStates.clear();
+    }
     this.rebuildConnections();
     Logger.debug(`EffectChain [${this.channel}]: restored ${this.effects.length} effects`);
   }
@@ -886,6 +928,12 @@ const _EffectChain = class _EffectChain {
     const effect = this.getEffect(type);
     if (effect) {
       effect.setEnabled(enabled);
+      if (this._bypassed) {
+        this._savedEnabledStates.set(type, enabled);
+        effect.setEnabled(false);
+      } else {
+        effect.setEnabled(enabled);
+      }
     }
   }
   setEffectParam(type, paramId, value) {
@@ -913,6 +961,10 @@ const _EffectChain = class _EffectChain {
     } else {
       this.effects.push(effect);
     }
+    if (this._bypassed) {
+      this._savedEnabledStates.set(type, false);
+      effect.setEnabled(false);
+    }
     this.rebuildConnections();
     Logger.debug(`EffectChain [${this.channel}]: added ${type}`);
     return effect;
@@ -923,6 +975,9 @@ const _EffectChain = class _EffectChain {
     if (index === -1) return false;
     const [removed] = this.effects.splice(index, 1);
     removed.dispose();
+    if (this._bypassed) {
+      this._savedEnabledStates.delete(type);
+    }
     this.rebuildConnections();
     Logger.debug(`EffectChain [${this.channel}]: removed ${type}`);
     return true;
@@ -930,9 +985,15 @@ const _EffectChain = class _EffectChain {
   // ─── State ──────────────────────────────────────────────────
   /** Get full chain state for serialization / sync */
   getState() {
+    const savedStateObj = {};
+    for (const [key, val] of this._savedEnabledStates) {
+      savedStateObj[key] = val;
+    }
     return {
       channel: this.channel,
-      effects: this.effects.map((e) => e.getChainState())
+      effects: this.effects.map((e) => e.getChainState()),
+      bypassed: this._bypassed,
+      savedEnabledStates: this._bypassed ? savedStateObj : void 0
     };
   }
   // ─── Cleanup ────────────────────────────────────────────────
@@ -1380,6 +1441,17 @@ const _AudioEngine = class _AudioEngine extends SimpleEventEmitter {
   /** Remove effect from a channel's chain */
   removeChainEffect(channel, effectType) {
     this.chains[channel].removeEffect(effectType);
+    this.scheduleSave();
+  }
+  /** Toggle master bypass for a channel's chain */
+  toggleChainBypass(channel, bypassed) {
+    const chain = this.chains[channel];
+    if (!chain) return;
+    if (bypassed) {
+      chain.bypass();
+    } else {
+      chain.restore();
+    }
     this.scheduleSave();
   }
   // ─────────────────────────────────────────────────────────────
@@ -4626,30 +4698,15 @@ const _SoundMixerApp = class _SoundMixerApp {
     }
     const queueItems = this.queueManager.getItems();
     const queuePlaylists = this.groupQueueByPlaylist(queueItems);
-    const effectTypes = /* @__PURE__ */ new Set();
-    const effects = [];
-    const channels = ["music", "ambience", "sfx"];
-    for (const channel of channels) {
-      const chain = this.engine.getChain(channel);
-      for (const effect of chain.getEffects()) {
-        if (!effectTypes.has(effect.type)) {
-          effectTypes.add(effect.type);
-          const isEnabled = channels.some((ch) => {
-            const e = this.engine.getChain(ch).getEffect(effect.type);
-            return (e == null ? void 0 : e.enabled) ?? false;
-          });
-          effects.push({
-            id: effect.type,
-            name: effect.type,
-            enabled: isEnabled
-          });
-        }
-      }
-    }
+    const channelEffects = {
+      music: !this.engine.getChain("music").isBypassed,
+      ambience: !this.engine.getChain("ambience").isBypassed,
+      sfx: !this.engine.getChain("sfx").isBypassed
+    };
     return {
       favorites,
       queuePlaylists,
-      effects
+      channelEffects
     };
   }
   groupQueueByPlaylist(queueItems) {
@@ -4788,7 +4845,7 @@ const _SoundMixerApp = class _SoundMixerApp {
         $tooltip.css("display", "none");
       });
     });
-    html.find('[data-action="toggle-effect"]').on("click", (e) => this.onToggleEffect(e));
+    html.find('[data-action="toggle-channel-effects"]').on("click", (e) => this.onToggleChannelEffects(e));
     this.setupDragAndDrop(html);
     this.setupMarquee(html);
   }
@@ -5756,6 +5813,19 @@ const _SoundMixerApp = class _SoundMixerApp {
       this.renderParent();
     }
   }
+  // ─────────────────────────────────────────────────────────────
+  // Effect Handlers
+  // ─────────────────────────────────────────────────────────────
+  onToggleChannelEffects(event) {
+    event.preventDefault();
+    const btn = $(event.currentTarget);
+    const channel = btn.data("channel");
+    const isCurrentlyActive = btn.hasClass("active");
+    const shouldBypass = isCurrentlyActive;
+    this.engine.toggleChainBypass(channel, shouldBypass);
+    this.socket.broadcastFullState();
+    this.requestRender();
+  }
   onToggleEffect(event) {
     event.preventDefault();
     const $btn = $(event.currentTarget);
@@ -6226,8 +6296,6 @@ const _SoundEffectsApp = class _SoundEffectsApp {
     __publicField(this, "activeChannel", "music");
     __publicField(this, "selectedEffectType", null);
     __publicField(this, "constructorOpen", false);
-    __publicField(this, "chainBypassed", false);
-    __publicField(this, "savedEnabledStates", /* @__PURE__ */ new Map());
     this.engine = engine;
     this.socket = socket;
   }
@@ -6297,7 +6365,7 @@ const _SoundEffectsApp = class _SoundEffectsApp {
         customPresets,
         availableEffects,
         constructorOpen: this.constructorOpen,
-        chainBypassed: this.chainBypassed
+        chainBypassed: chain.isBypassed
       };
     } catch (error) {
       Logger.error("SoundEffectsApp getData failed:", error);
@@ -6319,7 +6387,8 @@ const _SoundEffectsApp = class _SoundEffectsApp {
           };
         }),
         constructorOpen: this.constructorOpen,
-        chainBypassed: this.chainBypassed
+        chainBypassed: false
+        // Fallback
       };
     }
   }
@@ -6360,7 +6429,7 @@ const _SoundEffectsApp = class _SoundEffectsApp {
     html.off("click", '[data-action="save-preset"]').on("click", '[data-action="save-preset"]', (e) => this.onSavePreset(e));
     html.off("click", '[data-action="reset-chain"]').on("click", '[data-action="reset-chain"]', (e) => this.onResetChain(e));
     this.initDragAndDrop(html);
-    if (this.chainBypassed) {
+    if (this.engine.getChain(this.activeChannel).isBypassed) {
       html.find(".ase-effects-layout").addClass("chain-bypassed");
     }
   }
@@ -6383,30 +6452,9 @@ const _SoundEffectsApp = class _SoundEffectsApp {
   onToggleChainBypass(event) {
     var _a;
     event.preventDefault();
-    this.chainBypassed = !this.chainBypassed;
     const chain = this.engine.getChain(this.activeChannel);
-    const effects = chain.getEffects();
-    if (this.chainBypassed) {
-      const stateMap = /* @__PURE__ */ new Map();
-      for (const effect of effects) {
-        stateMap.set(effect.type, effect.enabled);
-        if (effect.enabled) {
-          this.engine.setChainEffectEnabled(this.activeChannel, effect.type, false);
-        }
-      }
-      this.savedEnabledStates.set(this.activeChannel, stateMap);
-    } else {
-      const stateMap = this.savedEnabledStates.get(this.activeChannel);
-      if (stateMap) {
-        for (const effect of effects) {
-          const wasEnabled = stateMap.get(effect.type);
-          if (wasEnabled) {
-            this.engine.setChainEffectEnabled(this.activeChannel, effect.type, true);
-          }
-        }
-        this.savedEnabledStates.delete(this.activeChannel);
-      }
-    }
+    const newState = !chain.isBypassed;
+    this.engine.toggleChainBypass(this.activeChannel, newState);
     this.socket.broadcastFullState();
     (_a = this.renderParent) == null ? void 0 : _a.call(this);
   }
@@ -6697,7 +6745,6 @@ const _SoundEffectsApp = class _SoundEffectsApp {
     const chain = this.engine.getChain(this.activeChannel);
     chain.buildDefault();
     this.selectedEffectType = null;
-    this.chainBypassed = false;
     this.constructorOpen = false;
     this.socket.broadcastFullState();
     (_a = this.renderParent) == null ? void 0 : _a.call(this);

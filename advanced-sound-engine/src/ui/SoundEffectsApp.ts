@@ -14,12 +14,12 @@ const MODULE_ID = 'advanced-sound-engine';
 const ALL_EFFECT_TYPES: EffectType[] = ['filter', 'compressor', 'distortion', 'delay', 'reverb'];
 
 const EFFECT_META: Record<string, { label: string; icon: string }> = {
-    filter:     { label: 'Filter',     icon: 'fa-wave-square'  },
-    compressor: { label: 'Compressor', icon: 'fa-compress'     },
-    distortion: { label: 'Distortion', icon: 'fa-bolt'         },
-    delay:      { label: 'Delay',      icon: 'fa-clock'        },
-    reverb:     { label: 'Reverb',     icon: 'fa-water'        },
-    modulation: { label: 'Modulation', icon: 'fa-wave-square'  },
+    filter: { label: 'Filter', icon: 'fa-wave-square' },
+    compressor: { label: 'Compressor', icon: 'fa-compress' },
+    distortion: { label: 'Distortion', icon: 'fa-bolt' },
+    delay: { label: 'Delay', icon: 'fa-clock' },
+    reverb: { label: 'Reverb', icon: 'fa-water' },
+    modulation: { label: 'Modulation', icon: 'fa-wave-square' },
 };
 
 // ─── View Data Types ───────────────────────────────────────────
@@ -80,8 +80,6 @@ export class SoundEffectsApp {
     private activeChannel: TrackGroup = 'music';
     private selectedEffectType: EffectType | null = null;
     private constructorOpen: boolean = false;
-    private chainBypassed: boolean = false;
-    private savedEnabledStates: Map<string, Map<EffectType, boolean>> = new Map();
 
     constructor(engine: AudioEngine, socket: SocketManager) {
         this.engine = engine;
@@ -165,7 +163,7 @@ export class SoundEffectsApp {
                 customPresets,
                 availableEffects,
                 constructorOpen: this.constructorOpen,
-                chainBypassed: this.chainBypassed,
+                chainBypassed: chain.isBypassed,
             };
         } catch (error) {
             Logger.error('SoundEffectsApp getData failed:', error);
@@ -184,7 +182,7 @@ export class SoundEffectsApp {
                     icon: EFFECT_META[t]?.icon || 'fa-circle',
                 })),
                 constructorOpen: this.constructorOpen,
-                chainBypassed: this.chainBypassed,
+                chainBypassed: false, // Fallback
             };
         }
     }
@@ -254,7 +252,7 @@ export class SoundEffectsApp {
         this.initDragAndDrop(html);
 
         // Apply bypassed state to layout
-        if (this.chainBypassed) {
+        if (this.engine.getChain(this.activeChannel).isBypassed) {
             html.find('.ase-effects-layout').addClass('chain-bypassed');
         }
     }
@@ -280,34 +278,11 @@ export class SoundEffectsApp {
 
     private onToggleChainBypass(event: JQuery.ClickEvent): void {
         event.preventDefault();
-        this.chainBypassed = !this.chainBypassed;
 
         const chain = this.engine.getChain(this.activeChannel);
-        const effects = chain.getEffects();
+        const newState = !chain.isBypassed;
 
-        if (this.chainBypassed) {
-            // Save current enabled states, then disable all
-            const stateMap = new Map<EffectType, boolean>();
-            for (const effect of effects) {
-                stateMap.set(effect.type, effect.enabled);
-                if (effect.enabled) {
-                    this.engine.setChainEffectEnabled(this.activeChannel, effect.type, false);
-                }
-            }
-            this.savedEnabledStates.set(this.activeChannel, stateMap);
-        } else {
-            // Restore saved states
-            const stateMap = this.savedEnabledStates.get(this.activeChannel);
-            if (stateMap) {
-                for (const effect of effects) {
-                    const wasEnabled = stateMap.get(effect.type);
-                    if (wasEnabled) {
-                        this.engine.setChainEffectEnabled(this.activeChannel, effect.type, true);
-                    }
-                }
-                this.savedEnabledStates.delete(this.activeChannel);
-            }
-        }
+        this.engine.toggleChainBypass(this.activeChannel, newState);
 
         this.socket.broadcastFullState();
         this.renderParent?.();
@@ -681,7 +656,6 @@ export class SoundEffectsApp {
         const chain = this.engine.getChain(this.activeChannel);
         chain.buildDefault();
         this.selectedEffectType = null;
-        this.chainBypassed = false;
         this.constructorOpen = false;
 
         this.socket.broadcastFullState();

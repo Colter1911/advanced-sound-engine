@@ -430,6 +430,19 @@ export class AudioEngine extends SimpleEventEmitter {
     this.scheduleSave();
   }
 
+  /** Toggle master bypass for a channel's chain */
+  toggleChainBypass(channel: TrackGroup, bypassed: boolean): void {
+    const chain = this.chains[channel];
+    if (!chain) return;
+
+    if (bypassed) {
+      chain.bypass();
+    } else {
+      chain.restore();
+    }
+    this.scheduleSave();
+  }
+
   // ─────────────────────────────────────────────────────────────
   // State
   // ─────────────────────────────────────────────────────────────

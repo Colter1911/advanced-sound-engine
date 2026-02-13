@@ -43,6 +43,9 @@ export class EffectChain {
     /** Mute node used during chain rebuild to prevent clicks */
     private muteNode: GainNode;
 
+    private _bypassed: boolean = false;
+    private _savedEnabledStates: Map<EffectType, boolean> = new Map();
+
     constructor(ctx: AudioContext, channel: TrackGroup) {
         this.ctx = ctx;
         this.channel = channel;
@@ -57,6 +60,40 @@ export class EffectChain {
 
         // Default: empty chain, input → muteNode → output
         this.inputNode.connect(this.muteNode);
+    }
+
+    // ─── Bypass Logic ───────────────────────────────────────────
+
+    public get isBypassed(): boolean {
+        return this._bypassed;
+    }
+
+    public bypass(): void {
+        if (this._bypassed) return;
+
+        this._savedEnabledStates.clear();
+        for (const effect of this.effects) {
+            this._savedEnabledStates.set(effect.type, effect.enabled);
+            if (effect.enabled) {
+                effect.setEnabled(false);
+            }
+        }
+        this._bypassed = true;
+        Logger.debug(`EffectChain [${this.channel}]: bypassed`);
+    }
+
+    public restore(): void {
+        if (!this._bypassed) return;
+
+        for (const effect of this.effects) {
+            const wasEnabled = this._savedEnabledStates.get(effect.type);
+            if (wasEnabled) {
+                effect.setEnabled(true);
+            }
+        }
+        this._savedEnabledStates.clear();
+        this._bypassed = false;
+        Logger.debug(`EffectChain [${this.channel}]: restored from bypass`);
     }
 
     // ─── Chain Building ─────────────────────────────────────────
@@ -74,6 +111,9 @@ export class EffectChain {
         // Create new effect instances
         this.effects = types.map(type => createEffect(this.ctx, type));
 
+        this._bypassed = false;
+        this._savedEnabledStates.clear();
+
         this.rebuildConnections();
         Logger.debug(`EffectChain [${this.channel}]: built with ${types.join(' → ')}`);
     }
@@ -89,6 +129,18 @@ export class EffectChain {
             effect.restoreChainState(es);
             return effect;
         });
+
+        // Restore bypass state
+        if (state.bypassed) {
+            this._bypassed = true;
+            if (state.savedEnabledStates) {
+                this._savedEnabledStates = new Map(Object.entries(state.savedEnabledStates)) as Map<EffectType, boolean>;
+            }
+            Logger.debug(`EffectChain [${this.channel}]: restored in bypassed state`);
+        } else {
+            this._bypassed = false;
+            this._savedEnabledStates.clear();
+        }
 
         this.rebuildConnections();
         Logger.debug(`EffectChain [${this.channel}]: restored ${this.effects.length} effects`);
@@ -198,6 +250,20 @@ export class EffectChain {
         const effect = this.getEffect(type);
         if (effect) {
             effect.setEnabled(enabled);
+            // If bypassed, update logic is tricky. 
+            // If we enable an effect while bypassed, should we un-bypass? 
+            // Or just update the saved state?
+            // "Mechanic already implemented in Sound Effects":
+            // In SoundEffectsApp, toggling an individual effect didn't used to affect bypass state.
+            // But if we are bypassed, the effect shouldn't actually turn on.
+            if (this._bypassed) {
+                // Update saved state instead
+                this._savedEnabledStates.set(type, enabled);
+                // Ensure it stays disabled in reality
+                effect.setEnabled(false);
+            } else {
+                effect.setEnabled(enabled);
+            }
         }
     }
 
@@ -233,6 +299,13 @@ export class EffectChain {
             this.effects.push(effect);
         }
 
+        // If bypassed, new effect should start disabled but maybe 'enabled' in saved state?
+        // Default is disabled anyway.
+        if (this._bypassed) {
+            this._savedEnabledStates.set(type, false);
+            effect.setEnabled(false);
+        }
+
         this.rebuildConnections();
         Logger.debug(`EffectChain [${this.channel}]: added ${type}`);
         return effect;
@@ -245,6 +318,11 @@ export class EffectChain {
 
         const [removed] = this.effects.splice(index, 1);
         removed.dispose();
+
+        if (this._bypassed) {
+            this._savedEnabledStates.delete(type);
+        }
+
         this.rebuildConnections();
 
         Logger.debug(`EffectChain [${this.channel}]: removed ${type}`);
@@ -255,9 +333,16 @@ export class EffectChain {
 
     /** Get full chain state for serialization / sync */
     getState(): ChannelChain {
+        const savedStateObj: Record<string, boolean> = {};
+        for (const [key, val] of this._savedEnabledStates) {
+            savedStateObj[key] = val;
+        }
+
         return {
             channel: this.channel,
             effects: this.effects.map(e => e.getChainState()),
+            bypassed: this._bypassed,
+            savedEnabledStates: this._bypassed ? savedStateObj : undefined
         };
     }
 
