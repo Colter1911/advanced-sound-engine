@@ -244,6 +244,17 @@ const _AudioEffect = class _AudioEffect {
     });
     this.setEnabled(this.enabled);
   }
+  // ─── Sanitization Helper ────────────────────────────────────
+  /**
+   * Sanitize a float value: must be finite and within [min, max].
+   * Returns fallback if invalid.
+   */
+  sanitizeFloat(value, min, max, fallback) {
+    if (value === null || value === void 0 || typeof value !== "number" || !isFinite(value)) {
+      return fallback;
+    }
+    return Math.max(min, Math.min(max, value));
+  }
   // ─── Mix Control ────────────────────────────────────────────
   /** Get current mix value */
   get mix() {
@@ -255,7 +266,7 @@ const _AudioEffect = class _AudioEffect {
    * 1.0 = fully wet (100% effect processing)
    */
   setMix(mix) {
-    this._mix = Math.max(0, Math.min(1, mix));
+    this._mix = this.sanitizeFloat(mix, 0, 1, this._mix);
     if (this.enabled) {
       this.applyMixGains();
     }
@@ -269,17 +280,20 @@ const _AudioEffect = class _AudioEffect {
   // ─── Enable / Bypass ────────────────────────────────────────
   /**
    * Enable/Disable effect processing.
-   * Disabled = true bypass: dry gain = 1.0, wet gain = 0.0
-   * Enabled = apply current mix values
+   * Disabled = true bypass: dry gain = 1.0, wet gain = 0.0, output gain = 1.0 (Unity)
+   * Enabled = apply current mix and level values
    */
   setEnabled(enabled) {
-    this.enabled = enabled;
+    this.enabled = !!enabled;
     const t = this.ctx.currentTime;
-    if (enabled) {
+    const level = this.getParamValue("level") ?? 1;
+    if (this.enabled) {
       this.applyMixGains();
+      this.outputNode.gain.setTargetAtTime(level, t, 0.02);
     } else {
       this.dryNode.gain.setTargetAtTime(1, t, 0.02);
       this.wetNode.gain.setTargetAtTime(0, t, 0.02);
+      this.outputNode.gain.setTargetAtTime(1, t, 0.02);
     }
   }
   // ─── Chain Connection API ───────────────────────────────────
@@ -297,17 +311,37 @@ const _AudioEffect = class _AudioEffect {
   }
   // ─── Parameter API ──────────────────────────────────────────
   setParam(key, value) {
+    var _a;
     const param = this.params.get(key);
     if (!param) {
       Logger.warn(`Effect ${this.type} has no parameter '${key}'`);
       return;
     }
-    Logger.debug(`Effect ${this.type} (${this.id}) setting ${key} to`, value);
-    param.value = value;
+    let safeValue = value;
+    const pType = param.type;
+    if (pType === "float" || pType === "range") {
+      safeValue = this.sanitizeFloat(
+        value,
+        // Fix lint: cast to number
+        param.min ?? -Infinity,
+        param.max ?? Infinity,
+        param.defaultValue ?? param.value
+      );
+    } else if (pType === "select") {
+      const validOption = (_a = param.options) == null ? void 0 : _a.some((opt) => opt.value === value);
+      if (!validOption) {
+        Logger.warn(`Invalid value '${value}' for select param '${key}' in effect '${this.type}'. Fallback to default.`);
+        safeValue = param.defaultValue;
+      }
+    }
+    Logger.debug(`Effect ${this.type} (${this.id}) setting ${key} to`, safeValue);
+    param.value = safeValue;
     if (key === "level") {
-      this.outputNode.gain.setTargetAtTime(value, this.ctx.currentTime, 0.05);
+      if (this.enabled) {
+        this.outputNode.gain.setTargetAtTime(safeValue, this.ctx.currentTime, 0.05);
+      }
     } else {
-      this.applyParam(key, value);
+      this.applyParam(key, safeValue);
     }
   }
   getParamValue(key) {
@@ -333,7 +367,7 @@ const _AudioEffect = class _AudioEffect {
   }
   /** Restore state from a ChainEffectState */
   restoreChainState(state) {
-    this._mix = state.mix ?? DEFAULT_MIX[this.type] ?? 1;
+    this._mix = this.sanitizeFloat(state.mix, 0, 1, DEFAULT_MIX[this.type] ?? 1);
     for (const [key, value] of Object.entries(state.params)) {
       this.setParam(key, value);
     }

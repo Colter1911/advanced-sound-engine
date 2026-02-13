@@ -54,6 +54,19 @@ export abstract class AudioEffect {
         this.setEnabled(this.enabled);
     }
 
+    // ─── Sanitization Helper ────────────────────────────────────
+
+    /**
+     * Sanitize a float value: must be finite and within [min, max].
+     * Returns fallback if invalid.
+     */
+    private sanitizeFloat(value: any, min: number, max: number, fallback: number): number {
+        if (value === null || value === undefined || typeof value !== 'number' || !isFinite(value)) {
+            return fallback;
+        }
+        return Math.max(min, Math.min(max, value));
+    }
+
     // ─── Mix Control ────────────────────────────────────────────
 
     /** Get current mix value */
@@ -67,7 +80,7 @@ export abstract class AudioEffect {
      * 1.0 = fully wet (100% effect processing)
      */
     public setMix(mix: number): void {
-        this._mix = Math.max(0, Math.min(1, mix));
+        this._mix = this.sanitizeFloat(mix, 0, 1, this._mix);
         // Only apply mix gains if effect is enabled; bypass overrides
         if (this.enabled) {
             this.applyMixGains();
@@ -85,19 +98,24 @@ export abstract class AudioEffect {
 
     /**
      * Enable/Disable effect processing.
-     * Disabled = true bypass: dry gain = 1.0, wet gain = 0.0
-     * Enabled = apply current mix values
+     * Disabled = true bypass: dry gain = 1.0, wet gain = 0.0, output gain = 1.0 (Unity)
+     * Enabled = apply current mix and level values
      */
     public setEnabled(enabled: boolean): void {
-        this.enabled = enabled;
+        this.enabled = !!enabled; // Ensure boolean
         const t = this.ctx.currentTime;
+        const level = (this.getParamValue('level') as number) ?? 1.0;
 
-        if (enabled) {
+        if (this.enabled) {
             this.applyMixGains();
+            // Restore user-defined output level
+            this.outputNode.gain.setTargetAtTime(level, t, 0.02);
         } else {
-            // True bypass: full dry, no wet
+            // True bypass: full dry, no wet, UNITY GAIN output
             this.dryNode.gain.setTargetAtTime(1.0, t, 0.02);
             this.wetNode.gain.setTargetAtTime(0.0, t, 0.02);
+            // Force Unity Gain so disabled effect doesn't attenuate signal
+            this.outputNode.gain.setTargetAtTime(1.0, t, 0.02);
         }
     }
 
@@ -127,13 +145,38 @@ export abstract class AudioEffect {
             return;
         }
 
-        Logger.debug(`Effect ${this.type} (${this.id}) setting ${key} to`, value);
-        param.value = value;
+        let safeValue: any = value;
+
+        // Sanitize based on param type
+        const pType = param.type as string; // Fix lint: 'range' might not be in EffectParamType union in legacy definitions
+
+        if (pType === 'float' || pType === 'range') {
+            safeValue = this.sanitizeFloat(
+                value as number, // Fix lint: cast to number
+                param.min ?? -Infinity,
+                param.max ?? Infinity,
+                param.defaultValue ?? (param.value as number)
+            );
+        } else if (pType === 'select') {
+            const validOption = param.options?.some(opt => opt.value === value);
+            if (!validOption) {
+                Logger.warn(`Invalid value '${value}' for select param '${key}' in effect '${this.type}'. Fallback to default.`);
+                safeValue = param.defaultValue;
+            }
+        }
+
+        Logger.debug(`Effect ${this.type} (${this.id}) setting ${key} to`, safeValue);
+        // Update stored param value
+        param.value = safeValue;
 
         if (key === 'level') {
-            this.outputNode.gain.setTargetAtTime(value as number, this.ctx.currentTime, 0.05);
+            // Only update gain node if enabled. 
+            // If disabled, we store the value but keep Unity Gain (1.0) on node.
+            if (this.enabled) {
+                this.outputNode.gain.setTargetAtTime(safeValue as number, this.ctx.currentTime, 0.05);
+            }
         } else {
-            this.applyParam(key, value);
+            this.applyParam(key, safeValue);
         }
     }
 
@@ -164,9 +207,12 @@ export abstract class AudioEffect {
 
     /** Restore state from a ChainEffectState */
     public restoreChainState(state: ChainEffectState): void {
-        this._mix = state.mix ?? DEFAULT_MIX[this.type] ?? 1.0;
+        // Sanitize mix
+        this._mix = this.sanitizeFloat(state.mix, 0, 1, DEFAULT_MIX[this.type] ?? 1.0);
 
+        // Sanitize parameters by going through setParam validation
         for (const [key, value] of Object.entries(state.params)) {
+            // We use setParam internal logic to validate against the existing param definition
             this.setParam(key, value);
         }
 
