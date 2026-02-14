@@ -20,11 +20,12 @@
 
     {{!-- Master Bypass Control --}}
     <div class="ase-effects-control-bar">
-        <button class="ase-bypass-btn {{#if chainBypassed}}bypassed{{/if}}" data-action="toggle-chain-bypass">
+        <button class="ase-bypass-btn {{#unless chainBypassed}}enabled{{/unless}}" data-action="toggle-chain-bypass">
+            <i class="fa-solid fa-music"></i>
             {{#if chainBypassed}}
-            <i class="fa-solid fa-power-off"></i> ENABLE EFFECTS
+            <span>Disable Effects</span>
             {{else}}
-            <i class="fa-solid fa-ban"></i> DISABLE EFFECTS
+            <span>Enable Effects</span>
             {{/if}}
         </button>
     </div>

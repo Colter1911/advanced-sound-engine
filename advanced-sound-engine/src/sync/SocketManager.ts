@@ -114,16 +114,19 @@ export class SocketManager {
     switch (message.type) {
       case 'sync-start': {
         const payload = message.payload as SyncStatePayload;
+        this._syncEnabled = true;
         await this.playerEngine.syncState(payload.tracks, payload.channelVolumes, payload.chains);
         break;
       }
 
       case 'sync-stop':
+        this._syncEnabled = false;
         this.playerEngine.clearAll();
         break;
 
       case 'sync-state': {
         const payload = message.payload as SyncStatePayload;
+        this._syncEnabled = true;
         await this.playerEngine.syncState(payload.tracks, payload.channelVolumes, payload.chains);
         break;
       }

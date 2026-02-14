@@ -1,10 +1,11 @@
-console.log("ADVANCED SOUND ENGINE: Entry point loaded");
 import '../styles/sound-engine.scss';
+import '../styles/volume-hud.scss';
 import { AudioEngine } from '@core/AudioEngine';
 import { PlayerAudioEngine } from '@core/PlayerAudioEngine';
 import { SocketManager } from '@sync/SocketManager';
 import { SoundMixerApp } from '@ui/SoundMixerApp';
 import { PlayerVolumePanel } from '@ui/PlayerVolumePanel';
+import { VolumeHudPanel } from '@ui/VolumeHudPanel';
 import { LocalLibraryApp } from '@ui/LocalLibraryApp';
 import { AdvancedSoundEngineApp } from '@ui/AdvancedSoundEngineApp';
 import { LibraryManager } from '@lib/LibraryManager';
@@ -27,6 +28,7 @@ let volumePanel: PlayerVolumePanel | null = null;
 
 // Shared
 let socketManager: SocketManager | null = null;
+let volumeHudPanel: VolumeHudPanel | null = null;
 
 declare global {
   interface Window {
@@ -38,6 +40,7 @@ declare global {
       socket?: SocketManager;
       library?: LibraryManager;
       queue?: PlaybackQueueManager;
+      volumeHud?: VolumeHudPanel;
     };
   }
 }
@@ -245,10 +248,14 @@ Hooks.once('ready', async () => {
     engine: isGM ? gmEngine ?? undefined : playerEngine ?? undefined,
     socket: socketManager ?? undefined,
     library: isGM ? libraryManager ?? undefined : undefined,
-    queue: queueManager
+    queue: queueManager,
+    volumeHud: undefined
   };
 
   setupAutoplayHandler();
+
+  // Initialize and render HUD panel for both GM and Players
+  initializeVolumeHud(isGM);
 
   Logger.info('Advanced Sound Engine ready');
 });
@@ -268,6 +275,26 @@ async function initializeGM(): Promise<void> {
   gmEngine.setSocketManager(socketManager!);
 
   Logger.info('PlaybackScheduler initialized');
+}
+
+function initializeVolumeHud(isGM: boolean): void {
+  try {
+    if (isGM && gmEngine) {
+      // GM HUD with three channel sliders
+      volumeHudPanel = new VolumeHudPanel(gmEngine, undefined, socketManager ?? undefined, openMainApp);
+      volumeHudPanel.render(true);
+      if (window.ASE) window.ASE.volumeHud = volumeHudPanel;
+      Logger.info('Volume HUD Panel initialized for GM');
+    } else if (!isGM && playerEngine) {
+      // Player HUD with single master volume slider
+      volumeHudPanel = new VolumeHudPanel(undefined, playerEngine, undefined, undefined);
+      volumeHudPanel.render(true);
+      if (window.ASE) window.ASE.volumeHud = volumeHudPanel;
+      Logger.info('Volume HUD Panel initialized for Player');
+    }
+  } catch (error) {
+    Logger.error('Failed to initialize Volume HUD Panel:', error);
+  }
 }
 
 async function initializePlayer(): Promise<void> {
@@ -381,6 +408,16 @@ function registerSettings(): void {
     type: Object,
     default: { items: [], activeItemId: null }
   });
+
+  // World-scoped favorites (migrated from global)
+  (game.settings as any).register(MODULE_ID, 'favorites', {
+    name: 'Favorites',
+    hint: 'User favorites for tracks and playlists',
+    scope: 'world',
+    config: false,
+    type: Object,
+    default: { ids: [], order: [] }
+  });
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -390,6 +427,7 @@ function registerSettings(): void {
 Hooks.once('closeGame', () => {
   mainApp?.close();
   volumePanel?.close();
+  volumeHudPanel?.close();
   playbackScheduler?.dispose();
   socketManager?.dispose();
   gmEngine?.dispose();

@@ -83,7 +83,7 @@ export class PlayerAudioEngine {
 
     if (this.lastSyncState.length === 0) {
       if (this.players.size > 0) {
-        console.warn('[ASE PLAYER] Sync verification: Have', this.players.size, 'players but sync state is empty');
+        Logger.warn(`Sync verification mismatch: ${this.players.size} active players but sync state is empty`);
         needsResync = true;
       } else {
         return;

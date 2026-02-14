@@ -584,6 +584,63 @@ export class LibraryManager {
       this.favoritesOrder = state.favoritesOrder || [];
 
       Logger.info(`Library loaded: ${this.items.size} items, ${this.playlists.getAllPlaylists().length} playlists, ${this.customTags.size} custom tags`);
+
+      // ─────────────────────────────────────────────────────────
+      // Favorites Migration & Loading (World Scope)
+      // ─────────────────────────────────────────────────────────
+      const worldFavorites = (game.settings as any).get(MODULE_ID, 'favorites') || { ids: [], playlistIds: [], order: [] };
+      const hasWorldFavorites = (worldFavorites.ids?.length > 0) || (worldFavorites.playlistIds?.length > 0) || (worldFavorites.order?.length > 0);
+
+      if (!hasWorldFavorites) {
+        // MIGRATION: Check if we have favorites in the loaded global state
+        // If so, these are from before the split. We should migrate them to world settings.
+        const globalFavoriteItems = Array.from(this.items.values()).filter(i => i.favorite);
+        const globalFavoritePlaylists = this.playlists.getAllPlaylists().filter(p => p.favorite);
+        const hasGlobalFavorites = globalFavoriteItems.length > 0 || globalFavoritePlaylists.length > 0;
+
+        if (hasGlobalFavorites) {
+          Logger.info(`Migrating ${globalFavoriteItems.length} tracks and ${globalFavoritePlaylists.length} playlists to world-scoped favorites`);
+
+          this.favoritesOrder = state.favoritesOrder || [];
+
+          // Save immediately to world settings to persist the migration
+          await (game.settings as any).set(MODULE_ID, 'favorites', {
+            ids: globalFavoriteItems.map(i => i.id),
+            playlistIds: globalFavoritePlaylists.map(p => p.id),
+            order: this.favoritesOrder
+          });
+
+          // Note: The items/playlists already have favorite=true from the global load,
+          // so we don't need to re-apply it. The next save will strip them from global.
+        } else {
+          // No favorites anywhere, clean slate
+          this.favoritesOrder = [];
+        }
+      } else {
+        // NORMAL LOAD: Apply world favorites to the library
+        // 1. Reset all favorites to false (trusted source is now World Settings)
+        this.items.forEach(i => i.favorite = false);
+        this.playlists.getAllPlaylists().forEach(p => p.favorite = false);
+
+        // 2. Apply track favorites
+        const trackIds = new Set<string>(worldFavorites.ids || []);
+        trackIds.forEach((id) => {
+          const item = this.items.get(id);
+          if (item) item.favorite = true;
+        });
+
+        // 3. Apply playlist favorites
+        const playlistIds = new Set<string>(worldFavorites.playlistIds || []);
+        playlistIds.forEach((id) => {
+          const playlist = this.playlists.getPlaylist(id);
+          if (playlist) playlist.favorite = true;
+        });
+
+        // 4. Load order
+        this.favoritesOrder = worldFavorites.order || [];
+        Logger.info(`Loaded world-scoped favorites: ${trackIds.size} tracks, ${playlistIds.size} playlists`);
+      }
+
     } catch (error) {
       Logger.error('Failed to load library state:', error);
     }
@@ -595,11 +652,45 @@ export class LibraryManager {
 
   private async saveToSettings(): Promise<void> {
     try {
+      // 1. Save World Favorites
+      // We collect the current state of favorites and save it to the world setting
+      const favoriteTracks = Array.from(this.items.values()).filter(i => i.favorite).map(i => i.id);
+      const favoritePlaylists = this.playlists.getAllPlaylists().filter(p => p.favorite).map(p => p.id);
+
+      await (game.settings as any).set(MODULE_ID, 'favorites', {
+        ids: favoriteTracks,
+        playlistIds: favoritePlaylists,
+        order: this.favoritesOrder
+      });
+
+      // 2. Save Global Library (Cleaned of favorites)
+      // We create a copy of the state where all favorite flags are false, 
+      // so the global file remains "neutral".
+
+      const cleanItems = new Map<string, LibraryItem>();
+      this.items.forEach((item, id) => {
+        if (item.favorite) {
+          cleanItems.set(id, { ...item, favorite: false });
+        } else {
+          cleanItems.set(id, item);
+        }
+      });
+
+      const cleanPlaylists = this.playlists.export();
+      const processedPlaylists: Record<string, any> = {};
+      Object.values(cleanPlaylists).forEach(p => {
+        if (p.favorite) {
+          processedPlaylists[p.id] = { ...p, favorite: false };
+        } else {
+          processedPlaylists[p.id] = p;
+        }
+      });
+
       const state: LibraryState = {
-        items: Object.fromEntries(this.items),
-        playlists: this.playlists.export(),
+        items: Object.fromEntries(cleanItems),
+        playlists: processedPlaylists,
         customTags: Array.from(this.customTags),
-        favoritesOrder: this.favoritesOrder, // Extended property in state (needs interface update if missing)
+        favoritesOrder: [], // Cleared in global storage
         version: LIBRARY_VERSION,
         lastModified: Date.now()
       };
@@ -607,7 +698,7 @@ export class LibraryManager {
       await GlobalStorage.save(state);
       this.saveScheduled = false;
 
-      Logger.debug(`Library saved: ${this.items.size} items, ${this.playlists.getAllPlaylists().length} playlists`);
+      Logger.debug(`Library saved: ${this.items.size} items, ${Object.keys(processedPlaylists).length} playlists (Favorites saved to World)`);
     } catch (error) {
       Logger.error('Failed to save library state:', error);
     }

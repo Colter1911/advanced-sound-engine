@@ -314,6 +314,7 @@ export class AdvancedSoundEngineApp extends HandlebarsApplicationMixin(Applicati
         const enabled = !this.socket.syncEnabled;
         this.socket.setSyncEnabled(enabled);
         this.state.syncEnabled = enabled;
+        (window as any).ASE?.volumeHud?.updateSyncState?.(enabled);
         this.render();
     }
 
@@ -321,17 +322,13 @@ export class AdvancedSoundEngineApp extends HandlebarsApplicationMixin(Applicati
         this.engine.resume();
         const tracks = this.engine.getAllTracks();
 
-        console.log('[ASE DEBUG] Global Play clicked, found', tracks.length, 'tracks');
-
         for (const track of tracks) {
             if (track.state === 'paused') {
                 const offset = track.getCurrentTime();
-                console.log('[ASE DEBUG] Resuming paused track:', track.id, 'at offset:', offset);
                 await track.play(offset);
 
                 // Broadcast to players
                 if (this.socket.syncEnabled) {
-                    console.log('[ASE DEBUG] Broadcasting track play for:', track.id);
                     this.socket.broadcastTrackPlay(track.id, offset);
                 }
             }
@@ -342,7 +339,6 @@ export class AdvancedSoundEngineApp extends HandlebarsApplicationMixin(Applicati
     }
 
     private onGlobalPause(): void {
-        console.log('[ASE DEBUG] Global Pause clicked');
         const tracks = this.engine.getAllTracks();
         for (const track of tracks) {
             if (track.state === 'playing') {
@@ -350,7 +346,6 @@ export class AdvancedSoundEngineApp extends HandlebarsApplicationMixin(Applicati
                 track.pause();
                 // Sync if enabled
                 if (this.socket.syncEnabled) {
-                    console.log('[ASE DEBUG] Global Pause broadcasting for track:', track.id, 'at', currentTime);
                     this.socket.broadcastTrackPause(track.id, currentTime);
                 }
             }

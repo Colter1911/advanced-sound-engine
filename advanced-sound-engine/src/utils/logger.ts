@@ -1,21 +1,22 @@
 const PREFIX = 'ASE';
+const READY_MESSAGE = 'Advanced Sound Engine ready';
 
 export const Logger = {
-  info: (message: string, ...args: unknown[]) => {
-    console.log(`${PREFIX} | ${message}`, ...args);
-  },
-  
-  warn: (message: string, ...args: unknown[]) => {
-    console.warn(`${PREFIX} | ${message}`, ...args);
-  },
-  
-  error: (message: string, ...args: unknown[]) => {
-    console.error(`${PREFIX} | ${message}`, ...args);
-  },
-  
-  debug: (message: string, ...args: unknown[]) => {
-    if (CONFIG?.debug?.audio) {
-      console.debug(`${PREFIX} | ${message}`, ...args);
+  info: (message: string): void => {
+    if (message === READY_MESSAGE) {
+      console.log(`${PREFIX} | ${message}`);
     }
+  },
+
+  warn: (_message: string, ..._args: unknown[]): void => {
+    // Production logging disabled by request.
+  },
+
+  error: (_message: string, ..._args: unknown[]): void => {
+    // Production logging disabled by request.
+  },
+
+  debug: (_message: string, ..._args: unknown[]): void => {
+    // Production logging disabled by request.
   }
 };

@@ -2,6 +2,7 @@ var __defProp = Object.defineProperty;
 var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
 var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
+var _a;
 const DEFAULT_MIX = {
   filter: 1,
   compressor: 1,
@@ -18,21 +19,18 @@ const DEFAULT_CHAIN_ORDER = [
   "reverb"
 ];
 const PREFIX = "ASE";
+const READY_MESSAGE = "Advanced Sound Engine ready";
 const Logger = {
-  info: /* @__PURE__ */ __name((message, ...args) => {
-    console.log(`${PREFIX} | ${message}`, ...args);
-  }, "info"),
-  warn: /* @__PURE__ */ __name((message, ...args) => {
-    console.warn(`${PREFIX} | ${message}`, ...args);
-  }, "warn"),
-  error: /* @__PURE__ */ __name((message, ...args) => {
-    console.error(`${PREFIX} | ${message}`, ...args);
-  }, "error"),
-  debug: /* @__PURE__ */ __name((message, ...args) => {
-    var _a;
-    if ((_a = CONFIG == null ? void 0 : CONFIG.debug) == null ? void 0 : _a.audio) {
-      console.debug(`${PREFIX} | ${message}`, ...args);
+  info: /* @__PURE__ */ __name((message) => {
+    if (message === READY_MESSAGE) {
+      console.log(`${PREFIX} | ${message}`);
     }
+  }, "info"),
+  warn: /* @__PURE__ */ __name((_message, ..._args) => {
+  }, "warn"),
+  error: /* @__PURE__ */ __name((_message, ..._args) => {
+  }, "error"),
+  debug: /* @__PURE__ */ __name((_message, ..._args) => {
   }, "debug")
 };
 const _StreamingPlayer = class _StreamingPlayer {
@@ -71,10 +69,10 @@ const _StreamingPlayer = class _StreamingPlayer {
       Logger.debug(`Track ${this.id} ready to play`);
     });
     this.audio.addEventListener("ended", () => {
-      var _a;
+      var _a2;
       this._state = "stopped";
       Logger.debug(`Track ${this.id} ended`);
-      (_a = this.onEnded) == null ? void 0 : _a.call(this);
+      (_a2 = this.onEnded) == null ? void 0 : _a2.call(this);
     });
     this.audio.addEventListener("error", (e) => {
       if (this.audio.getAttribute("src") === "" || !this.audio.src) return;
@@ -194,12 +192,12 @@ const _StreamingPlayer = class _StreamingPlayer {
     };
   }
   dispose() {
-    var _a;
+    var _a2;
     this._stopRequested = true;
     this.audio.pause();
     this.audio.src = "";
     this.onEnded = void 0;
-    (_a = this.sourceNode) == null ? void 0 : _a.disconnect();
+    (_a2 = this.sourceNode) == null ? void 0 : _a2.disconnect();
     this.gainNode.disconnect();
     this.outputNode.disconnect();
     Logger.debug(`Track ${this.id} disposed`);
@@ -311,7 +309,7 @@ const _AudioEffect = class _AudioEffect {
   }
   // ─── Parameter API ──────────────────────────────────────────
   setParam(key, value) {
-    var _a;
+    var _a2;
     const param = this.params.get(key);
     if (!param) {
       Logger.warn(`Effect ${this.type} has no parameter '${key}'`);
@@ -328,7 +326,7 @@ const _AudioEffect = class _AudioEffect {
         param.defaultValue ?? param.value
       );
     } else if (pType === "select") {
-      const validOption = (_a = param.options) == null ? void 0 : _a.some((opt) => opt.value === value);
+      const validOption = (_a2 = param.options) == null ? void 0 : _a2.some((opt) => opt.value === value);
       if (!validOption) {
         Logger.warn(`Invalid value '${value}' for select param '${key}' in effect '${this.type}'. Fallback to default.`);
         safeValue = param.defaultValue;
@@ -345,8 +343,8 @@ const _AudioEffect = class _AudioEffect {
     }
   }
   getParamValue(key) {
-    var _a;
-    return (_a = this.params.get(key)) == null ? void 0 : _a.value;
+    var _a2;
+    return (_a2 = this.params.get(key)) == null ? void 0 : _a2.value;
   }
   getAllParams() {
     return this.params;
@@ -443,8 +441,8 @@ const _ReverbEffect = class _ReverbEffect extends AudioEffect {
    * Re-generates global impulse based on current parameters
    */
   updateImpulse() {
-    var _a, _b, _c;
-    const decayTime = ((_a = this.params.get("decay")) == null ? void 0 : _a.value) || 2;
+    var _a2, _b, _c;
+    const decayTime = ((_a2 = this.params.get("decay")) == null ? void 0 : _a2.value) || 2;
     const sizeMult = ((_b = this.params.get("size")) == null ? void 0 : _b.value) || 1;
     const tone = ((_c = this.params.get("tone")) == null ? void 0 : _c.value) || "default";
     const duration = decayTime * sizeMult;
@@ -1104,9 +1102,9 @@ function validateAudioFile(url) {
   };
 }
 __name(validateAudioFile, "validateAudioFile");
-const MODULE_ID$6 = "advanced-sound-engine";
+const MODULE_ID$8 = "advanced-sound-engine";
 function getMaxSimultaneous() {
-  return game.settings.get(MODULE_ID$6, "maxSimultaneousTracks") || 8;
+  return game.settings.get(MODULE_ID$8, "maxSimultaneousTracks") || 8;
 }
 __name(getMaxSimultaneous, "getMaxSimultaneous");
 const _SimpleEventEmitter = class _SimpleEventEmitter {
@@ -1214,8 +1212,8 @@ const _AudioEngine = class _AudioEngine extends SimpleEventEmitter {
   // Persistence (GM only)
   // ─────────────────────────────────────────────────────────────
   scheduleSave() {
-    var _a;
-    if (!((_a = game.user) == null ? void 0 : _a.isGM)) return;
+    var _a2;
+    if (!((_a2 = game.user) == null ? void 0 : _a2.isGM)) return;
     if (this.saveTimeout) {
       clearTimeout(this.saveTimeout);
     }
@@ -1224,11 +1222,11 @@ const _AudioEngine = class _AudioEngine extends SimpleEventEmitter {
     }, 500);
   }
   async saveState() {
-    var _a;
-    if (!game.ready || !((_a = game.user) == null ? void 0 : _a.isGM)) return;
+    var _a2;
+    if (!game.ready || !((_a2 = game.user) == null ? void 0 : _a2.isGM)) return;
     const state = this.getState();
     try {
-      await game.settings.set(MODULE_ID$6, "mixerState", JSON.stringify(state));
+      await game.settings.set(MODULE_ID$8, "mixerState", JSON.stringify(state));
       Logger.debug("Mixer state saved");
     } catch (error) {
       Logger.error("Failed to save mixer state:", error);
@@ -1237,7 +1235,7 @@ const _AudioEngine = class _AudioEngine extends SimpleEventEmitter {
   async loadSavedState() {
     if (!game.ready) return;
     try {
-      const savedJson = game.settings.get(MODULE_ID$6, "mixerState");
+      const savedJson = game.settings.get(MODULE_ID$8, "mixerState");
       if (!savedJson) return;
       const state = JSON.parse(savedJson);
       await this.restoreState(state);
@@ -1307,7 +1305,7 @@ const _AudioEngine = class _AudioEngine extends SimpleEventEmitter {
   // Playback Control
   // ─────────────────────────────────────────────────────────────
   async playTrack(id, offset = 0, context) {
-    var _a;
+    var _a2;
     const player = this.players.get(id);
     if (!player) {
       Logger.warn(`Track not found: ${id}`);
@@ -1318,7 +1316,7 @@ const _AudioEngine = class _AudioEngine extends SimpleEventEmitter {
     const isCurrentlyPlaying = player.state === "playing";
     if (!isCurrentlyPlaying && playingCount >= maxSimultaneous) {
       Logger.warn(`Maximum simultaneous tracks (${maxSimultaneous}) reached`);
-      (_a = ui.notifications) == null ? void 0 : _a.warn(`Cannot play more than ${maxSimultaneous} tracks simultaneously`);
+      (_a2 = ui.notifications) == null ? void 0 : _a2.warn(`Cannot play more than ${maxSimultaneous} tracks simultaneously`);
       return;
     }
     if (context) {
@@ -1328,25 +1326,25 @@ const _AudioEngine = class _AudioEngine extends SimpleEventEmitter {
     await player.play(offset);
   }
   pauseTrack(id) {
-    var _a;
-    (_a = this.players.get(id)) == null ? void 0 : _a.pause();
+    var _a2;
+    (_a2 = this.players.get(id)) == null ? void 0 : _a2.pause();
   }
   stopTrack(id) {
-    var _a;
-    (_a = this.players.get(id)) == null ? void 0 : _a.stop();
+    var _a2;
+    (_a2 = this.players.get(id)) == null ? void 0 : _a2.stop();
   }
   seekTrack(id, time) {
-    var _a;
-    (_a = this.players.get(id)) == null ? void 0 : _a.seek(time);
+    var _a2;
+    (_a2 = this.players.get(id)) == null ? void 0 : _a2.seek(time);
   }
   setTrackVolume(id, volume) {
-    var _a;
-    (_a = this.players.get(id)) == null ? void 0 : _a.setVolume(volume);
+    var _a2;
+    (_a2 = this.players.get(id)) == null ? void 0 : _a2.setVolume(volume);
     this.scheduleSave();
   }
   stopAll() {
-    var _a, _b;
-    (_a = this.scheduler) == null ? void 0 : _a.clearContext();
+    var _a2, _b;
+    (_a2 = this.scheduler) == null ? void 0 : _a2.clearContext();
     for (const player of this.players.values()) {
       player.stop();
     }
@@ -1625,7 +1623,7 @@ const _PlayerAudioEngine = class _PlayerAudioEngine {
     let needsResync = false;
     if (this.lastSyncState.length === 0) {
       if (this.players.size > 0) {
-        console.warn("[ASE PLAYER] Sync verification: Have", this.players.size, "players but sync state is empty");
+        Logger.warn(`Sync verification mismatch: ${this.players.size} active players but sync state is empty`);
         needsResync = true;
       } else {
         return;
@@ -1757,12 +1755,12 @@ const _PlayerAudioEngine = class _PlayerAudioEngine {
     }
   }
   pauseTrack(id) {
-    var _a;
-    (_a = this.players.get(id)) == null ? void 0 : _a.pause();
+    var _a2;
+    (_a2 = this.players.get(id)) == null ? void 0 : _a2.pause();
   }
   stopTrack(id) {
-    var _a;
-    (_a = this.players.get(id)) == null ? void 0 : _a.stop();
+    var _a2;
+    (_a2 = this.players.get(id)) == null ? void 0 : _a2.stop();
   }
   // ─────────────────────────────────────────────────────────────
   // Track Commands (from GM via socket)
@@ -1791,12 +1789,12 @@ const _PlayerAudioEngine = class _PlayerAudioEngine {
     await player.play(adjustedOffset);
   }
   handlePause(trackId) {
-    var _a;
-    (_a = this.players.get(trackId)) == null ? void 0 : _a.pause();
+    var _a2;
+    (_a2 = this.players.get(trackId)) == null ? void 0 : _a2.pause();
   }
   handleStop(trackId) {
-    var _a;
-    (_a = this.players.get(trackId)) == null ? void 0 : _a.stop();
+    var _a2;
+    (_a2 = this.players.get(trackId)) == null ? void 0 : _a2.stop();
   }
   handleSeek(trackId, time, isPlaying, seekTimestamp) {
     const player = this.players.get(trackId);
@@ -1809,8 +1807,8 @@ const _PlayerAudioEngine = class _PlayerAudioEngine {
     }
   }
   handleTrackVolume(trackId, volume) {
-    var _a;
-    (_a = this.players.get(trackId)) == null ? void 0 : _a.setVolume(volume);
+    var _a2;
+    (_a2 = this.players.get(trackId)) == null ? void 0 : _a2.setVolume(volume);
   }
   // ─────────────────────────────────────────────────────────────
   // Sync State (full state from GM)
@@ -1891,8 +1889,8 @@ const _PlayerAudioEngine = class _PlayerAudioEngine {
 };
 __name(_PlayerAudioEngine, "PlayerAudioEngine");
 let PlayerAudioEngine = _PlayerAudioEngine;
-const MODULE_ID$5 = "advanced-sound-engine";
-const SOCKET_NAME = `module.${MODULE_ID$5}`;
+const MODULE_ID$7 = "advanced-sound-engine";
+const SOCKET_NAME = `module.${MODULE_ID$7}`;
 const _SocketManager = class _SocketManager {
   constructor() {
     __publicField(this, "gmEngine", null);
@@ -1902,21 +1900,21 @@ const _SocketManager = class _SocketManager {
     __publicField(this, "isGM", false);
   }
   initializeAsGM(engine) {
-    var _a;
+    var _a2;
     this.isGM = true;
     this.gmEngine = engine;
     this.socket = game.socket;
-    (_a = this.socket) == null ? void 0 : _a.on(SOCKET_NAME, (message) => {
+    (_a2 = this.socket) == null ? void 0 : _a2.on(SOCKET_NAME, (message) => {
       this.handleGMMessage(message);
     });
     Logger.info("SocketManager initialized as GM");
   }
   initializeAsPlayer(engine) {
-    var _a;
+    var _a2;
     this.isGM = false;
     this.playerEngine = engine;
     this.socket = game.socket;
-    (_a = this.socket) == null ? void 0 : _a.on(SOCKET_NAME, (message) => {
+    (_a2 = this.socket) == null ? void 0 : _a2.on(SOCKET_NAME, (message) => {
       this.handlePlayerMessage(message);
     });
     setTimeout(() => {
@@ -1944,8 +1942,8 @@ const _SocketManager = class _SocketManager {
   // GM Message Handling
   // ─────────────────────────────────────────────────────────────
   handleGMMessage(message) {
-    var _a;
-    if (message.senderId === ((_a = game.user) == null ? void 0 : _a.id)) return;
+    var _a2;
+    if (message.senderId === ((_a2 = game.user) == null ? void 0 : _a2.id)) return;
     if (message.type === "player-ready" && this._syncEnabled) {
       this.sendStateTo(message.senderId);
     }
@@ -1957,21 +1955,24 @@ const _SocketManager = class _SocketManager {
   // Player Message Handling
   // ─────────────────────────────────────────────────────────────
   async handlePlayerMessage(message) {
-    var _a;
-    if (message.senderId === ((_a = game.user) == null ? void 0 : _a.id)) return;
+    var _a2;
+    if (message.senderId === ((_a2 = game.user) == null ? void 0 : _a2.id)) return;
     if (!this.playerEngine) return;
     Logger.debug(`Player received: ${message.type}`, message.payload);
     switch (message.type) {
       case "sync-start": {
         const payload = message.payload;
+        this._syncEnabled = true;
         await this.playerEngine.syncState(payload.tracks, payload.channelVolumes, payload.chains);
         break;
       }
       case "sync-stop":
+        this._syncEnabled = false;
         this.playerEngine.clearAll();
         break;
       case "sync-state": {
         const payload = message.payload;
+        this._syncEnabled = true;
         await this.playerEngine.syncState(payload.tracks, payload.channelVolumes, payload.chains);
         break;
       }
@@ -2039,12 +2040,12 @@ const _SocketManager = class _SocketManager {
   // GM Broadcast Methods
   // ─────────────────────────────────────────────────────────────
   send(type, payload, targetUserId) {
-    var _a;
+    var _a2;
     if (!this.socket) return;
     const message = {
       type,
       payload,
-      senderId: ((_a = game.user) == null ? void 0 : _a.id) ?? "",
+      senderId: ((_a2 = game.user) == null ? void 0 : _a2.id) ?? "",
       timestamp: getServerTime()
     };
     if (targetUserId) {
@@ -2149,8 +2150,8 @@ const _SocketManager = class _SocketManager {
     this.send("stop-all", {});
   }
   dispose() {
-    var _a;
-    (_a = this.socket) == null ? void 0 : _a.off(SOCKET_NAME);
+    var _a2;
+    (_a2 = this.socket) == null ? void 0 : _a2.off(SOCKET_NAME);
   }
   // ─────────────────────────────────────────────────────────────
   // Chain Effect Broadcasts (GM → Players)
@@ -2184,7 +2185,7 @@ const _SocketManager = class _SocketManager {
 };
 __name(_SocketManager, "SocketManager");
 let SocketManager = _SocketManager;
-const MODULE_ID$4 = "advanced-sound-engine";
+const MODULE_ID$6 = "advanced-sound-engine";
 const _PlayerVolumePanel = class _PlayerVolumePanel extends Application {
   constructor(engine, options) {
     super(options);
@@ -2195,7 +2196,7 @@ const _PlayerVolumePanel = class _PlayerVolumePanel extends Application {
     return foundry.utils.mergeObject(super.defaultOptions, {
       id: "ase-player-volume",
       title: "Sound Volume",
-      template: `modules/${MODULE_ID$4}/templates/player-volume.hbs`,
+      template: `modules/${MODULE_ID$6}/templates/player-volume.hbs`,
       classes: ["ase-player-panel"],
       width: 200,
       height: "auto",
@@ -2219,15 +2220,302 @@ const _PlayerVolumePanel = class _PlayerVolumePanel extends Application {
     });
   }
   saveVolume(value) {
-    localStorage.setItem(`${MODULE_ID$4}-player-volume`, String(value));
+    localStorage.setItem(`${MODULE_ID$6}-player-volume`, String(value));
   }
   static loadSavedVolume() {
-    const saved = localStorage.getItem(`${MODULE_ID$4}-player-volume`);
+    const saved = localStorage.getItem(`${MODULE_ID$6}-player-volume`);
     return saved ? parseFloat(saved) : 1;
   }
 };
 __name(_PlayerVolumePanel, "PlayerVolumePanel");
 let PlayerVolumePanel = _PlayerVolumePanel;
+const MODULE_ID$5 = "advanced-sound-engine";
+const { ApplicationV2: ApplicationV2$1, HandlebarsApplicationMixin: HandlebarsApplicationMixin$1 } = foundry.applications.api;
+const _VolumeHudPanel = class _VolumeHudPanel extends HandlebarsApplicationMixin$1(ApplicationV2$1) {
+  constructor(engine, playerEngine2, socket, openMainApp2, options = {}) {
+    var _a2;
+    super(options);
+    __publicField(this, "engine");
+    __publicField(this, "playerEngine");
+    __publicField(this, "socket");
+    __publicField(this, "openMainApp");
+    __publicField(this, "syncPollTimer", null);
+    __publicField(this, "_isInteracting", false);
+    __publicField(this, "_lastSyncEnabled", null);
+    __publicField(this, "state", {
+      isGM: ((_a = game.user) == null ? void 0 : _a.isGM) ?? false,
+      syncEnabled: false,
+      localVolume: 100,
+      musicVolume: 100,
+      ambienceVolume: 100,
+      sfxVolume: 100,
+      masterVolume: 100,
+      playerVolume: 100
+    });
+    this.engine = engine;
+    this.playerEngine = playerEngine2;
+    this.socket = socket;
+    this.openMainApp = openMainApp2;
+    this.state.isGM = ((_a2 = game.user) == null ? void 0 : _a2.isGM) ?? false;
+    this._initializeVolumes();
+    if (this.socket) {
+      this._subscribeToSyncChanges();
+    }
+  }
+  _initializeVolumes() {
+    var _a2;
+    if (this.state.isGM) {
+      this.state.syncEnabled = ((_a2 = this.socket) == null ? void 0 : _a2.syncEnabled) ?? false;
+    }
+    if (this.state.isGM && this.engine) {
+      this.state.masterVolume = Math.round(this.engine.volumes.master * 100);
+      this.state.localVolume = Math.round(this.engine.localVolume * 100);
+      this.state.musicVolume = Math.round(this.engine.getChannelVolume("music") * 100);
+      this.state.ambienceVolume = Math.round(this.engine.getChannelVolume("ambience") * 100);
+      this.state.sfxVolume = Math.round(this.engine.getChannelVolume("sfx") * 100);
+    } else if (this.playerEngine) {
+      const saved = localStorage.getItem(`${MODULE_ID$5}-player-volume`);
+      this.state.playerVolume = saved ? Math.round(parseFloat(saved) * 100) : 100;
+    }
+  }
+  _subscribeToSyncChanges() {
+    if (this.socket) {
+      const checkSync = /* @__PURE__ */ __name(() => {
+        var _a2;
+        const sync = ((_a2 = this.socket) == null ? void 0 : _a2.syncEnabled) ?? false;
+        this.state.syncEnabled = sync;
+        if (this._lastSyncEnabled !== sync) {
+          this._lastSyncEnabled = sync;
+          this.render();
+          return;
+        }
+        this._refreshFromEngine(true);
+      }, "checkSync");
+      this.syncPollTimer = setInterval(checkSync, 100);
+      checkSync();
+    }
+  }
+  async _prepareContext(_options) {
+    const context = await super._prepareContext(_options);
+    return {
+      ...context,
+      isGM: this.state.isGM,
+      syncEnabled: this.state.syncEnabled,
+      localVolume: this.state.localVolume,
+      musicVolume: this.state.musicVolume,
+      ambienceVolume: this.state.ambienceVolume,
+      sfxVolume: this.state.sfxVolume,
+      masterVolume: this.state.masterVolume,
+      playerVolume: this.state.playerVolume
+    };
+  }
+  _onRender(_context, _options) {
+    super._onRender(_context, _options);
+    this._positionPanel();
+    this._attachEventListeners();
+  }
+  _positionPanel() {
+    const element = this.element;
+    if (!element) return;
+    const uiLeft = document.querySelector("#ui-left");
+    const bastionTurn = document.querySelector("#bastion-turn");
+    const playersAside = document.querySelector("aside#players");
+    if (uiLeft) {
+      const anchor = bastionTurn ?? playersAside;
+      const parent = (anchor == null ? void 0 : anchor.parentElement) ?? uiLeft;
+      if (element.parentElement !== parent) {
+        if (anchor) parent.insertBefore(element, anchor);
+        else parent.prepend(element);
+      } else if (anchor && element.nextElementSibling !== anchor) {
+        parent.insertBefore(element, anchor);
+      }
+      element.style.position = "relative";
+      element.style.left = "0";
+      element.style.bottom = "0";
+      element.style.zIndex = "6";
+      element.style.margin = "0 0 8px 0";
+      if (anchor) {
+        const rectWidth = anchor.getBoundingClientRect().width;
+        const cssWidth = anchor.clientWidth || 0;
+        const scrollWidth = anchor.scrollWidth || 0;
+        const width = Math.max(rectWidth, cssWidth, scrollWidth);
+        if (width > 0) {
+          element.style.width = `${Math.round(width)}px`;
+        }
+      }
+    }
+  }
+  _attachEventListeners() {
+    var _a2;
+    const element = this.element;
+    if (!element) return;
+    (_a2 = element.querySelector(".ase-hud-open-app")) == null ? void 0 : _a2.addEventListener("click", () => {
+      var _a3;
+      (_a3 = this.openMainApp) == null ? void 0 : _a3.call(this, "mixer", false);
+    });
+    if (this.state.isGM) {
+      this._attachTypeSlider(element, "master");
+      this._attachTypeSlider(element, "local");
+      this._attachChannelSlider(element, "music");
+      this._attachChannelSlider(element, "ambience");
+      this._attachChannelSlider(element, "sfx");
+    } else {
+      this._attachPlayerSlider(element);
+    }
+  }
+  _attachTypeSlider(html, type) {
+    const slider = html.querySelector(`.ase-hud-slider[data-type="${type}"]`);
+    if (!slider) return;
+    const startInteract = /* @__PURE__ */ __name(() => {
+      this._isInteracting = true;
+    }, "startInteract");
+    const endInteract = /* @__PURE__ */ __name(() => {
+      this._isInteracting = false;
+    }, "endInteract");
+    slider.addEventListener("pointerdown", startInteract);
+    slider.addEventListener("pointerup", endInteract);
+    slider.addEventListener("pointercancel", endInteract);
+    slider.addEventListener("change", endInteract);
+    slider.addEventListener("blur", endInteract);
+    slider.addEventListener("input", (event) => {
+      var _a2, _b, _c;
+      const value = parseFloat(event.target.value);
+      const normalizedValue = value / 100;
+      if (type === "master") {
+        this.state.masterVolume = value;
+        (_a2 = this.engine) == null ? void 0 : _a2.setMasterVolume(normalizedValue);
+        (_b = this.socket) == null ? void 0 : _b.broadcastChannelVolume("master", normalizedValue);
+      } else {
+        this.state.localVolume = value;
+        (_c = this.engine) == null ? void 0 : _c.setLocalVolume(normalizedValue);
+        localStorage.setItem("ase-gm-local-volume", String(normalizedValue));
+      }
+      const valueDisplay = html.querySelector(`.ase-hud-value[data-type="${type}"]`);
+      if (valueDisplay) {
+        valueDisplay.textContent = `${Math.round(value)}%`;
+      }
+    });
+  }
+  _attachChannelSlider(html, channel) {
+    const slider = html.querySelector(`.ase-hud-slider[data-channel="${channel}"]`);
+    if (!slider) return;
+    const startInteract = /* @__PURE__ */ __name(() => {
+      this._isInteracting = true;
+    }, "startInteract");
+    const endInteract = /* @__PURE__ */ __name(() => {
+      this._isInteracting = false;
+    }, "endInteract");
+    slider.addEventListener("pointerdown", startInteract);
+    slider.addEventListener("pointerup", endInteract);
+    slider.addEventListener("pointercancel", endInteract);
+    slider.addEventListener("change", endInteract);
+    slider.addEventListener("blur", endInteract);
+    slider.addEventListener("input", (event) => {
+      var _a2;
+      const value = parseFloat(event.target.value);
+      const normalizedValue = value / 100;
+      if (channel === "music") this.state.musicVolume = value;
+      else if (channel === "ambience") this.state.ambienceVolume = value;
+      else if (channel === "sfx") this.state.sfxVolume = value;
+      const valueDisplay = html.querySelector(`.ase-hud-value[data-channel="${channel}"]`);
+      if (valueDisplay) {
+        valueDisplay.textContent = `${Math.round(value)}%`;
+      }
+      if (this.engine) {
+        this.engine.setChannelVolume(channel, normalizedValue);
+      }
+      (_a2 = this.socket) == null ? void 0 : _a2.broadcastChannelVolume(channel, normalizedValue);
+    });
+  }
+  _attachPlayerSlider(html) {
+    const slider = html.querySelector('.ase-hud-slider[data-type="player"]');
+    if (!slider) return;
+    const startInteract = /* @__PURE__ */ __name(() => {
+      this._isInteracting = true;
+    }, "startInteract");
+    const endInteract = /* @__PURE__ */ __name(() => {
+      this._isInteracting = false;
+    }, "endInteract");
+    slider.addEventListener("pointerdown", startInteract);
+    slider.addEventListener("pointerup", endInteract);
+    slider.addEventListener("pointercancel", endInteract);
+    slider.addEventListener("change", endInteract);
+    slider.addEventListener("blur", endInteract);
+    slider.addEventListener("input", (event) => {
+      const value = parseFloat(event.target.value);
+      const normalizedValue = value / 100;
+      this.state.playerVolume = value;
+      const valueDisplay = html.querySelector('.ase-hud-value[data-type="player"]');
+      if (valueDisplay) {
+        valueDisplay.textContent = `${Math.round(value)}%`;
+      }
+      if (this.playerEngine) {
+        this.playerEngine.setLocalVolume(normalizedValue);
+      }
+      localStorage.setItem(`${MODULE_ID$5}-player-volume`, String(normalizedValue));
+    });
+  }
+  _refreshFromEngine(forceRender = true) {
+    if (!this.engine) return;
+    if (this._isInteracting) return;
+    const nextMaster = Math.round(this.engine.volumes.master * 100);
+    const nextLocal = Math.round(this.engine.localVolume * 100);
+    const nextMusic = Math.round(this.engine.getChannelVolume("music") * 100);
+    const nextAmbience = Math.round(this.engine.getChannelVolume("ambience") * 100);
+    const nextSfx = Math.round(this.engine.getChannelVolume("sfx") * 100);
+    const changed = nextMaster !== this.state.masterVolume || nextLocal !== this.state.localVolume || nextMusic !== this.state.musicVolume || nextAmbience !== this.state.ambienceVolume || nextSfx !== this.state.sfxVolume;
+    if (changed) {
+      this.state.masterVolume = nextMaster;
+      this.state.localVolume = nextLocal;
+      this.state.musicVolume = nextMusic;
+      this.state.ambienceVolume = nextAmbience;
+      this.state.sfxVolume = nextSfx;
+      if (forceRender) this.render();
+    }
+  }
+  /**
+   * Обновить громкости из внешних источников (например, из микшера)
+   */
+  updateVolumes() {
+    if (this.state.isGM && this.engine) {
+      this._refreshFromEngine(true);
+    }
+  }
+  /**
+   * Обновить состояние синхронизации
+   */
+  updateSyncState(enabled) {
+    this._lastSyncEnabled = enabled;
+    this.state.syncEnabled = enabled;
+    this.render();
+  }
+  _onClose(options) {
+    super._onClose(options);
+    if (this.syncPollTimer) {
+      clearInterval(this.syncPollTimer);
+      this.syncPollTimer = null;
+    }
+  }
+};
+__name(_VolumeHudPanel, "VolumeHudPanel");
+__publicField(_VolumeHudPanel, "PARTS", {
+  main: {
+    template: `modules/${MODULE_ID$5}/templates/volume-hud.hbs`
+  }
+});
+__publicField(_VolumeHudPanel, "DEFAULT_OPTIONS", {
+  id: "ase-volume-hud",
+  classes: ["ase-volume-hud"],
+  tag: "div",
+  window: {
+    frame: false,
+    positioned: false,
+    resizable: false,
+    minimizable: false
+  },
+  position: {}
+});
+let VolumeHudPanel = _VolumeHudPanel;
 const _LocalLibraryApp = class _LocalLibraryApp extends Application {
   // Debounce timer for renders
   constructor(library, parentApp, options = {}) {
@@ -2265,14 +2553,14 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
   }
   // Override render to delegate to main app
   render(force, options) {
-    var _a;
+    var _a2;
     if ((options == null ? void 0 : options.renderContext) === "queue-update") {
       if (this.parentApp && typeof this.parentApp.render === "function") {
         this.parentApp.captureScroll();
         return this.parentApp.render({ parts: ["main"] });
       }
     }
-    if ((_a = window.ASE) == null ? void 0 : _a.openPanel) {
+    if ((_a2 = window.ASE) == null ? void 0 : _a2.openPanel) {
       if (this.parentApp) {
         if (options == null ? void 0 : options.resetScroll) {
           this.parentApp.resetScroll("library");
@@ -2286,8 +2574,8 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     return super.render(force, options);
   }
   async close(options) {
-    var _a;
-    if (this._queueListener && ((_a = window.ASE) == null ? void 0 : _a.queue)) {
+    var _a2;
+    if (this._queueListener && ((_a2 = window.ASE) == null ? void 0 : _a2.queue)) {
       window.ASE.queue.off("change", this._queueListener);
       this._queueListener = null;
     }
@@ -2312,8 +2600,8 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     items = this.applySorting(items);
     const orderedFavorites = this.library.getOrderedFavorites();
     const favorites = orderedFavorites.map((entry) => {
-      var _a, _b, _c, _d;
-      const inQueue = entry.type === "track" ? ((_b = (_a = window.ASE) == null ? void 0 : _a.queue) == null ? void 0 : _b.hasItem(entry.id)) ?? false : ((_d = (_c = window.ASE) == null ? void 0 : _c.queue) == null ? void 0 : _d.getItems().some((q) => q.playlistId === entry.id)) ?? false;
+      var _a2, _b, _c, _d;
+      const inQueue = entry.type === "track" ? ((_b = (_a2 = window.ASE) == null ? void 0 : _a2.queue) == null ? void 0 : _b.hasItem(entry.id)) ?? false : ((_d = (_c = window.ASE) == null ? void 0 : _c.queue) == null ? void 0 : _d.getItems().some((q) => q.playlistId === entry.id)) ?? false;
       if (entry.type === "track") {
         const item = this.library.getItem(entry.id);
         if (!item) return null;
@@ -2386,11 +2674,10 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     };
   }
   getPlaylistViewData(playlist) {
-    var _a, _b;
-    const inQueue = ((_b = (_a = window.ASE) == null ? void 0 : _a.queue) == null ? void 0 : _b.getItems().some(
+    var _a2, _b;
+    const inQueue = ((_b = (_a2 = window.ASE) == null ? void 0 : _a2.queue) == null ? void 0 : _b.getItems().some(
       (item) => item.playlistId === playlist.id
     )) ?? false;
-    console.log("ASE Debug: Playlist View Data:", { id: playlist.id, name: playlist.name, inQueue });
     return {
       id: playlist.id,
       name: playlist.name,
@@ -2404,8 +2691,8 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     };
   }
   getItemViewData(item) {
-    var _a, _b, _c, _d, _e;
-    const inQueue = ((_b = (_a = window.ASE) == null ? void 0 : _a.queue) == null ? void 0 : _b.hasItem(item.id)) ?? false;
+    var _a2, _b, _c, _d, _e;
+    const inQueue = ((_b = (_a2 = window.ASE) == null ? void 0 : _a2.queue) == null ? void 0 : _b.hasItem(item.id)) ?? false;
     const durationFormatted = formatTime(item.duration);
     const player = (_e = (_d = (_c = window.ASE) == null ? void 0 : _c.engine) == null ? void 0 : _d.getTrack) == null ? void 0 : _e.call(_d, item.id);
     const isPlaying = (player == null ? void 0 : player.state) === "playing";
@@ -2507,10 +2794,10 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     return sorted;
   }
   activateListeners(html) {
-    var _a;
+    var _a2;
     super.activateListeners(html);
     html.off(".ase-library");
-    if (!this._queueListener && ((_a = window.ASE) == null ? void 0 : _a.queue)) {
+    if (!this._queueListener && ((_a2 = window.ASE) == null ? void 0 : _a2.queue)) {
       this._queueListener = () => {
         if (this._renderDebounceTimer) {
           clearTimeout(this._renderDebounceTimer);
@@ -2525,7 +2812,6 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     if (!this._listenersInitialized) {
       $(document).off("mousedown.ase-lib-global");
       $(document).on("mousedown.ase-lib-global", "#local-library [data-action]", (e) => {
-        console.log("ASE: Mousedown on action stopped propagation", e.currentTarget);
         e.stopPropagation();
       });
       this._listenersInitialized = true;
@@ -2590,13 +2876,13 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     fp.render(true);
   }
   async addTrackFromPath(path, group = "music") {
-    var _a, _b;
+    var _a2, _b;
     try {
       const selectedTags = Array.from(this.filterState.selectedTags);
       const item = await this.library.addItem(path, void 0, group, selectedTags);
       if (this.parentApp) this.parentApp.captureScroll();
       this.render();
-      (_a = ui.notifications) == null ? void 0 : _a.info(`Added to library: ${item.name}`);
+      (_a2 = ui.notifications) == null ? void 0 : _a2.info(`Added to library: ${item.name}`);
     } catch (error) {
       Logger.error("Failed to add track to library:", error);
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
@@ -2604,7 +2890,7 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     }
   }
   async onToggleFavorite(event) {
-    var _a, _b;
+    var _a2, _b;
     event.preventDefault();
     event.stopPropagation();
     const btn = $(event.currentTarget);
@@ -2621,7 +2907,7 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
       if (this.parentApp) this.parentApp.captureScroll();
       const isFavorite = this.library.toggleFavorite(itemId);
       this.render();
-      (_a = ui.notifications) == null ? void 0 : _a.info(isFavorite ? "Added to favorites" : "Removed from favorites");
+      (_a2 = ui.notifications) == null ? void 0 : _a2.info(isFavorite ? "Added to favorites" : "Removed from favorites");
     } catch (error) {
       Logger.error("Failed to toggle favorite:", error);
       (_b = ui.notifications) == null ? void 0 : _b.error("Failed to update favorite status");
@@ -2633,19 +2919,16 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
   onTrackModeClick(event) {
     event.preventDefault();
     event.stopPropagation();
-    console.log("ASE: onTrackModeClick triggered", event.currentTarget);
     const btn = $(event.currentTarget);
     let itemId = btn.data("item-id");
     if (!itemId) {
       itemId = btn.closest("[data-item-id]").data("item-id");
     }
-    console.log("ASE: Resolved Item ID:", itemId);
     const item = this.library.getItem(itemId);
     if (!item) {
-      console.warn(`ASE: Track Mode Clicked: Item not found for ID ${itemId}`);
+      Logger.warn(`Track mode clicked: item not found for ID ${itemId}`);
       return;
     }
-    console.log(`ASE: Found item ${item.name}`);
     const modes = [
       { label: "Inherit (Default)", value: "inherit", icon: "fa-arrow-turn-down" },
       { label: "Loop", value: "loop", icon: "fa-repeat" },
@@ -2713,13 +2996,13 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     }, 10);
   }
   async onPlayPlaylist(event) {
-    var _a, _b, _c;
+    var _a2, _b, _c;
     event.preventDefault();
     event.stopPropagation();
     const playlistId = $(event.currentTarget).closest("[data-playlist-id]").data("playlist-id");
     const playlist = this.library.playlists.getPlaylist(playlistId);
     if (playlist && playlist.items.length > 0) {
-      const queue = (_a = window.ASE) == null ? void 0 : _a.queue;
+      const queue = (_a2 = window.ASE) == null ? void 0 : _a2.queue;
       if (queue) {
         const addedItems = queue.addPlaylist(playlistId, playlist.items);
         if (addedItems.length > 0) {
@@ -2736,7 +3019,7 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
         (_b = ui.notifications) == null ? void 0 : _b.info(`Playing playlist: ${playlist.name}`);
         this.render();
       } else {
-        console.warn("ASE: Queue Manager not available");
+        Logger.warn("Queue Manager not available, playing first track directly");
         let trackToPlay = playlist.items[0];
         const libItem = this.library.getItem(trackToPlay.libraryItemId);
         if (libItem) {
@@ -2751,7 +3034,7 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
   // Playlist Event Handlers
   // ─────────────────────────────────────────────────────────────
   async onCreatePlaylist(event) {
-    var _a, _b;
+    var _a2, _b;
     event.preventDefault();
     const name = await this.promptPlaylistName();
     if (!name) return;
@@ -2759,7 +3042,7 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
       const playlist = this.library.playlists.createPlaylist(name);
       if (this.parentApp) this.parentApp.captureScroll();
       this.render();
-      (_a = ui.notifications) == null ? void 0 : _a.info(`Created playlist: ${playlist.name}`);
+      (_a2 = ui.notifications) == null ? void 0 : _a2.info(`Created playlist: ${playlist.name}`);
     } catch (error) {
       Logger.error("Failed to create playlist:", error);
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
@@ -2767,7 +3050,7 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     }
   }
   async onTogglePlaylistFavorite(event) {
-    var _a, _b;
+    var _a2, _b;
     event.preventDefault();
     event.stopPropagation();
     const playlistId = $(event.currentTarget).closest("[data-playlist-id]").data("playlist-id");
@@ -2775,7 +3058,7 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
       if (this.parentApp) this.parentApp.captureScroll();
       const isFavorite = this.library.playlists.togglePlaylistFavorite(playlistId);
       this.render();
-      (_a = ui.notifications) == null ? void 0 : _a.info(isFavorite ? "Added to favorites" : "Removed from favorites");
+      (_a2 = ui.notifications) == null ? void 0 : _a2.info(isFavorite ? "Added to favorites" : "Removed from favorites");
     } catch (error) {
       Logger.error("Failed to toggle playlist favorite:", error);
       (_b = ui.notifications) == null ? void 0 : _b.error("Failed to update favorite status");
@@ -2831,13 +3114,13 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     Logger.debug("Sort changed:", sortValue);
   }
   onClearFilters(event) {
-    var _a;
+    var _a2;
     event.preventDefault();
     this.filterState.searchQuery = "";
     this.filterState.selectedPlaylistId = null;
     this.filterState.selectedTags.clear();
     this.render(false, { resetScroll: true });
-    (_a = ui.notifications) == null ? void 0 : _a.info("Filters cleared (Channels preserved)");
+    (_a2 = ui.notifications) == null ? void 0 : _a2.info("Filters cleared (Channels preserved)");
   }
   // ─────────────────────────────────────────────────────────────
   // Tag Event Handlers
@@ -2845,14 +3128,10 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
   onToggleTag(event) {
     event.preventDefault();
     const tag = String($(event.currentTarget).data("tag"));
-    console.log("[ASE] onToggleTag called with tag:", tag);
-    console.log("[ASE] Current selectedTags:", Array.from(this.filterState.selectedTags));
     if (this.filterState.selectedTags.has(tag)) {
       this.filterState.selectedTags.delete(tag);
-      console.log("[ASE] Tag deselected");
     } else {
       this.filterState.selectedTags.add(tag);
-      console.log("[ASE] Tag selected");
     }
     this.render(false, { resetScroll: true });
   }
@@ -2896,22 +3175,18 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     $(document).one("click", () => {
       menu.remove();
     });
-    console.log("Opened context menu for tag:", tag);
   }
   async onAddTag(event) {
-    var _a;
+    var _a2;
     event.preventDefault();
     const rawTagName = await this.promptTagName();
     if (!rawTagName) return;
     const tagName = rawTagName.trim().replace(/^#/, "");
     if (!tagName) return;
-    console.log("[ASE] onAddTag: normalized tagName =", tagName);
     this.filterState.selectedTags.add(tagName);
     this.library.addCustomTag(tagName);
-    console.log("[ASE] onAddTag: selectedTags now =", Array.from(this.filterState.selectedTags));
-    console.log("[ASE] onAddTag: allTags from library =", this.library.getAllTags());
     this.render();
-    (_a = ui.notifications) == null ? void 0 : _a.info(`Tag "${tagName}" added.`);
+    (_a2 = ui.notifications) == null ? void 0 : _a2.info(`Tag "${tagName}" added.`);
   }
   // Helper for Context Menu Callbacks to ensure `this` binding and argument passing
   _onRenameTag(header) {
@@ -2933,7 +3208,7 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
   // Tag Management Logic
   // ─────────────────────────────────────────────────────────────
   async renameTag(oldTag) {
-    var _a;
+    var _a2;
     const newTag = await this.promptTagName(oldTag);
     if (!newTag || newTag === oldTag) return;
     const count = this.library.renameTag(oldTag, newTag);
@@ -2944,13 +3219,12 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     if (count > 0) {
       if (this.parentApp) this.parentApp.captureScroll();
       this.render();
-      (_a = ui.notifications) == null ? void 0 : _a.info(`Renamed tag "${oldTag}" to "${newTag}" on ${count} tracks.`);
+      (_a2 = ui.notifications) == null ? void 0 : _a2.info(`Renamed tag "${oldTag}" to "${newTag}" on ${count} tracks.`);
     }
   }
   async deleteTag(tag) {
-    var _a;
+    var _a2;
     const tagStr = String(tag);
-    console.log("[ASE] deleteTag called for:", tagStr);
     const confirm = await Dialog.confirm({
       title: "Delete Tag",
       content: `Are you sure you want to delete tag "${tagStr}" from all tracks?`
@@ -2960,7 +3234,7 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     this.filterState.selectedTags.delete(tagStr);
     if (this.parentApp) this.parentApp.captureScroll();
     this.render();
-    (_a = ui.notifications) == null ? void 0 : _a.info(count > 0 ? `Deleted tag "${tagStr}" from ${count} tracks.` : `Deleted custom tag "${tagStr}".`);
+    (_a2 = ui.notifications) == null ? void 0 : _a2.info(count > 0 ? `Deleted tag "${tagStr}" from ${count} tracks.` : `Deleted custom tag "${tagStr}".`);
   }
   async promptTagName(current = "") {
     return new Promise((resolve) => {
@@ -2982,7 +3256,7 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
   // Track Event Handlers (Extended)
   // ─────────────────────────────────────────────────────────────
   async onPlayTrack(event) {
-    var _a, _b, _c, _d, _e, _f;
+    var _a2, _b, _c, _d, _e, _f;
     event.preventDefault();
     event.stopPropagation();
     const itemId = $(event.currentTarget).data("item-id");
@@ -2991,7 +3265,7 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
       Logger.warn("Track not found:", itemId);
       return;
     }
-    const engine = (_a = window.ASE) == null ? void 0 : _a.engine;
+    const engine = (_a2 = window.ASE) == null ? void 0 : _a2.engine;
     const queue = (_b = window.ASE) == null ? void 0 : _b.queue;
     if (!engine) {
       Logger.warn("Audio engine not available");
@@ -3030,12 +3304,12 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     this.render();
   }
   onStopTrack(event) {
-    var _a, _b, _c;
+    var _a2, _b, _c;
     event.preventDefault();
     event.stopPropagation();
     const itemId = $(event.currentTarget).data("item-id");
     Logger.debug("Stop track:", itemId);
-    (_a = window.ASE.engine) == null ? void 0 : _a.stopTrack(itemId);
+    (_a2 = window.ASE.engine) == null ? void 0 : _a2.stopTrack(itemId);
     const socket = (_b = window.ASE) == null ? void 0 : _b.socket;
     if (socket && socket.syncEnabled) {
       socket.broadcastTrackStop(itemId);
@@ -3047,31 +3321,27 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     this.render();
   }
   onPauseTrack(event) {
-    var _a, _b, _c;
+    var _a2, _b, _c;
     event.preventDefault();
     event.stopPropagation();
     const itemId = $(event.currentTarget).data("item-id");
-    console.log("[ASE DEBUG] onPauseTrack called for:", itemId);
-    const engine = (_a = window.ASE) == null ? void 0 : _a.engine;
+    const engine = (_a2 = window.ASE) == null ? void 0 : _a2.engine;
     const player = (_b = engine == null ? void 0 : engine.getTrack) == null ? void 0 : _b.call(engine, itemId);
     const currentTime = (player == null ? void 0 : player.getCurrentTime()) ?? 0;
-    console.log("[ASE DEBUG] Pause - currentTime:", currentTime, "player state:", player == null ? void 0 : player.state);
     engine == null ? void 0 : engine.pauseTrack(itemId);
     const socket = (_c = window.ASE) == null ? void 0 : _c.socket;
-    console.log("[ASE DEBUG] Socket syncEnabled:", socket == null ? void 0 : socket.syncEnabled);
     if (socket && socket.syncEnabled) {
-      console.log("[ASE DEBUG] Broadcasting pause for", itemId);
       socket.broadcastTrackPause(itemId, currentTime);
     }
     if (this.parentApp) this.parentApp.captureScroll();
     this.render();
   }
   onAddToQueue(event) {
-    var _a, _b, _c;
+    var _a2, _b, _c;
     event.preventDefault();
     event.stopPropagation();
     const itemId = String($(event.currentTarget).data("item-id"));
-    if (!((_a = window.ASE) == null ? void 0 : _a.queue)) {
+    if (!((_a2 = window.ASE) == null ? void 0 : _a2.queue)) {
       Logger.warn("Queue manager not available");
       return;
     }
@@ -3103,13 +3373,13 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     this.showTagEditor(itemId);
   }
   async onAddToPlaylist(event) {
-    var _a, _b, _c, _d;
+    var _a2, _b, _c, _d;
     event.preventDefault();
     event.stopPropagation();
     const itemId = $(event.currentTarget).data("item-id");
     const item = this.library.getItem(itemId);
     if (!item) {
-      (_a = ui.notifications) == null ? void 0 : _a.error("Track not found");
+      (_a2 = ui.notifications) == null ? void 0 : _a2.error("Track not found");
       return;
     }
     const playlists = this.library.playlists.getAllPlaylists();
@@ -3131,7 +3401,7 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     }
   }
   onTrackMenu(event) {
-    var _a;
+    var _a2;
     event.preventDefault();
     event.stopPropagation();
     $(event.currentTarget).data("item-id");
@@ -3143,13 +3413,13 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
       clientX: event.clientX,
       clientY: event.clientY
     });
-    (_a = trackElement[0]) == null ? void 0 : _a.dispatchEvent(contextMenuEvent);
+    (_a2 = trackElement[0]) == null ? void 0 : _a2.dispatchEvent(contextMenuEvent);
   }
   // ─────────────────────────────────────────────────────────────
   // Favorites Event Handlers
   // ─────────────────────────────────────────────────────────────
   onRemoveFromFavorites(event) {
-    var _a, _b;
+    var _a2, _b;
     event.preventDefault();
     event.stopPropagation();
     const favoriteId = String($(event.currentTarget).data("favorite-id"));
@@ -3159,7 +3429,7 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
       const playlist = this.library.playlists.getPlaylist(favoriteId);
       if (playlist) {
         this.library.playlists.updatePlaylist(favoriteId, { favorite: false });
-        (_a = ui.notifications) == null ? void 0 : _a.info(`Removed "${playlist.name}" from favorites`);
+        (_a2 = ui.notifications) == null ? void 0 : _a2.info(`Removed "${playlist.name}" from favorites`);
       }
     } else {
       const item = this.library.getItem(favoriteId);
@@ -3172,12 +3442,12 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     this.render();
   }
   onToggleFavoriteQueue(event) {
-    var _a, _b, _c, _d, _e;
+    var _a2, _b, _c, _d, _e;
     event.preventDefault();
     event.stopPropagation();
     const favoriteId = String($(event.currentTarget).data("favorite-id"));
     const favoriteType = String($(event.currentTarget).data("favorite-type"));
-    if (!((_a = window.ASE) == null ? void 0 : _a.queue)) {
+    if (!((_a2 = window.ASE) == null ? void 0 : _a2.queue)) {
       Logger.warn("Queue manager not available");
       return;
     }
@@ -3250,12 +3520,12 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     }, 10);
   }
   updateTrackChannel(itemId, channel) {
-    var _a, _b;
+    var _a2, _b;
     const item = this.library.getItem(itemId);
     if (!item) return;
     const group = channel;
     this.library.updateItem(itemId, { group });
-    const engine = (_a = window.ASE) == null ? void 0 : _a.engine;
+    const engine = (_a2 = window.ASE) == null ? void 0 : _a2.engine;
     if (engine && typeof engine.setTrackChannel === "function") {
       engine.setTrackChannel(itemId, group);
     }
@@ -3291,11 +3561,11 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
       icon: '<i class="fas fa-trash"></i>',
       label: isInPlaylist ? "Delete Track (Global)" : "Delete",
       callback: /* @__PURE__ */ __name(() => {
-        var _a;
+        var _a2;
         this.library.removeItem(itemId);
         if (this.parentApp) this.parentApp.captureScroll();
         this.render();
-        (_a = ui.notifications) == null ? void 0 : _a.info(`Deleted "${item.name}"`);
+        (_a2 = ui.notifications) == null ? void 0 : _a2.info(`Deleted "${item.name}"`);
       }, "callback")
     };
     dialogData.buttons.cancel = {
@@ -3388,19 +3658,19 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     menu.find(".ase-menu-item").on("mouseenter", (e) => $(e.currentTarget).css("background", "#2d3a52"));
     menu.find(".ase-menu-item").on("mouseleave", (e) => $(e.currentTarget).css("background", "transparent"));
     menu.find('[data-action="remove-tag"]').on("click", () => {
-      var _a;
+      var _a2;
       menu.remove();
       this.library.removeTagFromItem(itemId, tagName);
       if (this.parentApp) this.parentApp.captureScroll();
       this.render();
-      (_a = ui.notifications) == null ? void 0 : _a.info(`Removed tag "${tagName}"`);
+      (_a2 = ui.notifications) == null ? void 0 : _a2.info(`Removed tag "${tagName}"`);
     });
     setTimeout(() => {
       $(document).one("click", () => menu.remove());
     }, 10);
   }
   async renameTrack(itemId) {
-    var _a;
+    var _a2;
     const item = this.library.getItem(itemId);
     if (!item) return;
     const newName = await this.promptInput("Rename Track", "Track Name:", item.name);
@@ -3408,14 +3678,14 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
       this.library.updateItem(itemId, { name: newName });
       if (this.parentApp) this.parentApp.captureScroll();
       this.render();
-      (_a = ui.notifications) == null ? void 0 : _a.info(`Renamed to "${newName}"`);
+      (_a2 = ui.notifications) == null ? void 0 : _a2.info(`Renamed to "${newName}"`);
     }
   }
   async addTrackToPlaylistDialog(itemId) {
-    var _a, _b;
+    var _a2, _b;
     const playlists = this.library.playlists.getAllPlaylists();
     if (playlists.length === 0) {
-      (_a = ui.notifications) == null ? void 0 : _a.warn("No playlists available. Create one first.");
+      (_a2 = ui.notifications) == null ? void 0 : _a2.warn("No playlists available. Create one first.");
       return;
     }
     const selectedPlaylistId = await this.promptPlaylistSelection(playlists);
@@ -3458,12 +3728,12 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
           icon: '<i class="fas fa-save"></i>',
           label: "Save",
           callback: /* @__PURE__ */ __name((html) => {
-            var _a;
+            var _a2;
             const selectedTags = [];
             html.find('input[name="tag"]:checked').each((_, el) => {
               selectedTags.push($(el).val());
             });
-            const newTag = (_a = html.find('input[name="newTag"]').val()) == null ? void 0 : _a.trim();
+            const newTag = (_a2 = html.find('input[name="newTag"]').val()) == null ? void 0 : _a2.trim();
             if (newTag) {
               selectedTags.push(newTag);
               this.library.addCustomTag(newTag);
@@ -3527,7 +3797,7 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     Logger.debug("Select playlist:", playlistId);
   }
   onPlaylistMenu(event) {
-    var _a;
+    var _a2;
     event.preventDefault();
     event.stopPropagation();
     $(event.currentTarget).data("playlist-id");
@@ -3539,15 +3809,15 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
       clientX: event.clientX,
       clientY: event.clientY
     });
-    (_a = playlistElement[0]) == null ? void 0 : _a.dispatchEvent(contextMenuEvent);
+    (_a2 = playlistElement[0]) == null ? void 0 : _a2.dispatchEvent(contextMenuEvent);
   }
   onTogglePlaylistQueue(event) {
-    var _a, _b, _c;
+    var _a2, _b, _c;
     event.preventDefault();
     event.stopPropagation();
     const playlistId = $(event.currentTarget).closest("[data-playlist-id]").data("playlist-id");
     const playlist = this.library.playlists.getPlaylist(playlistId);
-    if (!playlist || !((_a = window.ASE) == null ? void 0 : _a.queue)) {
+    if (!playlist || !((_a2 = window.ASE) == null ? void 0 : _a2.queue)) {
       Logger.warn("Cannot toggle playlist queue: playlist or queue not available");
       return;
     }
@@ -3610,7 +3880,7 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     }, 50);
   }
   async renamePlaylist(playlistId) {
-    var _a;
+    var _a2;
     const playlist = this.library.playlists.getPlaylist(playlistId);
     if (!playlist) return;
     const newName = await this.promptPlaylistName(playlist.name);
@@ -3618,10 +3888,10 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     this.library.playlists.updatePlaylist(playlistId, { name: newName });
     if (this.parentApp) this.parentApp.captureScroll();
     this.render();
-    (_a = ui.notifications) == null ? void 0 : _a.info(`Renamed playlist to "${newName}"`);
+    (_a2 = ui.notifications) == null ? void 0 : _a2.info(`Renamed playlist to "${newName}"`);
   }
   async deletePlaylist(playlistId) {
-    var _a;
+    var _a2;
     const playlist = this.library.playlists.getPlaylist(playlistId);
     if (!playlist) return;
     const confirm = await Dialog.confirm({
@@ -3634,7 +3904,7 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
       this.filterState.selectedPlaylistId = null;
     }
     this.render();
-    (_a = ui.notifications) == null ? void 0 : _a.info(`Deleted playlist "${playlist.name}"`);
+    (_a2 = ui.notifications) == null ? void 0 : _a2.info(`Deleted playlist "${playlist.name}"`);
   }
   async promptPlaylistName(current = "") {
     return new Promise((resolve) => {
@@ -3768,10 +4038,10 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
       $(event.currentTarget).removeClass("drag-over-import");
     });
     html.find(".ase-content-area").on("drop", async (event) => {
-      var _a, _b, _c, _d;
+      var _a2, _b, _c, _d;
       event.preventDefault();
       $(event.currentTarget).removeClass("drag-over-import");
-      const files = (_b = (_a = event.originalEvent) == null ? void 0 : _a.dataTransfer) == null ? void 0 : _b.files;
+      const files = (_b = (_a2 = event.originalEvent) == null ? void 0 : _a2.dataTransfer) == null ? void 0 : _b.files;
       if (files && files.length > 0) {
         Logger.debug(`Dropped ${files.length} files from OS`);
         const internalId = (_d = (_c = event.originalEvent) == null ? void 0 : _c.dataTransfer) == null ? void 0 : _d.getData("text/plain");
@@ -3805,14 +4075,14 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     Logger.debug(`Reordered favorite ${draggedId} to position ${targetIndex}`);
   }
   async handleFileUpload(files) {
-    var _a, _b, _c, _d, _e;
-    if (!((_a = game.user) == null ? void 0 : _a.isGM)) {
+    var _a2, _b, _c, _d, _e;
+    if (!((_a2 = game.user) == null ? void 0 : _a2.isGM)) {
       (_b = ui.notifications) == null ? void 0 : _b.warn("Only GM can upload files.");
       return;
     }
     const audioFiles = Array.from(files).filter((file) => {
-      var _a2;
-      const ext = (_a2 = file.name.split(".").pop()) == null ? void 0 : _a2.toLowerCase();
+      var _a3;
+      const ext = (_a3 = file.name.split(".").pop()) == null ? void 0 : _a3.toLowerCase();
       return ["mp3", "ogg", "wav", "flac", "webm", "m4a", "aac"].includes(ext || "");
     });
     if (audioFiles.length === 0) {
@@ -3887,11 +4157,11 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     return "music";
   }
   async handleDropTrackToPlaylist(itemId, playlistId) {
-    var _a, _b, _c;
+    var _a2, _b, _c;
     const item = this.library.getItem(itemId);
     const playlist = this.library.playlists.getPlaylist(playlistId);
     if (!item || !playlist) {
-      (_a = ui.notifications) == null ? void 0 : _a.error("Track or playlist not found");
+      (_a2 = ui.notifications) == null ? void 0 : _a2.error("Track or playlist not found");
       return;
     }
     try {
@@ -3936,7 +4206,7 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
    * Routes to appropriate handler based on type (single track vs full playlist)
    */
   async handleFoundryPlaylistDrop(event) {
-    var _a;
+    var _a2;
     try {
       const dragData = TextEditor.getDragEventData(event);
       if (!dragData) {
@@ -3953,17 +4223,17 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
       }
     } catch (error) {
       Logger.error("Failed to handle Foundry playlist drop:", error);
-      (_a = ui.notifications) == null ? void 0 : _a.error("Failed to import track from playlist");
+      (_a2 = ui.notifications) == null ? void 0 : _a2.error("Failed to import track from playlist");
     }
   }
   /**
    * Import single PlaylistSound track
    */
   async handlePlaylistSoundImport(dragData) {
-    var _a, _b, _c, _d, _e, _f, _g;
+    var _a2, _b, _c, _d, _e, _f, _g;
     const sound = await fromUuid(dragData.uuid);
     if (!sound) {
-      (_a = ui.notifications) == null ? void 0 : _a.error("Failed to resolve playlist sound");
+      (_a2 = ui.notifications) == null ? void 0 : _a2.error("Failed to resolve playlist sound");
       return;
     }
     const audioPath = sound.path || ((_b = sound.sound) == null ? void 0 : _b.path);
@@ -4001,11 +4271,11 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
    * Import entire Playlist with all tracks
    */
   async handlePlaylistImport(dragData) {
-    var _a, _b, _c, _d, _e;
+    var _a2, _b, _c, _d, _e;
     try {
       const playlist = await fromUuid(dragData.uuid);
       if (!playlist) {
-        (_a = ui.notifications) == null ? void 0 : _a.error("Failed to resolve Foundry playlist");
+        (_a2 = ui.notifications) == null ? void 0 : _a2.error("Failed to resolve Foundry playlist");
         return;
       }
       Logger.info(`Importing Foundry playlist: ${playlist.name} (${playlist.sounds.size} tracks)`);
@@ -4053,8 +4323,8 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     }
   }
   resolveFoundryChannel(sound, playlist) {
-    var _a;
-    const effectiveChannel = sound.channel || ((_a = sound.fadeIn) == null ? void 0 : _a.type) || playlist.channel || playlist.mode;
+    var _a2;
+    const effectiveChannel = sound.channel || ((_a2 = sound.fadeIn) == null ? void 0 : _a2.type) || playlist.channel || playlist.mode;
     return this.mapFoundryChannelToASE(effectiveChannel);
   }
   mapFoundryChannelToASE(foundryChannel) {
@@ -4082,12 +4352,12 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     return `${baseName} (${counter})`;
   }
   async removeTrackFromPlaylist(playlistId, trackId) {
-    var _a, _b;
+    var _a2, _b;
     try {
       this.library.playlists.removeLibraryItemFromPlaylist(playlistId, trackId);
       if (this.parentApp) this.parentApp.captureScroll();
       this.render();
-      (_a = ui.notifications) == null ? void 0 : _a.info("Removed track from playlist");
+      (_a2 = ui.notifications) == null ? void 0 : _a2.info("Removed track from playlist");
     } catch (error) {
       Logger.error("Failed to remove track from playlist:", error);
       (_b = ui.notifications) == null ? void 0 : _b.error("Failed to remove track from playlist");
@@ -4147,14 +4417,14 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
         name: "Toggle Favorite",
         icon: '<i class="fas fa-star"></i>',
         callback: /* @__PURE__ */ __name((target) => {
-          var _a, _b;
+          var _a2, _b;
           const li = $(target);
           const itemId = li.data("item-id");
           try {
             const isFavorite = this.library.toggleFavorite(itemId);
             if (this.parentApp) this.parentApp.captureScroll();
             this.render();
-            (_a = ui.notifications) == null ? void 0 : _a.info(isFavorite ? "Added to favorites" : "Removed from favorites");
+            (_a2 = ui.notifications) == null ? void 0 : _a2.info(isFavorite ? "Added to favorites" : "Removed from favorites");
           } catch (error) {
             Logger.error("Failed to toggle favorite:", error);
             (_b = ui.notifications) == null ? void 0 : _b.error("Failed to update favorite status");
@@ -4243,10 +4513,10 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
   // Context Menu Handlers - Tracks
   // ─────────────────────────────────────────────────────────────
   async onEditTrackName(itemId) {
-    var _a, _b, _c;
+    var _a2, _b, _c;
     const item = this.library.getItem(itemId);
     if (!item) {
-      (_a = ui.notifications) == null ? void 0 : _a.error("Track not found");
+      (_a2 = ui.notifications) == null ? void 0 : _a2.error("Track not found");
       return;
     }
     const newName = await this.promptTextInput("Edit Track Name", "Track Name", item.name);
@@ -4262,10 +4532,10 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     }
   }
   async onEditTrackTags(itemId) {
-    var _a, _b, _c;
+    var _a2, _b, _c;
     const item = this.library.getItem(itemId);
     if (!item) {
-      (_a = ui.notifications) == null ? void 0 : _a.error("Track not found");
+      (_a2 = ui.notifications) == null ? void 0 : _a2.error("Track not found");
       return;
     }
     const tagsString = await this.promptTextInput(
@@ -4286,10 +4556,10 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     }
   }
   async onDeleteTrackConfirm(itemId) {
-    var _a, _b, _c;
+    var _a2, _b, _c;
     const item = this.library.getItem(itemId);
     if (!item) {
-      (_a = ui.notifications) == null ? void 0 : _a.error("Track not found");
+      (_a2 = ui.notifications) == null ? void 0 : _a2.error("Track not found");
       return;
     }
     const confirmed = await Dialog.confirm({
@@ -4316,10 +4586,10 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
   // Context Menu Handlers - Playlists
   // ─────────────────────────────────────────────────────────────
   async onRenamePlaylist(playlistId) {
-    var _a, _b, _c;
+    var _a2, _b, _c;
     const playlist = this.library.playlists.getPlaylist(playlistId);
     if (!playlist) {
-      (_a = ui.notifications) == null ? void 0 : _a.error("Playlist not found");
+      (_a2 = ui.notifications) == null ? void 0 : _a2.error("Playlist not found");
       return;
     }
     const newName = await this.promptTextInput("Rename Playlist", "Playlist Name", playlist.name);
@@ -4335,10 +4605,10 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     }
   }
   async onEditPlaylistDescription(playlistId) {
-    var _a, _b, _c;
+    var _a2, _b, _c;
     const playlist = this.library.playlists.getPlaylist(playlistId);
     if (!playlist) {
-      (_a = ui.notifications) == null ? void 0 : _a.error("Playlist not found");
+      (_a2 = ui.notifications) == null ? void 0 : _a2.error("Playlist not found");
       return;
     }
     const description = await this.promptTextInput(
@@ -4357,10 +4627,10 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     }
   }
   async onViewPlaylistContents(playlistId) {
-    var _a;
+    var _a2;
     const playlist = this.library.playlists.getPlaylist(playlistId);
     if (!playlist) {
-      (_a = ui.notifications) == null ? void 0 : _a.error("Playlist not found");
+      (_a2 = ui.notifications) == null ? void 0 : _a2.error("Playlist not found");
       return;
     }
     const items = playlist.items.sort((a, b) => a.order - b.order).map((playlistItem, index) => {
@@ -4389,10 +4659,10 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     }).render(true);
   }
   async onClearPlaylist(playlistId) {
-    var _a, _b, _c, _d;
+    var _a2, _b, _c, _d;
     const playlist = this.library.playlists.getPlaylist(playlistId);
     if (!playlist) {
-      (_a = ui.notifications) == null ? void 0 : _a.error("Playlist not found");
+      (_a2 = ui.notifications) == null ? void 0 : _a2.error("Playlist not found");
       return;
     }
     if (playlist.items.length === 0) {
@@ -4426,10 +4696,10 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
     }
   }
   async onDeletePlaylistConfirm(playlistId) {
-    var _a, _b, _c;
+    var _a2, _b, _c;
     const playlist = this.library.playlists.getPlaylist(playlistId);
     if (!playlist) {
-      (_a = ui.notifications) == null ? void 0 : _a.error("Playlist not found");
+      (_a2 = ui.notifications) == null ? void 0 : _a2.error("Playlist not found");
       return;
     }
     const confirmed = await Dialog.confirm({
@@ -4458,7 +4728,7 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
   // Context Menu Handlers - Tags
   // ─────────────────────────────────────────────────────────────
   async onRenameTag(oldTagName) {
-    var _a, _b;
+    var _a2, _b;
     const newTagName = await this.promptTextInput("Rename Tag", "New Tag Name", oldTagName);
     if (!newTagName || newTagName === oldTagName) return;
     try {
@@ -4472,14 +4742,14 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
         this.filterState.selectedTags.add(newTagName);
       }
       this.render();
-      (_a = ui.notifications) == null ? void 0 : _a.info(`Renamed tag "${oldTagName}" to "${newTagName}" in ${items.length} track(s)`);
+      (_a2 = ui.notifications) == null ? void 0 : _a2.info(`Renamed tag "${oldTagName}" to "${newTagName}" in ${items.length} track(s)`);
     } catch (error) {
       Logger.error("Failed to rename tag:", error);
       (_b = ui.notifications) == null ? void 0 : _b.error("Failed to rename tag");
     }
   }
   async onDeleteTag(tagName) {
-    var _a, _b;
+    var _a2, _b;
     const items = this.library.getAllItems().filter((item) => item.tags.includes(tagName));
     const confirmed = await Dialog.confirm({
       title: "Delete Tag",
@@ -4497,7 +4767,7 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
         });
         this.filterState.selectedTags.delete(tagName);
         this.render();
-        (_a = ui.notifications) == null ? void 0 : _a.info(`Deleted tag "${tagName}" from ${items.length} track(s)`);
+        (_a2 = ui.notifications) == null ? void 0 : _a2.info(`Deleted tag "${tagName}" from ${items.length} track(s)`);
       } catch (error) {
         Logger.error("Failed to delete tag:", error);
         (_b = ui.notifications) == null ? void 0 : _b.error("Failed to delete tag");
@@ -4578,12 +4848,12 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
    * Handle adding track to playlist from context menu
    */
   async handleAddToPlaylistFromContext(itemId) {
-    var _a, _b, _c;
+    var _a2, _b, _c;
     const item = this.library.getItem(itemId);
     if (!item) return;
     const playlists = this.library.playlists.getAllPlaylists();
     if (playlists.length === 0) {
-      (_a = ui.notifications) == null ? void 0 : _a.warn("No playlists available. Create one first.");
+      (_a2 = ui.notifications) == null ? void 0 : _a2.warn("No playlists available. Create one first.");
       return;
     }
     const selectedPlaylistId = await this.promptPlaylistSelection(playlists);
@@ -4650,11 +4920,11 @@ const _SoundMixerApp = class _SoundMixerApp {
   // Data Provider
   // ─────────────────────────────────────────────────────────────
   getData() {
-    var _a, _b, _c, _d;
+    var _a2, _b, _c, _d;
     const orderedFavorites = this.libraryManager.getOrderedFavorites();
     const favorites = [];
     for (const fav of orderedFavorites) {
-      const inQueue = fav.type === "track" ? ((_b = (_a = window.ASE) == null ? void 0 : _a.queue) == null ? void 0 : _b.hasItem(fav.id)) ?? false : ((_d = (_c = window.ASE) == null ? void 0 : _c.queue) == null ? void 0 : _d.getItems().some((q) => q.playlistId === fav.id)) ?? false;
+      const inQueue = fav.type === "track" ? ((_b = (_a2 = window.ASE) == null ? void 0 : _a2.queue) == null ? void 0 : _b.hasItem(fav.id)) ?? false : ((_d = (_c = window.ASE) == null ? void 0 : _c.queue) == null ? void 0 : _d.getItems().some((q) => q.playlistId === fav.id)) ?? false;
       if (fav.type === "track") {
         const item = this.libraryManager.getItem(fav.id);
         if (item) {
@@ -4821,12 +5091,12 @@ const _SoundMixerApp = class _SoundMixerApp {
       const $section = $(section);
       const $tooltip = $section.find(".progress-hover-time");
       $section.on("mousemove", (e) => {
-        var _a;
+        var _a2;
         const rect = section.getBoundingClientRect();
         const offsetX = e.clientX - rect.left;
         const percentage = Math.max(0, Math.min(100, offsetX / rect.width * 100));
         const $track = $section.closest(".ase-queue-track");
-        const durationText = (_a = $track.find(".track-timer").text().split("/")[1]) == null ? void 0 : _a.trim();
+        const durationText = (_a2 = $track.find(".track-timer").text().split("/")[1]) == null ? void 0 : _a2.trim();
         if (durationText) {
           const [mins, secs] = durationText.split(":").map(Number);
           const totalSeconds = mins * 60 + secs;
@@ -5173,17 +5443,17 @@ const _SoundMixerApp = class _SoundMixerApp {
     }, 10);
   }
   updateTrackChannel(itemId, channel) {
-    var _a;
+    var _a2;
     const item = this.libraryManager.getItem(itemId);
     if (!item) return;
     const group = channel;
     this.libraryManager.updateItem(itemId, { group });
     this.engine.setTrackChannel(itemId, group);
     this.requestRender();
-    (_a = ui.notifications) == null ? void 0 : _a.info(`Channel set to ${channel}`);
+    (_a2 = ui.notifications) == null ? void 0 : _a2.info(`Channel set to ${channel}`);
   }
   async onAddToQueueFromFavorite(event) {
-    var _a, _b, _c, _d;
+    var _a2, _b, _c, _d;
     event.preventDefault();
     event.stopPropagation();
     const $el = $(event.currentTarget);
@@ -5195,7 +5465,7 @@ const _SoundMixerApp = class _SoundMixerApp {
       if (this.queueManager.hasItem(id)) {
         this.queueManager.removeByLibraryItemId(id);
         Logger.info("Removed track from queue:", libraryItem.name);
-        (_a = ui.notifications) == null ? void 0 : _a.info(`Removed from queue: ${libraryItem.name}`);
+        (_a2 = ui.notifications) == null ? void 0 : _a2.info(`Removed from queue: ${libraryItem.name}`);
       } else {
         this.queueManager.addItem(id, { group: libraryItem.group });
         Logger.info("Added track to queue:", libraryItem.name);
@@ -5451,7 +5721,7 @@ const _SoundMixerApp = class _SoundMixerApp {
     });
   }
   async onPlayPlaylistHeader(event) {
-    var _a, _b, _c, _d;
+    var _a2, _b, _c, _d;
     const info = this.getPlaylistHeaderInfo(event);
     if (!info) return;
     const { playlistId } = info;
@@ -5463,7 +5733,7 @@ const _SoundMixerApp = class _SoundMixerApp {
     });
     if (pausedItems.length > 0) {
       for (const item of pausedItems) {
-        const context = playlistId ? { type: "playlist", id: playlistId, playbackMode: ((_a = this.libraryManager.playlists.getPlaylist(playlistId)) == null ? void 0 : _a.playbackMode) || "loop" } : { type: "track", playbackMode: ((_b = this.libraryManager.getItem(item.libraryItemId)) == null ? void 0 : _b.playbackMode) || "loop" };
+        const context = playlistId ? { type: "playlist", id: playlistId, playbackMode: ((_a2 = this.libraryManager.playlists.getPlaylist(playlistId)) == null ? void 0 : _a2.playbackMode) || "loop" } : { type: "track", playbackMode: ((_b = this.libraryManager.getItem(item.libraryItemId)) == null ? void 0 : _b.playbackMode) || "loop" };
         await this.playTrack(item.libraryItemId, context);
       }
     } else {
@@ -6052,7 +6322,7 @@ const BUILTIN_PRESETS = [
     )
   }
 ];
-const MODULE_ID$3 = "advanced-sound-engine";
+const MODULE_ID$4 = "advanced-sound-engine";
 const _GlobalStorage = class _GlobalStorage {
   /**
    * Load presets from global JSON file.
@@ -6102,8 +6372,8 @@ const _GlobalStorage = class _GlobalStorage {
       const chains2 = channels.map((channel) => ({
         channel,
         effects: raw.effects.filter((e) => {
-          var _a;
-          return (_a = e.routing) == null ? void 0 : _a[channel];
+          var _a2;
+          return (_a2 = e.routing) == null ? void 0 : _a2[channel];
         }).map((e) => ({
           type: e.type,
           enabled: true,
@@ -6135,13 +6405,13 @@ const _GlobalStorage = class _GlobalStorage {
    * Generic save helper (refactored from save method)
    */
   static async saveFile(path, data) {
-    var _a;
+    var _a2;
     try {
       await this.ensureDirectory();
       const json = JSON.stringify(data, null, 2);
       const blob = new Blob([json], { type: "application/json" });
       const file = new File([blob], path.split("/").pop(), { type: "application/json" });
-      const originalInfo = (_a = ui.notifications) == null ? void 0 : _a.info;
+      const originalInfo = (_a2 = ui.notifications) == null ? void 0 : _a2.info;
       if (ui.notifications) ui.notifications.info = () => {
       };
       try {
@@ -6198,7 +6468,7 @@ const _GlobalStorage = class _GlobalStorage {
    * Migrate data from world-scoped game.settings to global storage
    */
   static async migrateFromWorldSettings() {
-    var _a, _b;
+    var _a2, _b;
     try {
       const existingGlobal = await this.load();
       const itemsCount = (existingGlobal == null ? void 0 : existingGlobal.items) ? Array.isArray(existingGlobal.items) ? existingGlobal.items.length : Object.keys(existingGlobal.items).length : 0;
@@ -6206,7 +6476,7 @@ const _GlobalStorage = class _GlobalStorage {
         Logger.info("Global storage already populated, skipping migration");
         return false;
       }
-      const oldData = await ((_a = game.settings) == null ? void 0 : _a.get(MODULE_ID$3, "libraryState"));
+      const oldData = await ((_a2 = game.settings) == null ? void 0 : _a2.get(MODULE_ID$4, "libraryState"));
       if (!oldData || oldData === "") {
         Logger.info("No world-scoped data to migrate");
         return false;
@@ -6231,12 +6501,12 @@ const _GlobalStorage = class _GlobalStorage {
    * Shows manual deletion instructions since automatic deletion is unreliable
    */
   static async deletePhysicalFile(url) {
-    var _a, _b;
+    var _a2, _b;
     if (!this.isOurFile(url)) {
       Logger.warn("Cannot delete file not in ase_audio folder:", url);
       return false;
     }
-    if (!((_a = game.user) == null ? void 0 : _a.isGM)) {
+    if (!((_a2 = game.user) == null ? void 0 : _a2.isGM)) {
       (_b = ui.notifications) == null ? void 0 : _b.warn("Only GM can delete files");
       return false;
     }
@@ -6344,10 +6614,10 @@ const _SoundEffectsApp = class _SoundEffectsApp {
       });
       const usedTypes = new Set(effects.map((e) => e.type));
       const availableEffects = ALL_EFFECT_TYPES.filter((t) => !usedTypes.has(t)).map((t) => {
-        var _a, _b;
+        var _a2, _b;
         return {
           type: t,
-          label: ((_a = EFFECT_META[t]) == null ? void 0 : _a.label) || t,
+          label: ((_a2 = EFFECT_META[t]) == null ? void 0 : _a2.label) || t,
           icon: ((_b = EFFECT_META[t]) == null ? void 0 : _b.icon) || "fa-circle"
         };
       });
@@ -6379,10 +6649,10 @@ const _SoundEffectsApp = class _SoundEffectsApp {
         builtinPresets: [...BUILTIN_PRESETS],
         customPresets: [],
         availableEffects: ALL_EFFECT_TYPES.map((t) => {
-          var _a, _b;
+          var _a2, _b;
           return {
             type: t,
-            label: ((_a = EFFECT_META[t]) == null ? void 0 : _a.label) || t,
+            label: ((_a2 = EFFECT_META[t]) == null ? void 0 : _a2.label) || t,
             icon: ((_b = EFFECT_META[t]) == null ? void 0 : _b.icon) || "fa-circle"
           };
         }),
@@ -6437,58 +6707,58 @@ const _SoundEffectsApp = class _SoundEffectsApp {
   // Channel Switch
   // ─────────────────────────────────────────────────────────────
   onChannelSwitch(event) {
-    var _a;
+    var _a2;
     event.preventDefault();
     const channel = $(event.currentTarget).data("channel");
     if (channel === this.activeChannel) return;
     this.activeChannel = channel;
     this.selectedEffectType = null;
     this.constructorOpen = false;
-    (_a = this.renderParent) == null ? void 0 : _a.call(this);
+    (_a2 = this.renderParent) == null ? void 0 : _a2.call(this);
   }
   // ─────────────────────────────────────────────────────────────
   // Master Chain Bypass
   // ─────────────────────────────────────────────────────────────
   onToggleChainBypass(event) {
-    var _a;
+    var _a2;
     event.preventDefault();
     const chain = this.engine.getChain(this.activeChannel);
     const newState = !chain.isBypassed;
     this.engine.toggleChainBypass(this.activeChannel, newState);
     this.socket.broadcastFullState();
-    (_a = this.renderParent) == null ? void 0 : _a.call(this);
+    (_a2 = this.renderParent) == null ? void 0 : _a2.call(this);
   }
   // ─────────────────────────────────────────────────────────────
   // Pedal Select
   // ─────────────────────────────────────────────────────────────
   onPedalSelect(event) {
-    var _a;
+    var _a2;
     const effectType = $(event.currentTarget).data("effect-type");
     if (this.selectedEffectType === effectType) {
       this.selectedEffectType = null;
     } else {
       this.selectedEffectType = effectType;
     }
-    (_a = this.renderParent) == null ? void 0 : _a.call(this);
+    (_a2 = this.renderParent) == null ? void 0 : _a2.call(this);
   }
   // ─────────────────────────────────────────────────────────────
   // Footswitch (Bypass Toggle)
   // ─────────────────────────────────────────────────────────────
   onToggleBypass(event) {
-    var _a;
+    var _a2;
     const $card = $(event.currentTarget).closest(".ase-pedal-card");
     const effectType = $card.data("effect-type");
     const wasActive = $card.hasClass("active");
     const newEnabled = !wasActive;
     this.engine.setChainEffectEnabled(this.activeChannel, effectType, newEnabled);
     this.socket.broadcastEffectEnabled(this.activeChannel, effectType, newEnabled);
-    (_a = this.renderParent) == null ? void 0 : _a.call(this);
+    (_a2 = this.renderParent) == null ? void 0 : _a2.call(this);
   }
   // ─────────────────────────────────────────────────────────────
   // Remove Effect
   // ─────────────────────────────────────────────────────────────
   onRemoveEffect(event) {
-    var _a;
+    var _a2;
     const $card = $(event.currentTarget).closest(".ase-pedal-card");
     const effectType = $card.data("effect-type");
     this.engine.removeChainEffect(this.activeChannel, effectType);
@@ -6497,23 +6767,23 @@ const _SoundEffectsApp = class _SoundEffectsApp {
     }
     const newOrder = this.engine.getChain(this.activeChannel).getOrder();
     this.socket.broadcastChainReorder(this.activeChannel, newOrder);
-    (_a = this.renderParent) == null ? void 0 : _a.call(this);
+    (_a2 = this.renderParent) == null ? void 0 : _a2.call(this);
   }
   // ─────────────────────────────────────────────────────────────
   // Constructor Panel (Add Effects)
   // ─────────────────────────────────────────────────────────────
   onOpenConstructor() {
-    var _a;
+    var _a2;
     this.constructorOpen = true;
-    (_a = this.renderParent) == null ? void 0 : _a.call(this);
+    (_a2 = this.renderParent) == null ? void 0 : _a2.call(this);
   }
   onCloseConstructor() {
-    var _a;
+    var _a2;
     this.constructorOpen = false;
-    (_a = this.renderParent) == null ? void 0 : _a.call(this);
+    (_a2 = this.renderParent) == null ? void 0 : _a2.call(this);
   }
   onAddEffect(event) {
-    var _a;
+    var _a2;
     const effectType = $(event.currentTarget).data("effect-type");
     this.engine.addChainEffect(this.activeChannel, effectType);
     const newOrder = this.engine.getChain(this.activeChannel).getOrder();
@@ -6525,7 +6795,7 @@ const _SoundEffectsApp = class _SoundEffectsApp {
     if (remaining.length === 0) {
       this.constructorOpen = false;
     }
-    (_a = this.renderParent) == null ? void 0 : _a.call(this);
+    (_a2 = this.renderParent) == null ? void 0 : _a2.call(this);
   }
   // ─────────────────────────────────────────────────────────────
   // Knob Drag (shared for pedal & detail mix knobs)
@@ -6661,7 +6931,7 @@ const _SoundEffectsApp = class _SoundEffectsApp {
         $(zone).removeClass("drag-over");
       });
       zone.addEventListener("drop", (e) => {
-        var _a;
+        var _a2;
         e.preventDefault();
         $pedalboard.removeClass("drag-active");
         html.find(".ase-drop-zone").removeClass("drag-over no-op");
@@ -6674,7 +6944,7 @@ const _SoundEffectsApp = class _SoundEffectsApp {
         this.engine.reorderChainEffect(this.activeChannel, fromIndex, adjustedTo);
         const newOrder = this.engine.getChain(this.activeChannel).getOrder();
         this.socket.broadcastChainReorder(this.activeChannel, newOrder);
-        (_a = this.renderParent) == null ? void 0 : _a.call(this);
+        (_a2 = this.renderParent) == null ? void 0 : _a2.call(this);
       });
     });
   }
@@ -6682,7 +6952,7 @@ const _SoundEffectsApp = class _SoundEffectsApp {
   // Presets
   // ─────────────────────────────────────────────────────────────
   async onLoadPreset(event) {
-    var _a, _b;
+    var _a2, _b;
     const presetId = $(event.currentTarget).val();
     if (!presetId) return;
     const allPresets = await GlobalStorage.loadPresets();
@@ -6695,7 +6965,7 @@ const _SoundEffectsApp = class _SoundEffectsApp {
       }
     }
     this.socket.broadcastFullState();
-    (_a = ui.notifications) == null ? void 0 : _a.info(`Loaded preset: ${preset.name}`);
+    (_a2 = ui.notifications) == null ? void 0 : _a2.info(`Loaded preset: ${preset.name}`);
     (_b = this.renderParent) == null ? void 0 : _b.call(this);
     $(event.currentTarget).val("");
   }
@@ -6718,7 +6988,7 @@ const _SoundEffectsApp = class _SoundEffectsApp {
         save: {
           label: "Save",
           callback: /* @__PURE__ */ __name(async (html) => {
-            var _a, _b;
+            var _a2, _b;
             const name = html.find('input[name="name"]').val();
             if (!name) return;
             const description = html.find('input[name="description"]').val();
@@ -6732,7 +7002,7 @@ const _SoundEffectsApp = class _SoundEffectsApp {
             const allPresets = await GlobalStorage.loadPresets();
             allPresets.push(newPreset);
             await GlobalStorage.savePresets(allPresets);
-            (_a = ui.notifications) == null ? void 0 : _a.info(`Saved preset: ${name}`);
+            (_a2 = ui.notifications) == null ? void 0 : _a2.info(`Saved preset: ${name}`);
             (_b = this.renderParent) == null ? void 0 : _b.call(this);
           }, "callback")
         }
@@ -6740,14 +7010,14 @@ const _SoundEffectsApp = class _SoundEffectsApp {
     }).render(true);
   }
   onResetChain(event) {
-    var _a;
+    var _a2;
     event.preventDefault();
     const chain = this.engine.getChain(this.activeChannel);
     chain.buildDefault();
     this.selectedEffectType = null;
     this.constructorOpen = false;
     this.socket.broadcastFullState();
-    (_a = this.renderParent) == null ? void 0 : _a.call(this);
+    (_a2 = this.renderParent) == null ? void 0 : _a2.call(this);
   }
   // ─────────────────────────────────────────────────────────────
   // Cleanup
@@ -6758,7 +7028,7 @@ const _SoundEffectsApp = class _SoundEffectsApp {
 };
 __name(_SoundEffectsApp, "SoundEffectsApp");
 let SoundEffectsApp = _SoundEffectsApp;
-const MODULE_ID$2 = "advanced-sound-engine";
+const MODULE_ID$3 = "advanced-sound-engine";
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 const _AdvancedSoundEngineApp = class _AdvancedSoundEngineApp extends HandlebarsApplicationMixin(ApplicationV2) {
   constructor(engine, socket, libraryManager2, queueManager2, options = {}) {
@@ -6851,11 +7121,11 @@ const _AdvancedSoundEngineApp = class _AdvancedSoundEngineApp extends Handlebars
       tabContent = await renderTemplate("modules/advanced-sound-engine/templates/library.hbs", libData);
     } else if (this.state.activeTab === "mixer") {
       const mixerData = await this.mixerApp.getData();
-      tabContent = await renderTemplate(`modules/${MODULE_ID$2}/templates/mixer.hbs`, mixerData);
+      tabContent = await renderTemplate(`modules/${MODULE_ID$3}/templates/mixer.hbs`, mixerData);
     } else if (this.state.activeTab === "sfx") {
       Logger.info(`[AdvancedSoundEngineApp] Rendering SFX tab...`);
       const effectsData = await this.effectsApp.getData();
-      tabContent = await renderTemplate(`modules/${MODULE_ID$2}/templates/effects.hbs`, effectsData);
+      tabContent = await renderTemplate(`modules/${MODULE_ID$3}/templates/effects.hbs`, effectsData);
     }
     return {
       activeTab: this.state.activeTab,
@@ -6972,22 +7242,21 @@ const _AdvancedSoundEngineApp = class _AdvancedSoundEngineApp extends Handlebars
     }
   }
   onToggleSync(event) {
+    var _a2, _b, _c;
     const enabled = !this.socket.syncEnabled;
     this.socket.setSyncEnabled(enabled);
     this.state.syncEnabled = enabled;
+    (_c = (_b = (_a2 = window.ASE) == null ? void 0 : _a2.volumeHud) == null ? void 0 : _b.updateSyncState) == null ? void 0 : _c.call(_b, enabled);
     this.render();
   }
   async onGlobalPlay() {
     this.engine.resume();
     const tracks = this.engine.getAllTracks();
-    console.log("[ASE DEBUG] Global Play clicked, found", tracks.length, "tracks");
     for (const track of tracks) {
       if (track.state === "paused") {
         const offset = track.getCurrentTime();
-        console.log("[ASE DEBUG] Resuming paused track:", track.id, "at offset:", offset);
         await track.play(offset);
         if (this.socket.syncEnabled) {
-          console.log("[ASE DEBUG] Broadcasting track play for:", track.id);
           this.socket.broadcastTrackPlay(track.id, offset);
         }
       }
@@ -6996,14 +7265,12 @@ const _AdvancedSoundEngineApp = class _AdvancedSoundEngineApp extends Handlebars
     this.render();
   }
   onGlobalPause() {
-    console.log("[ASE DEBUG] Global Pause clicked");
     const tracks = this.engine.getAllTracks();
     for (const track of tracks) {
       if (track.state === "playing") {
         const currentTime = track.getCurrentTime();
         track.pause();
         if (this.socket.syncEnabled) {
-          console.log("[ASE DEBUG] Global Pause broadcasting for track:", track.id, "at", currentTime);
           this.socket.broadcastTrackPause(track.id, currentTime);
         }
       }
@@ -7043,7 +7310,7 @@ __name(_AdvancedSoundEngineApp, "AdvancedSoundEngineApp");
  */
 __publicField(_AdvancedSoundEngineApp, "PARTS", {
   main: {
-    template: `modules/${MODULE_ID$2}/templates/main-app.hbs`,
+    template: `modules/${MODULE_ID$3}/templates/main-app.hbs`,
     scrollable: [".ase-content-body"]
   }
 });
@@ -7411,6 +7678,7 @@ const _PlaylistManager = class _PlaylistManager {
 };
 __name(_PlaylistManager, "PlaylistManager");
 let PlaylistManager = _PlaylistManager;
+const MODULE_ID$2 = "advanced-sound-engine";
 const LIBRARY_VERSION = 2;
 const _LibraryManager = class _LibraryManager {
   constructor() {
@@ -7615,11 +7883,11 @@ const _LibraryManager = class _LibraryManager {
   reorderFavorites(orderedItems) {
     const now = Date.now();
     this.favoritesOrder = orderedItems.map((item) => {
-      var _a;
+      var _a2;
       return {
         id: item.id,
         type: item.type,
-        addedAt: ((_a = this.favoritesOrder.find((f) => f.id === item.id && f.type === item.type)) == null ? void 0 : _a.addedAt) ?? now
+        addedAt: ((_a2 = this.favoritesOrder.find((f) => f.id === item.id && f.type === item.type)) == null ? void 0 : _a2.addedAt) ?? now
       };
     });
     this.scheduleSave();
@@ -7840,6 +8108,7 @@ const _LibraryManager = class _LibraryManager {
   // Persistence
   // ─────────────────────────────────────────────────────────────
   async loadFromSettings() {
+    var _a2, _b, _c;
     try {
       await GlobalStorage.migrateFromWorldSettings();
       const state = await GlobalStorage.load();
@@ -7865,6 +8134,39 @@ const _LibraryManager = class _LibraryManager {
       this.playlists.load(state.playlists || {});
       this.favoritesOrder = state.favoritesOrder || [];
       Logger.info(`Library loaded: ${this.items.size} items, ${this.playlists.getAllPlaylists().length} playlists, ${this.customTags.size} custom tags`);
+      const worldFavorites = game.settings.get(MODULE_ID$2, "favorites") || { ids: [], playlistIds: [], order: [] };
+      const hasWorldFavorites = ((_a2 = worldFavorites.ids) == null ? void 0 : _a2.length) > 0 || ((_b = worldFavorites.playlistIds) == null ? void 0 : _b.length) > 0 || ((_c = worldFavorites.order) == null ? void 0 : _c.length) > 0;
+      if (!hasWorldFavorites) {
+        const globalFavoriteItems = Array.from(this.items.values()).filter((i) => i.favorite);
+        const globalFavoritePlaylists = this.playlists.getAllPlaylists().filter((p) => p.favorite);
+        const hasGlobalFavorites = globalFavoriteItems.length > 0 || globalFavoritePlaylists.length > 0;
+        if (hasGlobalFavorites) {
+          Logger.info(`Migrating ${globalFavoriteItems.length} tracks and ${globalFavoritePlaylists.length} playlists to world-scoped favorites`);
+          this.favoritesOrder = state.favoritesOrder || [];
+          await game.settings.set(MODULE_ID$2, "favorites", {
+            ids: globalFavoriteItems.map((i) => i.id),
+            playlistIds: globalFavoritePlaylists.map((p) => p.id),
+            order: this.favoritesOrder
+          });
+        } else {
+          this.favoritesOrder = [];
+        }
+      } else {
+        this.items.forEach((i) => i.favorite = false);
+        this.playlists.getAllPlaylists().forEach((p) => p.favorite = false);
+        const trackIds = new Set(worldFavorites.ids || []);
+        trackIds.forEach((id) => {
+          const item = this.items.get(id);
+          if (item) item.favorite = true;
+        });
+        const playlistIds = new Set(worldFavorites.playlistIds || []);
+        playlistIds.forEach((id) => {
+          const playlist = this.playlists.getPlaylist(id);
+          if (playlist) playlist.favorite = true;
+        });
+        this.favoritesOrder = worldFavorites.order || [];
+        Logger.info(`Loaded world-scoped favorites: ${trackIds.size} tracks, ${playlistIds.size} playlists`);
+      }
     } catch (error) {
       Logger.error("Failed to load library state:", error);
     }
@@ -7874,18 +8176,42 @@ const _LibraryManager = class _LibraryManager {
   }
   async saveToSettings() {
     try {
+      const favoriteTracks = Array.from(this.items.values()).filter((i) => i.favorite).map((i) => i.id);
+      const favoritePlaylists = this.playlists.getAllPlaylists().filter((p) => p.favorite).map((p) => p.id);
+      await game.settings.set(MODULE_ID$2, "favorites", {
+        ids: favoriteTracks,
+        playlistIds: favoritePlaylists,
+        order: this.favoritesOrder
+      });
+      const cleanItems = /* @__PURE__ */ new Map();
+      this.items.forEach((item, id) => {
+        if (item.favorite) {
+          cleanItems.set(id, { ...item, favorite: false });
+        } else {
+          cleanItems.set(id, item);
+        }
+      });
+      const cleanPlaylists = this.playlists.export();
+      const processedPlaylists = {};
+      Object.values(cleanPlaylists).forEach((p) => {
+        if (p.favorite) {
+          processedPlaylists[p.id] = { ...p, favorite: false };
+        } else {
+          processedPlaylists[p.id] = p;
+        }
+      });
       const state = {
-        items: Object.fromEntries(this.items),
-        playlists: this.playlists.export(),
+        items: Object.fromEntries(cleanItems),
+        playlists: processedPlaylists,
         customTags: Array.from(this.customTags),
-        favoritesOrder: this.favoritesOrder,
-        // Extended property in state (needs interface update if missing)
+        favoritesOrder: [],
+        // Cleared in global storage
         version: LIBRARY_VERSION,
         lastModified: Date.now()
       };
       await GlobalStorage.save(state);
       this.saveScheduled = false;
-      Logger.debug(`Library saved: ${this.items.size} items, ${this.playlists.getAllPlaylists().length} playlists`);
+      Logger.debug(`Library saved: ${this.items.size} items, ${Object.keys(processedPlaylists).length} playlists (Favorites saved to World)`);
     } catch (error) {
       Logger.error("Failed to save library state:", error);
     }
@@ -7939,9 +8265,9 @@ const _PlaybackQueueManager = class _PlaybackQueueManager {
    * Load queue state from settings
    */
   async load() {
-    var _a;
+    var _a2;
     try {
-      const savedState = (_a = game.settings) == null ? void 0 : _a.get(MODULE_ID$1, "queueState");
+      const savedState = (_a2 = game.settings) == null ? void 0 : _a2.get(MODULE_ID$1, "queueState");
       if (savedState && savedState.items) {
         this.items = savedState.items;
         this.activeItemId = savedState.activeItemId || null;
@@ -7969,13 +8295,13 @@ const _PlaybackQueueManager = class _PlaybackQueueManager {
    * Save queue state immediately
    */
   async save() {
-    var _a;
+    var _a2;
     try {
       const state = {
         items: this.items,
         activeItemId: this.activeItemId
       };
-      await ((_a = game.settings) == null ? void 0 : _a.set(MODULE_ID$1, "queueState", state));
+      await ((_a2 = game.settings) == null ? void 0 : _a2.set(MODULE_ID$1, "queueState", state));
       Logger.debug("Queue state saved");
     } catch (error) {
       Logger.error("Failed to save queue state:", error);
@@ -8172,12 +8498,12 @@ const _PlaybackQueueManager = class _PlaybackQueueManager {
     this.eventListeners.get(event).add(callback);
   }
   off(event, callback) {
-    var _a;
-    (_a = this.eventListeners.get(event)) == null ? void 0 : _a.delete(callback);
+    var _a2;
+    (_a2 = this.eventListeners.get(event)) == null ? void 0 : _a2.delete(callback);
   }
   emit(event, data) {
-    var _a;
-    (_a = this.eventListeners.get(event)) == null ? void 0 : _a.forEach((cb) => cb(data));
+    var _a2;
+    (_a2 = this.eventListeners.get(event)) == null ? void 0 : _a2.forEach((cb) => cb(data));
   }
 };
 __name(_PlaybackQueueManager, "PlaybackQueueManager");
@@ -8548,7 +8874,6 @@ const _PlaybackScheduler = class _PlaybackScheduler {
 };
 __name(_PlaybackScheduler, "PlaybackScheduler");
 let PlaybackScheduler = _PlaybackScheduler;
-console.log("ADVANCED SOUND ENGINE: Entry point loaded");
 const MODULE_ID = "advanced-sound-engine";
 let gmEngine = null;
 let mainApp = null;
@@ -8558,10 +8883,11 @@ let playbackScheduler = null;
 let playerEngine = null;
 let volumePanel = null;
 let socketManager = null;
+let volumeHudPanel = null;
 Hooks.on("getSceneControlButtons", (controls) => {
-  var _a;
+  var _a2;
   try {
-    const isGM = ((_a = game.user) == null ? void 0 : _a.isGM) ?? false;
+    const isGM = ((_a2 = game.user) == null ? void 0 : _a2.isGM) ?? false;
     const aseTools = [
       {
         name: "ase-open-mixer",
@@ -8646,21 +8972,21 @@ Hooks.on("renderSceneControls", (controls, html) => {
     const mixerBtn = findElement('[data-tool="ase-open-mixer"]');
     if (mixerBtn) {
       mixerBtn.onclick = (event) => {
-        var _a;
+        var _a2;
         event.preventDefault();
         event.stopPropagation();
         Logger.debug("Manual click handler (native): Open Mixer");
-        (_a = window.ASE) == null ? void 0 : _a.openPanel();
+        (_a2 = window.ASE) == null ? void 0 : _a2.openPanel();
       };
     }
     const libraryBtn = findElement('[data-tool="ase-open-library"]');
     if (libraryBtn) {
       libraryBtn.onclick = (event) => {
-        var _a, _b;
+        var _a2, _b;
         event.preventDefault();
         event.stopPropagation();
         Logger.debug("Manual click handler (native): Open Library");
-        (_b = (_a = window.ASE) == null ? void 0 : _a.openLibrary) == null ? void 0 : _b.call(_a);
+        (_b = (_a2 = window.ASE) == null ? void 0 : _a2.openLibrary) == null ? void 0 : _b.call(_a2);
       };
     }
   } catch (error) {
@@ -8692,8 +9018,8 @@ Hooks.once("init", async () => {
   ]);
 });
 Hooks.once("ready", async () => {
-  var _a;
-  const isGM = ((_a = game.user) == null ? void 0 : _a.isGM) ?? false;
+  var _a2;
+  const isGM = ((_a2 = game.user) == null ? void 0 : _a2.isGM) ?? false;
   Logger.info(`Starting Advanced Sound Engine (${isGM ? "GM" : "Player"})...`);
   queueManager = new PlaybackQueueManager();
   await queueManager.load();
@@ -8710,9 +9036,11 @@ Hooks.once("ready", async () => {
     engine: isGM ? gmEngine ?? void 0 : playerEngine ?? void 0,
     socket: socketManager ?? void 0,
     library: isGM ? libraryManager ?? void 0 : void 0,
-    queue: queueManager
+    queue: queueManager,
+    volumeHud: void 0
   };
   setupAutoplayHandler();
+  initializeVolumeHud(isGM);
   Logger.info("Advanced Sound Engine ready");
 });
 async function initializeGM() {
@@ -8726,6 +9054,24 @@ async function initializeGM() {
   Logger.info("PlaybackScheduler initialized");
 }
 __name(initializeGM, "initializeGM");
+function initializeVolumeHud(isGM) {
+  try {
+    if (isGM && gmEngine) {
+      volumeHudPanel = new VolumeHudPanel(gmEngine, void 0, socketManager ?? void 0, openMainApp);
+      volumeHudPanel.render(true);
+      if (window.ASE) window.ASE.volumeHud = volumeHudPanel;
+      Logger.info("Volume HUD Panel initialized for GM");
+    } else if (!isGM && playerEngine) {
+      volumeHudPanel = new VolumeHudPanel(void 0, playerEngine, void 0, void 0);
+      volumeHudPanel.render(true);
+      if (window.ASE) window.ASE.volumeHud = volumeHudPanel;
+      Logger.info("Volume HUD Panel initialized for Player");
+    }
+  } catch (error) {
+    Logger.error("Failed to initialize Volume HUD Panel:", error);
+  }
+}
+__name(initializeVolumeHud, "initializeVolumeHud");
 async function initializePlayer() {
   playerEngine = new PlayerAudioEngine(socketManager);
   socketManager.initializeAsPlayer(playerEngine);
@@ -8806,11 +9152,20 @@ function registerSettings() {
     type: Object,
     default: { items: [], activeItemId: null }
   });
+  game.settings.register(MODULE_ID, "favorites", {
+    name: "Favorites",
+    hint: "User favorites for tracks and playlists",
+    scope: "world",
+    config: false,
+    type: Object,
+    default: { ids: [], order: [] }
+  });
 }
 __name(registerSettings, "registerSettings");
 Hooks.once("closeGame", () => {
   mainApp == null ? void 0 : mainApp.close();
   volumePanel == null ? void 0 : volumePanel.close();
+  volumeHudPanel == null ? void 0 : volumeHudPanel.close();
   playbackScheduler == null ? void 0 : playbackScheduler.dispose();
   socketManager == null ? void 0 : socketManager.dispose();
   gmEngine == null ? void 0 : gmEngine.dispose();

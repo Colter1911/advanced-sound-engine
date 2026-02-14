@@ -286,7 +286,6 @@ export class LocalLibraryApp extends Application {
     const inQueue = window.ASE?.queue?.getItems().some(
       item => item.playlistId === playlist.id
     ) ?? false;
-    console.log('ASE Debug: Playlist View Data:', { id: playlist.id, name: playlist.name, inQueue });
 
     return {
       id: playlist.id,
@@ -464,7 +463,6 @@ export class LocalLibraryApp extends Application {
     if (!this._listenersInitialized) {
       $(document).off('mousedown.ase-lib-global'); // Clean up any previous global handlers
       $(document).on('mousedown.ase-lib-global', '#local-library [data-action]', (e) => {
-        console.log('ASE: Mousedown on action stopped propagation', e.currentTarget);
         e.stopPropagation();
       });
       this._listenersInitialized = true;
@@ -620,7 +618,6 @@ export class LocalLibraryApp extends Application {
   private onTrackModeClick(event: JQuery.ClickEvent): void {
     event.preventDefault();
     event.stopPropagation();
-    console.log('ASE: onTrackModeClick triggered', event.currentTarget);
 
     const btn = $(event.currentTarget);
     // Support both direct data on icon (new) and wrapper (legacy fallback)
@@ -628,14 +625,12 @@ export class LocalLibraryApp extends Application {
     if (!itemId) {
       itemId = btn.closest('[data-item-id]').data('item-id') as string;
     }
-    console.log('ASE: Resolved Item ID:', itemId);
 
     const item = this.library.getItem(itemId);
     if (!item) {
-      console.warn(`ASE: Track Mode Clicked: Item not found for ID ${itemId}`);
+      Logger.warn(`Track mode clicked: item not found for ID ${itemId}`);
       return;
     }
-    console.log(`ASE: Found item ${item.name}`);
 
     const modes: { label: string, value: string, icon: string }[] = [
       { label: 'Inherit (Default)', value: 'inherit', icon: 'fa-arrow-turn-down' },
@@ -750,7 +745,7 @@ export class LocalLibraryApp extends Application {
         ui.notifications?.info(`Playing playlist: ${playlist.name}`);
         this.render();
       } else {
-        console.warn("ASE: Queue Manager not available");
+        Logger.warn('Queue Manager not available, playing first track directly');
         let trackToPlay = playlist.items[0];
         const libItem = this.library.getItem(trackToPlay.libraryItemId);
         if (libItem) {
@@ -902,15 +897,10 @@ export class LocalLibraryApp extends Application {
     // Left click just toggles filter
     const tag = String($(event.currentTarget).data('tag')); // String() fixes numeric coercion
 
-    console.log('[ASE] onToggleTag called with tag:', tag);
-    console.log('[ASE] Current selectedTags:', Array.from(this.filterState.selectedTags));
-
     if (this.filterState.selectedTags.has(tag)) {
       this.filterState.selectedTags.delete(tag);
-      console.log('[ASE] Tag deselected');
     } else {
       this.filterState.selectedTags.add(tag);
-      console.log('[ASE] Tag selected');
     }
 
     this.render(false, { resetScroll: true });
@@ -966,8 +956,6 @@ export class LocalLibraryApp extends Application {
     $(document).one('click', () => {
       menu.remove();
     });
-
-    console.log('Opened context menu for tag:', tag);
   }
 
   private async onAddTag(event: JQuery.ClickEvent): Promise<void> {
@@ -980,16 +968,11 @@ export class LocalLibraryApp extends Application {
     const tagName = rawTagName.trim().replace(/^#/, '');
     if (!tagName) return;
 
-    console.log('[ASE] onAddTag: normalized tagName =', tagName);
-
     // Add to selectedTags for immediate visual feedback
     this.filterState.selectedTags.add(tagName);
 
     // Add to library persistent tags
     this.library.addCustomTag(tagName);
-
-    console.log('[ASE] onAddTag: selectedTags now =', Array.from(this.filterState.selectedTags));
-    console.log('[ASE] onAddTag: allTags from library =', this.library.getAllTags());
 
     this.render();
     ui.notifications?.info(`Tag "${tagName}" added.`);
@@ -1044,7 +1027,6 @@ export class LocalLibraryApp extends Application {
 
   private async deleteTag(tag: string): Promise<void> {
     const tagStr = String(tag); // Ensure string for numeric tags
-    console.log('[ASE] deleteTag called for:', tagStr);
 
     const confirm = await Dialog.confirm({
       title: "Delete Tag",
@@ -1178,21 +1160,17 @@ export class LocalLibraryApp extends Application {
     event.preventDefault();
     event.stopPropagation();
     const itemId = $(event.currentTarget).data('item-id') as string;
-    console.log('[ASE DEBUG] onPauseTrack called for:', itemId);
 
     // Get current time before pausing for sync
     const engine = window.ASE?.engine;
     const player = (engine as any)?.getTrack?.(itemId);
     const currentTime = player?.getCurrentTime() ?? 0;
-    console.log('[ASE DEBUG] Pause - currentTime:', currentTime, 'player state:', player?.state);
 
     engine?.pauseTrack(itemId);
 
     // Sync if enabled
     const socket = window.ASE?.socket;
-    console.log('[ASE DEBUG] Socket syncEnabled:', socket?.syncEnabled);
     if (socket && socket.syncEnabled) {
-      console.log('[ASE DEBUG] Broadcasting pause for', itemId);
       socket.broadcastTrackPause(itemId, currentTime);
     }
 

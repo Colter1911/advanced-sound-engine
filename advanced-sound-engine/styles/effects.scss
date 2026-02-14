@@ -85,73 +85,81 @@
     /* Hidden as per new design */
 }
 
-/* ─── NEW: Effects Control Bar (Enable/Disable) ──────────────── */
+/* ─── Effects Control Bar (Enable/Disable) ───────────────────── */
 
 .ase-effects-control-bar {
     display: flex;
     align-items: center;
     justify-content: center;
     width: 100%;
-    /* Force full width */
     flex: 0 0 auto;
-    /* Prevent shrinking */
-    padding: 0.8rem 0;
-    /* Slightly more breathing room */
-    background: #151515;
-    border-bottom: 1px solid #2a2a2a;
+    padding: 0.55rem 0 0.95rem;
+    background: transparent;
+    border-bottom: none;
     z-index: 5;
-    /* Ensure above pedalboard scrolling */
 }
 
 .ase-bypass-btn {
-    display: flex;
+    display: inline-flex;
+    position: relative;
+    top: 100px;
     align-items: center;
     justify-content: center;
-    gap: 10px;
-    width: 60%;
-    padding: 8px 16px;
+    gap: 8px;
+    min-width: 200px;
+    height: 38px;
+    padding: 0 18px;
+    border-radius: 4px;
+    border: 1px solid rgba(178, 183, 189, 0.55);
+    background: rgba(13, 16, 21, 0.92);
+    color: #cfd3d9;
     font-family: "Signika", sans-serif;
-    font-size: 1rem;
+    font-size: 0.95rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    border-radius: 4px;
     cursor: pointer;
-    transition: all 0.2s ease;
-    border: 1px solid transparent;
-
-    /* Default: ACTIVE (Disable button shown) */
-    background: rgba(20, 20, 20, 0.8);
-    color: #e74c3c;
-    /* Red text for "Disable" action/warning */
-    border-color: #551a1a;
-    box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, color 0.2s ease, background 0.2s ease, transform 0.15s ease;
 }
 
-.ase-bypass-btn:hover {
-    background: rgba(40, 20, 20, 0.8);
-    color: #ff6b6b;
-    border-color: #e74c3c;
-}
-
-/* Bypassed State: (Enable button shown) */
-.ase-bypass-btn.bypassed {
-    background: rgba(20, 40, 20, 0.8);
-    color: #2ecc71;
-    /* Green text for "Enable" action */
-    border-color: #1a552a;
-    box-shadow: 0 0 10px rgba(46, 204, 113, 0.1);
-}
-
-.ase-bypass-btn.bypassed:hover {
-    background: rgba(30, 60, 30, 0.8);
-    color: #58d68d;
-    border-color: #2ecc71;
-    box-shadow: 0 0 15px rgba(46, 204, 113, 0.2);
+.ase-bypass-btn span {
+    line-height: 1;
 }
 
 .ase-bypass-btn i {
-    font-size: 1.1em;
+    font-size: 0.95rem;
+    color: currentColor;
+}
+
+.ase-bypass-btn:hover {
+    background: rgba(18, 22, 28, 0.95);
+    color: #f0f2f5;
+    border-color: rgba(214, 218, 224, 0.8);
+}
+
+.ase-bypass-btn:active {
+    transform: translateY(1px);
+}
+
+/* Effects enabled → orange glowing button */
+.ase-bypass-btn.enabled {
+    background: rgba(49, 20, 0, 0.55);
+    border-color: #ff7800;
+    color: #fff3e8;
+    box-shadow:
+        inset 0 0 0 1px rgba(255, 120, 0, 0.3),
+        0 0 12px rgba(255, 120, 0, 0.45),
+        0 0 26px rgba(255, 120, 0, 0.18);
+}
+
+.ase-bypass-btn.enabled:hover {
+    background: rgba(63, 25, 0, 0.65);
+    border-color: #ff8c26;
+    color: #ffffff;
+    box-shadow:
+        inset 0 0 0 1px rgba(255, 140, 38, 0.35),
+        0 0 16px rgba(255, 120, 0, 0.55),
+        0 0 30px rgba(255, 120, 0, 0.22);
 }
 
 
@@ -516,7 +524,8 @@
     align-items: center;
     justify-content: center;
     transition: all 0.2s;
-    margin: 0 8px;
+    margin: 0 16px;
+    /* Increased from 8px */
     flex-shrink: 0;
 }
 
@@ -534,7 +543,8 @@
     position: absolute;
     top: 46px;
     right: 0;
-    width: 260px;
+    width: 320px;
+    /* Increased from 260px */
     max-height: 0;
     overflow: hidden;
     background: #1e1e1e;
@@ -547,7 +557,8 @@
 }
 
 .ase-constructor.open {
-    max-height: 400px;
+    max-height: 600px;
+    /* Increased to fit larger buttons */
     box-shadow: -4px 4px 16px rgba(0, 0, 0, 0.5);
 }
 
@@ -585,8 +596,9 @@
 .ase-constructor-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 8px;
-    padding: 12px 16px;
+    gap: 16px;
+    /* Increased gap */
+    padding: 16px;
 }
 
 .ase-constructor-item {
@@ -594,13 +606,17 @@
     flex-direction: column;
     align-items: center;
     gap: 6px;
-    padding: 14px 8px;
+    padding: 16px;
+    /* Increased padding */
     background: #252525;
     border: 1px solid #333;
     border-radius: 8px;
     color: #cec4b0;
     cursor: pointer;
     transition: all 0.15s;
+    min-height: 90px;
+    /* Ensure buttons are tall enough */
+    justify-content: center;
 }
 
 .ase-constructor-item:hover {
@@ -611,16 +627,24 @@
 }
 
 .ase-constructor-item-icon {
-    font-size: 1.3rem;
+    font-size: 1.8rem;
+    /* Larger icon */
     color: #ff6400;
+    margin-bottom: 8px;
 }
 
 .ase-constructor-item-label {
     font-family: "Signika", sans-serif;
-    font-size: 0.7rem;
+    font-size: 0.85rem;
+    /* Increased font size */
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.1em;
+    width: 100%;
+    text-align: center;
+    white-space: normal;
+    /* Allow text wrapping */
+    line-height: 1.2;
 }
 
 .ase-constructor-empty {
