@@ -13,7 +13,7 @@ import { PlaybackQueueManager } from './queue/PlaybackQueueManager';
 import { Logger } from '@utils/logger';
 import { PlaybackScheduler } from '@core/PlaybackScheduler';
 
-const MODULE_ID = 'advanced-sound-engine';
+const MODULE_ID = 'sound-engine-master';
 
 // GM
 let gmEngine: AudioEngine | null = null;
@@ -65,7 +65,7 @@ Hooks.on('getSceneControlButtons', (controls: SceneControl[]) => {
           if (window.ASE) {
             window.ASE.openPanel();
           } else {
-            Logger.error('Window.ASE is undefined!');
+            Logger.error('Sound Engine namespace is undefined!');
           }
         }
       }
@@ -82,7 +82,7 @@ Hooks.on('getSceneControlButtons', (controls: SceneControl[]) => {
           if (window.ASE && window.ASE.openLibrary) {
             window.ASE.openLibrary();
           } else {
-            Logger.error('Window.ASE or openLibrary undefined');
+            Logger.error('Sound Engine namespace or openLibrary is undefined');
           }
         }
       });
@@ -100,9 +100,9 @@ Hooks.on('getSceneControlButtons', (controls: SceneControl[]) => {
         Logger.info('Added tools to "sounds" layer (V13 Object Mode)');
       } else {
         // Fallback: Add as a new property
-        (controls as any)['advanced-sound-engine'] = {
-          name: 'advanced-sound-engine',
-          title: 'Advanced Sound Engine',
+        (controls as any)['sound-engine-master'] = {
+          name: 'sound-engine-master',
+          title: 'Sound Engine Master',
           icon: 'fas fa-music',
           visible: true,
           tools: aseTools
@@ -123,8 +123,8 @@ Hooks.on('getSceneControlButtons', (controls: SceneControl[]) => {
       } else {
         // Fallback: Create a dedicated group if "sounds" layer is missing
         controls.push({
-          name: 'advanced-sound-engine',
-          title: 'Advanced Sound Engine',
+          name: 'sound-engine-master',
+          title: 'Sound Engine Master',
           icon: 'fas fa-music',
           visible: true,
           tools: aseTools
@@ -215,7 +215,7 @@ function registerHandlebarsHelpers(): void {
 // ─────────────────────────────────────────────────────────────
 
 Hooks.once('init', async () => {
-  Logger.info('Initializing Advanced Sound Engine...');
+  Logger.info('Initializing Sound Engine Master...');
   registerSettings();
   registerHandlebarsHelpers();
 
@@ -227,7 +227,7 @@ Hooks.once('init', async () => {
 
 Hooks.once('ready', async () => {
   const isGM = game.user?.isGM ?? false;
-  Logger.info(`Starting Advanced Sound Engine (${isGM ? 'GM' : 'Player'})...`);
+  Logger.info(`Starting Sound Engine Master (${isGM ? 'GM' : 'Player'})...`);
 
   // Initialize queue manager FIRST (needed by PlaybackScheduler)
   queueManager = new PlaybackQueueManager();
@@ -257,7 +257,7 @@ Hooks.once('ready', async () => {
   // Initialize and render HUD panel for both GM and Players
   initializeVolumeHud(isGM);
 
-  Logger.info('Advanced Sound Engine ready');
+  Logger.info('Sound Engine Master ready');
 });
 
 async function initializeGM(): Promise<void> {

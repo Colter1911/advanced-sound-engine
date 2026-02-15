@@ -1,15 +1,16 @@
 {
-  "id": "advanced-sound-engine",
-  "title": "Advanced Sound Engine",
+  "id": "sound-engine-master",
+  "title": "Sound Engine Master",
   "description": "Independent Web Audio engine with sync support",
-  "version": "0.1.0",
+  "version": "0.9.4",
   "compatibility": {
     "minimum": "13",
     "verified": "13.351"
   },
   "authors": [
     {
-      "name": "Your Name"
+      "name": "FriedDenD",
+      "url": "https://boosty.to/frieddend"
     }
   ],
   "esmodules": [

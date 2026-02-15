@@ -11,7 +11,7 @@ import type { PlaybackContext } from './PlaybackScheduler';
 import type { PlaybackScheduler } from './PlaybackScheduler';
 import type { SocketManager } from '../sync/SocketManager';
 
-const MODULE_ID = 'advanced-sound-engine';
+const MODULE_ID = 'sound-engine-master';
 
 function getMaxSimultaneous(): number {
   return ((game.settings as any).get(MODULE_ID, 'maxSimultaneousTracks') as number) || 8;

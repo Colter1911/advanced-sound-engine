@@ -56,7 +56,7 @@
   --ase-accent-cyan: #22d3ee;
   --ase-bg-deep: #050505;
 }
-#advanced-sound-engine-app,
+#sound-engine-master-app,
 .ase-window-layout,
 .ase-window-layout .window-content {
   padding: 0 !important;
@@ -1214,8 +1214,18 @@
   font-size: 9px;
   color: var(--text-muted);
   display: flex;
+  align-items: center;
   justify-content: flex-start;
   flex-shrink: 0;
+}
+.ase-creator-link {
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+.ase-creator-link:hover {
+  color: var(--ase-text-highlight);
+  text-decoration: underline;
 }
 /* Scrollbar styling */
 ::-webkit-scrollbar {
@@ -1237,10 +1247,10 @@
 .ase-window-layout ::-webkit-scrollbar-thumb:hover {
   background: var(--ase-border-accent);
 }
-#advanced-sound-engine-app *::-webkit-scrollbar-thumb {
+#sound-engine-master-app *::-webkit-scrollbar-thumb {
   background-color: var(--ase-border-gold) !important;
 }
-#advanced-sound-engine-app *::-webkit-scrollbar {
+#sound-engine-master-app *::-webkit-scrollbar {
   width: 6px;
   /* Force width */
 }

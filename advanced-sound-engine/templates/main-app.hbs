@@ -1,12 +1,4 @@
 <div class="ase-app-container">
-    <!-- Header -->
-    <header class="ase-top-bar">
-        <div class="ase-app-title">Sound Mixer (GM)</div>
-        <div class="ase-window-controls">
-            <!-- <i class="fa-solid fa-xmark"></i> -->
-        </div>
-    </header>
-
     <!-- Tabs -->
     <nav class="ase-main-tabs">
         <div class="ase-tab {{#if (eq activeTab 'mixer')}}active{{/if}}" data-tab="mixer" data-action="tab-switch">
@@ -115,8 +107,9 @@
 
     </footer>
     <div class="ase-bottom-bar-info">
-        <span>SoundKotz © Sound Advanced Mixer</span>
-        <span class="ase-version-label ase-ml-sm">v 0.1.0</span>
+        <a class="ase-creator-link" href="https://boosty.to/frieddend" target="_blank" rel="noopener noreferrer">
+            FriedDenD © Sound Engine Master v{{moduleVersion}}
+        </a>
         <span class="ase-ml-auto"><!-- Track count placeholder --></span>
     </div>
 </div>

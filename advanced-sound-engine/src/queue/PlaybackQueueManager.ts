@@ -3,7 +3,7 @@ import type { TrackGroup } from '@t/audio';
 import { generateUUID } from '@utils/uuid';
 import { Logger } from '../utils/logger';
 
-const MODULE_ID = 'advanced-sound-engine';
+const MODULE_ID = 'sound-engine-master';
 
 type QueueEventType = 'add' | 'remove' | 'change' | 'active';
 type QueueEventCallback = (data: { item?: QueueItem; items?: QueueItem[] }) => void;

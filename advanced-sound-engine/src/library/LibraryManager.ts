@@ -7,7 +7,7 @@ import { debounce } from '@utils/throttle';
 import { PlaylistManager } from './PlaylistManager';
 import { GlobalStorage } from '@storage/GlobalStorage';
 
-const MODULE_ID = 'advanced-sound-engine';
+const MODULE_ID = 'sound-engine-master';
 const LIBRARY_VERSION = 2;
 
 export class LibraryManager {

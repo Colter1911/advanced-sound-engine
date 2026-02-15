@@ -7,7 +7,7 @@ import { BUILTIN_PRESETS } from '@core/effects/presets';
 import type { TrackGroup } from '@t/audio';
 import { Logger } from '@utils/logger';
 
-const MODULE_ID = 'advanced-sound-engine';
+const MODULE_ID = 'sound-engine-master';
 
 // ─── Effect Metadata ──────────────────────────────────────────
 
@@ -76,6 +76,7 @@ export class SoundEffectsApp {
     private socket: SocketManager;
     private html: JQuery | null = null;
     private renderParent: (() => void) | null = null;
+    private isPedalKnobDragging: boolean = false;
 
     private activeChannel: TrackGroup = 'music';
     private selectedEffectType: EffectType | null = null;
@@ -229,8 +230,14 @@ export class SoundEffectsApp {
         html.off('click', '[data-action="add-effect"]').on('click', '[data-action="add-effect"]', (e) => this.onAddEffect(e));
 
         // Pedal knob drag (mix on card)
+        html.find('.ase-pedal-knob, .ase-pedal-knob *').prop('draggable', false);
+        html.find('.ase-pedal-knob-area, .ase-pedal-knob-area *').on('dragstart', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+        });
         html.find('.ase-pedal-knob').on('mousedown', (e) => {
             e.stopPropagation();
+            e.preventDefault();
             this.onKnobDrag(e, 'pedal');
         });
 
@@ -383,6 +390,19 @@ export class SoundEffectsApp {
 
     private onKnobDrag(event: JQuery.MouseDownEvent, source: 'pedal' | 'detail'): void {
         const $knob = $(event.currentTarget);
+        const restorePedalDraggable = () => {
+            if (this.html) {
+                this.html.find('.ase-pedal-card').prop('draggable', true);
+            }
+        };
+
+        if (source === 'pedal') {
+            this.isPedalKnobDragging = true;
+            if (this.html) {
+                this.html.find('.ase-pedal-card').prop('draggable', false);
+            }
+        }
+
         let effectType: EffectType;
 
         if (source === 'pedal') {
@@ -394,7 +414,13 @@ export class SoundEffectsApp {
 
         const chain = this.engine.getChain(this.activeChannel);
         const effect = chain.getEffect(effectType);
-        if (!effect) return;
+        if (!effect) {
+            if (source === 'pedal') {
+                this.isPedalKnobDragging = false;
+                restorePedalDraggable();
+            }
+            return;
+        }
 
         const startY = event.pageY;
         let currentMix = effect.mix;
@@ -423,6 +449,10 @@ export class SoundEffectsApp {
         const onMouseUp = () => {
             $(document).off('mousemove', onMouseMove as any);
             $(document).off('mouseup', onMouseUp as any);
+            if (source === 'pedal') {
+                this.isPedalKnobDragging = false;
+                restorePedalDraggable();
+            }
         };
 
         $(document).on('mousemove', onMouseMove as any);
@@ -487,11 +517,47 @@ export class SoundEffectsApp {
         const $pedalboard = html.find('.ase-pedalboard');
         if (!$pedalboard.length) return;
 
+        const rootEl = html.get(0) as HTMLElement | undefined;
+        if (rootEl) {
+            rootEl.addEventListener('dragstart', (e: DragEvent) => {
+                const target = e.target as HTMLElement | null;
+                if (this.isPedalKnobDragging || Boolean(target?.closest('.ase-pedal-knob-area'))) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }
+            }, true);
+        }
+
         let draggedType: string | null = null;
         let draggedIndex: number = -1;
 
         html.find('.ase-pedal-card').each((_, el) => {
+            const cardEl = el as HTMLElement;
+            let blockNextDragFromKnob = false;
+
+            cardEl.addEventListener('mousedown', (e: MouseEvent) => {
+                const target = e.target as HTMLElement | null;
+                blockNextDragFromKnob = Boolean(target?.closest('.ase-pedal-knob-area'));
+
+                if (blockNextDragFromKnob) {
+                    cardEl.draggable = false;
+                } else if (!this.isPedalKnobDragging) {
+                    cardEl.draggable = true;
+                }
+            }, true);
+
             el.addEventListener('dragstart', (e: DragEvent) => {
+                const dragTarget = e.target as HTMLElement | null;
+                if (
+                    this.isPedalKnobDragging ||
+                    blockNextDragFromKnob ||
+                    !cardEl.draggable ||
+                    Boolean(dragTarget?.closest('.ase-pedal-knob-area'))
+                ) {
+                    e.preventDefault();
+                    return;
+                }
+
                 if (!e.dataTransfer) return;
 
                 draggedType = el.dataset.effectType || null;
@@ -525,6 +591,8 @@ export class SoundEffectsApp {
             });
 
             el.addEventListener('dragend', () => {
+                blockNextDragFromKnob = false;
+                cardEl.draggable = true;
                 $(el).removeClass('dragging');
                 $pedalboard.removeClass('drag-active');
                 html.find('.ase-drop-zone').removeClass('drag-over no-op');

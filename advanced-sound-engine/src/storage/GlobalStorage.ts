@@ -4,19 +4,19 @@ import type { EffectPreset } from '@t/effects';
 import { DEFAULT_MIX } from '@t/effects';
 import { BUILTIN_PRESETS } from '@core/effects/presets';
 
-const MODULE_ID = 'advanced-sound-engine';
+const MODULE_ID = 'sound-engine-master';
 
 /**
  * GlobalStorage - Cross-world persistent storage using JSON files
  * 
- * Stores library data in Data/ase_library/library.json
+ * Stores library data in Data/sem_library/library.json
  * which persists across all worlds in Foundry and survives module updates
  */
 export class GlobalStorage {
-    private static readonly FILE_PATH = '/ase_library/library.json';
-    private static readonly PRESETS_FILE_PATH = '/ase_library/presets.json';
+    private static readonly FILE_PATH = '/sem_library/library.json';
+    private static readonly PRESETS_FILE_PATH = '/sem_library/presets.json';
     private static readonly FILE_SOURCE = 'data';
-    private static readonly DIRECTORY = 'ase_library';
+    private static readonly DIRECTORY = 'sem_library';
 
     /**
      * Load presets from global JSON file.
@@ -217,7 +217,7 @@ export class GlobalStorage {
 
             const itemCount = Array.isArray(state.items) ? state.items.length : Object.keys(state.items).length;
             Logger.info(`Migrated ${itemCount} items from world settings to global storage`);
-            ui.notifications?.info(`ASE: Library migrated to global storage (${itemCount} tracks)`);
+            ui.notifications?.info(`SEM: Library migrated to global storage (${itemCount} tracks)`);
 
             return true;
         } catch (error) {
@@ -232,7 +232,7 @@ export class GlobalStorage {
      */
     static async deletePhysicalFile(url: string): Promise<boolean> {
         if (!this.isOurFile(url)) {
-            Logger.warn('Cannot delete file not in ase_audio folder:', url);
+            Logger.warn('Cannot delete file not in sem_audio folder:', url);
             return false;
         }
 
@@ -278,12 +278,12 @@ export class GlobalStorage {
         const normalizedUrl = url.replace(/\\/g, '/').toLowerCase();
 
         // Check for our dedicated folder in various formats:
-        // - ase_audio/file.mp3
-        // - /ase_audio/file.mp3
-        // - Data/ase_audio/file.mp3
-        // - modules/advanced-sound-engine/ase_audio/file.mp3
-        return normalizedUrl.includes('ase_audio/') ||
-            normalizedUrl.includes('/ase_audio/') ||
-            normalizedUrl.endsWith('ase_audio');
+        // - sem_audio/file.mp3
+        // - /sem_audio/file.mp3
+        // - Data/sem_audio/file.mp3
+        // - modules/sound-engine-master/sem_audio/file.mp3
+        return normalizedUrl.includes('sem_audio/') ||
+            normalizedUrl.includes('/sem_audio/') ||
+            normalizedUrl.endsWith('sem_audio');
     }
 }

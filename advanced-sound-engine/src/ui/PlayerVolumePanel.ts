@@ -1,7 +1,7 @@
 import { PlayerAudioEngine } from '@core/PlayerAudioEngine';
 import { Logger } from '@utils/logger';
 
-const MODULE_ID = 'advanced-sound-engine';
+const MODULE_ID = 'sound-engine-master';
 
 export class PlayerVolumePanel extends Application {
   private engine: PlayerAudioEngine;

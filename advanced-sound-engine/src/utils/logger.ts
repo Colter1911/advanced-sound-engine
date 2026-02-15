@@ -1,5 +1,5 @@
-const PREFIX = 'ASE';
-const READY_MESSAGE = 'Advanced Sound Engine ready';
+const PREFIX = 'SEM';
+const READY_MESSAGE = 'Sound Engine Master ready';
 
 export const Logger = {
   info: (message: string): void => {

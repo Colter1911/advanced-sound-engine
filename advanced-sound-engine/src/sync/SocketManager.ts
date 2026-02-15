@@ -22,7 +22,7 @@ import { PlayerAudioEngine } from '@core/PlayerAudioEngine';
 import { Logger } from '@utils/logger';
 import { getServerTime } from '@utils/time';
 
-const MODULE_ID = 'advanced-sound-engine';
+const MODULE_ID = 'sound-engine-master';
 const SOCKET_NAME = `module.${MODULE_ID}`;
 
 export class SocketManager {

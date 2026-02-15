@@ -66,7 +66,7 @@
 }
 
 // Global Reset for the Module Window
-#advanced-sound-engine-app,
+#sound-engine-master-app,
 .ase-window-layout,
 .ase-window-layout .window-content {
   padding: 0 !important;
@@ -1424,8 +1424,20 @@
   font-size: 9px;
   color: var(--text-muted);
   display: flex;
+  align-items: center;
   justify-content: flex-start; // Allow spacing with margin-auto
   flex-shrink: 0;
+}
+
+.ase-creator-link {
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: color 0.15s ease;
+
+  &:hover {
+    color: var(--ase-text-highlight);
+    text-decoration: underline;
+  }
 }
 
 /* Scrollbar styling */
@@ -1456,12 +1468,12 @@
 }
 
 // Enforce scrollbar styling for Library App specifically using ID
-// Enforce scrollbar styling for Advanced Sound Engine App (Global, Aggressive)
-#advanced-sound-engine-app *::-webkit-scrollbar-thumb {
+// Enforce scrollbar styling for Sound Engine Master App (Global, Aggressive)
+#sound-engine-master-app *::-webkit-scrollbar-thumb {
   background-color: var(--ase-border-gold) !important;
 }
 
-#advanced-sound-engine-app *::-webkit-scrollbar {
+#sound-engine-master-app *::-webkit-scrollbar {
   width: 6px;
   /* Force width */
 }

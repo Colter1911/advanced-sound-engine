@@ -18,8 +18,8 @@ const DEFAULT_CHAIN_ORDER = [
   "delay",
   "reverb"
 ];
-const PREFIX = "ASE";
-const READY_MESSAGE = "Advanced Sound Engine ready";
+const PREFIX = "SEM";
+const READY_MESSAGE = "Sound Engine Master ready";
 const Logger = {
   info: /* @__PURE__ */ __name((message) => {
     if (message === READY_MESSAGE) {
@@ -1102,7 +1102,7 @@ function validateAudioFile(url) {
   };
 }
 __name(validateAudioFile, "validateAudioFile");
-const MODULE_ID$8 = "advanced-sound-engine";
+const MODULE_ID$8 = "sound-engine-master";
 function getMaxSimultaneous() {
   return game.settings.get(MODULE_ID$8, "maxSimultaneousTracks") || 8;
 }
@@ -1889,7 +1889,7 @@ const _PlayerAudioEngine = class _PlayerAudioEngine {
 };
 __name(_PlayerAudioEngine, "PlayerAudioEngine");
 let PlayerAudioEngine = _PlayerAudioEngine;
-const MODULE_ID$7 = "advanced-sound-engine";
+const MODULE_ID$7 = "sound-engine-master";
 const SOCKET_NAME = `module.${MODULE_ID$7}`;
 const _SocketManager = class _SocketManager {
   constructor() {
@@ -2185,7 +2185,7 @@ const _SocketManager = class _SocketManager {
 };
 __name(_SocketManager, "SocketManager");
 let SocketManager = _SocketManager;
-const MODULE_ID$6 = "advanced-sound-engine";
+const MODULE_ID$6 = "sound-engine-master";
 const _PlayerVolumePanel = class _PlayerVolumePanel extends Application {
   constructor(engine, options) {
     super(options);
@@ -2229,7 +2229,7 @@ const _PlayerVolumePanel = class _PlayerVolumePanel extends Application {
 };
 __name(_PlayerVolumePanel, "PlayerVolumePanel");
 let PlayerVolumePanel = _PlayerVolumePanel;
-const MODULE_ID$5 = "advanced-sound-engine";
+const MODULE_ID$5 = "sound-engine-master";
 const { ApplicationV2: ApplicationV2$1, HandlebarsApplicationMixin: HandlebarsApplicationMixin$1 } = foundry.applications.api;
 const _VolumeHudPanel = class _VolumeHudPanel extends HandlebarsApplicationMixin$1(ApplicationV2$1) {
   constructor(engine, playerEngine2, socket, openMainApp2, options = {}) {
@@ -2542,11 +2542,11 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
   static get defaultOptions() {
     return foundry.utils.mergeObject(super.defaultOptions, {
       id: "local-library",
-      template: "modules/advanced-sound-engine/templates/library.hbs",
+      template: "modules/sound-engine-master/templates/library.hbs",
       title: "Sound Library",
       width: 1100,
       height: 700,
-      classes: ["advanced-sound-engine", "library"],
+      classes: ["sound-engine-master", "library"],
       resizable: true,
       tabs: [{ navSelector: ".tabs", contentSelector: ".content", initial: "library" }]
     });
@@ -4090,7 +4090,7 @@ const _LocalLibraryApp = class _LocalLibraryApp extends Application {
       return;
     }
     const targetSource = "data";
-    const targetDir = "ase_audio";
+    const targetDir = "sem_audio";
     try {
       await FilePicker.createDirectory(targetSource, targetDir, {});
     } catch (err) {
@@ -6322,7 +6322,7 @@ const BUILTIN_PRESETS = [
     )
   }
 ];
-const MODULE_ID$4 = "advanced-sound-engine";
+const MODULE_ID$4 = "sound-engine-master";
 const _GlobalStorage = class _GlobalStorage {
   /**
    * Load presets from global JSON file.
@@ -6489,7 +6489,7 @@ const _GlobalStorage = class _GlobalStorage {
       await this.save(state);
       const itemCount = Array.isArray(state.items) ? state.items.length : Object.keys(state.items).length;
       Logger.info(`Migrated ${itemCount} items from world settings to global storage`);
-      (_b = ui.notifications) == null ? void 0 : _b.info(`ASE: Library migrated to global storage (${itemCount} tracks)`);
+      (_b = ui.notifications) == null ? void 0 : _b.info(`SEM: Library migrated to global storage (${itemCount} tracks)`);
       return true;
     } catch (error) {
       Logger.error("Migration from world settings failed:", error);
@@ -6503,7 +6503,7 @@ const _GlobalStorage = class _GlobalStorage {
   static async deletePhysicalFile(url) {
     var _a2, _b;
     if (!this.isOurFile(url)) {
-      Logger.warn("Cannot delete file not in ase_audio folder:", url);
+      Logger.warn("Cannot delete file not in sem_audio folder:", url);
       return false;
     }
     if (!((_a2 = game.user) == null ? void 0 : _a2.isGM)) {
@@ -6539,14 +6539,14 @@ const _GlobalStorage = class _GlobalStorage {
    */
   static isOurFile(url) {
     const normalizedUrl = url.replace(/\\/g, "/").toLowerCase();
-    return normalizedUrl.includes("ase_audio/") || normalizedUrl.includes("/ase_audio/") || normalizedUrl.endsWith("ase_audio");
+    return normalizedUrl.includes("sem_audio/") || normalizedUrl.includes("/sem_audio/") || normalizedUrl.endsWith("sem_audio");
   }
 };
 __name(_GlobalStorage, "GlobalStorage");
-__publicField(_GlobalStorage, "FILE_PATH", "/ase_library/library.json");
-__publicField(_GlobalStorage, "PRESETS_FILE_PATH", "/ase_library/presets.json");
+__publicField(_GlobalStorage, "FILE_PATH", "/sem_library/library.json");
+__publicField(_GlobalStorage, "PRESETS_FILE_PATH", "/sem_library/presets.json");
 __publicField(_GlobalStorage, "FILE_SOURCE", "data");
-__publicField(_GlobalStorage, "DIRECTORY", "ase_library");
+__publicField(_GlobalStorage, "DIRECTORY", "sem_library");
 let GlobalStorage = _GlobalStorage;
 const ALL_EFFECT_TYPES = ["filter", "compressor", "distortion", "delay", "reverb"];
 const EFFECT_META = {
@@ -6563,6 +6563,7 @@ const _SoundEffectsApp = class _SoundEffectsApp {
     __publicField(this, "socket");
     __publicField(this, "html", null);
     __publicField(this, "renderParent", null);
+    __publicField(this, "isPedalKnobDragging", false);
     __publicField(this, "activeChannel", "music");
     __publicField(this, "selectedEffectType", null);
     __publicField(this, "constructorOpen", false);
@@ -6688,8 +6689,14 @@ const _SoundEffectsApp = class _SoundEffectsApp {
     html.off("click", '[data-action="open-constructor"]').on("click", '[data-action="open-constructor"]', () => this.onOpenConstructor());
     html.off("click", '[data-action="close-constructor"]').on("click", '[data-action="close-constructor"]', () => this.onCloseConstructor());
     html.off("click", '[data-action="add-effect"]').on("click", '[data-action="add-effect"]', (e) => this.onAddEffect(e));
+    html.find(".ase-pedal-knob, .ase-pedal-knob *").prop("draggable", false);
+    html.find(".ase-pedal-knob-area, .ase-pedal-knob-area *").on("dragstart", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+    });
     html.find(".ase-pedal-knob").on("mousedown", (e) => {
       e.stopPropagation();
+      e.preventDefault();
       this.onKnobDrag(e, "pedal");
     });
     html.find(".ase-detail-knob").on("mousedown", (e) => this.onKnobDrag(e, "detail"));
@@ -6802,6 +6809,17 @@ const _SoundEffectsApp = class _SoundEffectsApp {
   // ─────────────────────────────────────────────────────────────
   onKnobDrag(event, source) {
     const $knob = $(event.currentTarget);
+    const restorePedalDraggable = /* @__PURE__ */ __name(() => {
+      if (this.html) {
+        this.html.find(".ase-pedal-card").prop("draggable", true);
+      }
+    }, "restorePedalDraggable");
+    if (source === "pedal") {
+      this.isPedalKnobDragging = true;
+      if (this.html) {
+        this.html.find(".ase-pedal-card").prop("draggable", false);
+      }
+    }
     let effectType;
     if (source === "pedal") {
       effectType = $knob.closest(".ase-pedal-card").data("effect-type");
@@ -6811,7 +6829,13 @@ const _SoundEffectsApp = class _SoundEffectsApp {
     }
     const chain = this.engine.getChain(this.activeChannel);
     const effect = chain.getEffect(effectType);
-    if (!effect) return;
+    if (!effect) {
+      if (source === "pedal") {
+        this.isPedalKnobDragging = false;
+        restorePedalDraggable();
+      }
+      return;
+    }
     const startY = event.pageY;
     let currentMix = effect.mix;
     const onMouseMove = /* @__PURE__ */ __name((moveEvent) => {
@@ -6833,6 +6857,10 @@ const _SoundEffectsApp = class _SoundEffectsApp {
     const onMouseUp = /* @__PURE__ */ __name(() => {
       $(document).off("mousemove", onMouseMove);
       $(document).off("mouseup", onMouseUp);
+      if (source === "pedal") {
+        this.isPedalKnobDragging = false;
+        restorePedalDraggable();
+      }
     }, "onMouseUp");
     $(document).on("mousemove", onMouseMove);
     $(document).on("mouseup", onMouseUp);
@@ -6878,10 +6906,36 @@ const _SoundEffectsApp = class _SoundEffectsApp {
   initDragAndDrop(html) {
     const $pedalboard = html.find(".ase-pedalboard");
     if (!$pedalboard.length) return;
+    const rootEl = html.get(0);
+    if (rootEl) {
+      rootEl.addEventListener("dragstart", (e) => {
+        const target = e.target;
+        if (this.isPedalKnobDragging || Boolean(target == null ? void 0 : target.closest(".ase-pedal-knob-area"))) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      }, true);
+    }
     let draggedType = null;
     let draggedIndex = -1;
     html.find(".ase-pedal-card").each((_, el) => {
+      const cardEl = el;
+      let blockNextDragFromKnob = false;
+      cardEl.addEventListener("mousedown", (e) => {
+        const target = e.target;
+        blockNextDragFromKnob = Boolean(target == null ? void 0 : target.closest(".ase-pedal-knob-area"));
+        if (blockNextDragFromKnob) {
+          cardEl.draggable = false;
+        } else if (!this.isPedalKnobDragging) {
+          cardEl.draggable = true;
+        }
+      }, true);
       el.addEventListener("dragstart", (e) => {
+        const dragTarget = e.target;
+        if (this.isPedalKnobDragging || blockNextDragFromKnob || !cardEl.draggable || Boolean(dragTarget == null ? void 0 : dragTarget.closest(".ase-pedal-knob-area"))) {
+          e.preventDefault();
+          return;
+        }
         if (!e.dataTransfer) return;
         draggedType = el.dataset.effectType || null;
         draggedIndex = parseInt(el.dataset.chainIndex || "-1", 10);
@@ -6907,6 +6961,8 @@ const _SoundEffectsApp = class _SoundEffectsApp {
         });
       });
       el.addEventListener("dragend", () => {
+        blockNextDragFromKnob = false;
+        cardEl.draggable = true;
         $(el).removeClass("dragging");
         $pedalboard.removeClass("drag-active");
         html.find(".ase-drop-zone").removeClass("drag-over no-op");
@@ -7028,7 +7084,7 @@ const _SoundEffectsApp = class _SoundEffectsApp {
 };
 __name(_SoundEffectsApp, "SoundEffectsApp");
 let SoundEffectsApp = _SoundEffectsApp;
-const MODULE_ID$3 = "advanced-sound-engine";
+const MODULE_ID$3 = "sound-engine-master";
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 const _AdvancedSoundEngineApp = class _AdvancedSoundEngineApp extends HandlebarsApplicationMixin(ApplicationV2) {
   constructor(engine, socket, libraryManager2, queueManager2, options = {}) {
@@ -7101,6 +7157,8 @@ const _AdvancedSoundEngineApp = class _AdvancedSoundEngineApp extends Handlebars
    * V2 Context Preparation (replaces getData)
    */
   async _prepareContext(options) {
+    var _a2, _b, _c;
+    const moduleVersion = ((_c = (_b = (_a2 = globalThis.game) == null ? void 0 : _a2.modules) == null ? void 0 : _b.get(MODULE_ID$3)) == null ? void 0 : _c.version) ?? "0.0.0";
     const volumes = this.engine.volumes;
     const getChannelStatus = /* @__PURE__ */ __name((group) => {
       const tracks = this.engine.getTracksByGroup(group);
@@ -7118,7 +7176,7 @@ const _AdvancedSoundEngineApp = class _AdvancedSoundEngineApp extends Handlebars
     let tabContent = "";
     if (this.state.activeTab === "library") {
       const libData = await this.libraryApp.getData();
-      tabContent = await renderTemplate("modules/advanced-sound-engine/templates/library.hbs", libData);
+      tabContent = await renderTemplate("modules/sound-engine-master/templates/library.hbs", libData);
     } else if (this.state.activeTab === "mixer") {
       const mixerData = await this.mixerApp.getData();
       tabContent = await renderTemplate(`modules/${MODULE_ID$3}/templates/mixer.hbs`, mixerData);
@@ -7145,7 +7203,8 @@ const _AdvancedSoundEngineApp = class _AdvancedSoundEngineApp extends Handlebars
         { id: "mixer", label: "Mixer", icon: "fas fa-sliders-h", active: this.state.activeTab === "mixer" },
         { id: "sfx", label: "Effects", icon: "fas fa-wave-square", active: this.state.activeTab === "sfx" },
         { id: "online", label: "Online", icon: "fas fa-globe", active: this.state.activeTab === "online" }
-      ]
+      ],
+      moduleVersion
     };
   }
   /**
@@ -7315,10 +7374,10 @@ __publicField(_AdvancedSoundEngineApp, "PARTS", {
   }
 });
 __publicField(_AdvancedSoundEngineApp, "DEFAULT_OPTIONS", {
-  id: "advanced-sound-engine-app",
+  id: "sound-engine-master-app",
   tag: "form",
   window: {
-    title: "Advanced Sound Engine",
+    title: "Sound Engine Master",
     icon: "fas fa-music",
     resizable: true,
     controls: []
@@ -7678,7 +7737,7 @@ const _PlaylistManager = class _PlaylistManager {
 };
 __name(_PlaylistManager, "PlaylistManager");
 let PlaylistManager = _PlaylistManager;
-const MODULE_ID$2 = "advanced-sound-engine";
+const MODULE_ID$2 = "sound-engine-master";
 const LIBRARY_VERSION = 2;
 const _LibraryManager = class _LibraryManager {
   constructor() {
@@ -8252,7 +8311,7 @@ const _LibraryManager = class _LibraryManager {
 };
 __name(_LibraryManager, "LibraryManager");
 let LibraryManager = _LibraryManager;
-const MODULE_ID$1 = "advanced-sound-engine";
+const MODULE_ID$1 = "sound-engine-master";
 const _PlaybackQueueManager = class _PlaybackQueueManager {
   constructor() {
     __publicField(this, "items", []);
@@ -8874,7 +8933,7 @@ const _PlaybackScheduler = class _PlaybackScheduler {
 };
 __name(_PlaybackScheduler, "PlaybackScheduler");
 let PlaybackScheduler = _PlaybackScheduler;
-const MODULE_ID = "advanced-sound-engine";
+const MODULE_ID = "sound-engine-master";
 let gmEngine = null;
 let mainApp = null;
 let libraryManager = null;
@@ -8899,7 +8958,7 @@ Hooks.on("getSceneControlButtons", (controls) => {
           if (window.ASE) {
             window.ASE.openPanel();
           } else {
-            Logger.error("Window.ASE is undefined!");
+            Logger.error("Sound Engine namespace is undefined!");
           }
         }, "onClick")
       }
@@ -8915,7 +8974,7 @@ Hooks.on("getSceneControlButtons", (controls) => {
           if (window.ASE && window.ASE.openLibrary) {
             window.ASE.openLibrary();
           } else {
-            Logger.error("Window.ASE or openLibrary undefined");
+            Logger.error("Sound Engine namespace or openLibrary is undefined");
           }
         }, "onClick")
       });
@@ -8927,9 +8986,9 @@ Hooks.on("getSceneControlButtons", (controls) => {
         soundsLayer.tools.push(...aseTools);
         Logger.info('Added tools to "sounds" layer (V13 Object Mode)');
       } else {
-        controls["advanced-sound-engine"] = {
-          name: "advanced-sound-engine",
-          title: "Advanced Sound Engine",
+        controls["sound-engine-master"] = {
+          name: "sound-engine-master",
+          title: "Sound Engine Master",
           icon: "fas fa-music",
           visible: true,
           tools: aseTools
@@ -8944,8 +9003,8 @@ Hooks.on("getSceneControlButtons", (controls) => {
         soundsLayer.tools.push(...aseTools);
       } else {
         controls.push({
-          name: "advanced-sound-engine",
-          title: "Advanced Sound Engine",
+          name: "sound-engine-master",
+          title: "Sound Engine Master",
           icon: "fas fa-music",
           visible: true,
           tools: aseTools
@@ -9010,7 +9069,7 @@ function registerHandlebarsHelpers() {
 }
 __name(registerHandlebarsHelpers, "registerHandlebarsHelpers");
 Hooks.once("init", async () => {
-  Logger.info("Initializing Advanced Sound Engine...");
+  Logger.info("Initializing Sound Engine Master...");
   registerSettings();
   registerHandlebarsHelpers();
   await loadTemplates([
@@ -9020,7 +9079,7 @@ Hooks.once("init", async () => {
 Hooks.once("ready", async () => {
   var _a2;
   const isGM = ((_a2 = game.user) == null ? void 0 : _a2.isGM) ?? false;
-  Logger.info(`Starting Advanced Sound Engine (${isGM ? "GM" : "Player"})...`);
+  Logger.info(`Starting Sound Engine Master (${isGM ? "GM" : "Player"})...`);
   queueManager = new PlaybackQueueManager();
   await queueManager.load();
   socketManager = new SocketManager();
@@ -9041,7 +9100,7 @@ Hooks.once("ready", async () => {
   };
   setupAutoplayHandler();
   initializeVolumeHud(isGM);
-  Logger.info("Advanced Sound Engine ready");
+  Logger.info("Sound Engine Master ready");
 });
 async function initializeGM() {
   libraryManager = new LibraryManager();

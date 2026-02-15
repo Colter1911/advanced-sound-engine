@@ -10,7 +10,7 @@ import { Logger } from '@utils/logger';
 import { formatTime } from '@utils/time';
 import type { PlaybackContext } from '@core/PlaybackScheduler';
 
-const MODULE_ID = 'advanced-sound-engine';
+const MODULE_ID = 'sound-engine-master';
 
 // ─────────────────────────────────────────────────────────────
 // Types for Mixer View Data

@@ -7,7 +7,7 @@ import { SoundMixerApp } from './SoundMixerApp';
 import { SoundEffectsApp } from './SoundEffectsApp';
 import { Logger } from '@utils/logger';
 
-const MODULE_ID = 'advanced-sound-engine';
+const MODULE_ID = 'sound-engine-master';
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -47,10 +47,10 @@ export class AdvancedSoundEngineApp extends HandlebarsApplicationMixin(Applicati
     };
 
     static override DEFAULT_OPTIONS = {
-        id: 'advanced-sound-engine-app',
+        id: 'sound-engine-master-app',
         tag: 'form',
         window: {
-            title: 'Advanced Sound Engine',
+            title: 'Sound Engine Master',
             icon: 'fas fa-music',
             resizable: true,
             controls: []
@@ -109,6 +109,7 @@ export class AdvancedSoundEngineApp extends HandlebarsApplicationMixin(Applicati
      * V2 Context Preparation (replaces getData)
      */
     protected override async _prepareContext(options: any): Promise<any> {
+        const moduleVersion = globalThis.game?.modules?.get(MODULE_ID)?.version ?? '0.0.0';
         const volumes = this.engine.volumes;
 
         // Helper to check channel status
@@ -134,7 +135,7 @@ export class AdvancedSoundEngineApp extends HandlebarsApplicationMixin(Applicati
         let tabContent = '';
         if (this.state.activeTab === 'library') {
             const libData = await this.libraryApp.getData();
-            tabContent = await renderTemplate('modules/advanced-sound-engine/templates/library.hbs', libData as any);
+            tabContent = await renderTemplate('modules/sound-engine-master/templates/library.hbs', libData as any);
         } else if (this.state.activeTab === 'mixer') {
             const mixerData = await this.mixerApp.getData();
             tabContent = await renderTemplate(`modules/${MODULE_ID}/templates/mixer.hbs`, mixerData as any);
@@ -162,7 +163,8 @@ export class AdvancedSoundEngineApp extends HandlebarsApplicationMixin(Applicati
                 { id: 'mixer', label: 'Mixer', icon: 'fas fa-sliders-h', active: this.state.activeTab === 'mixer' },
                 { id: 'sfx', label: 'Effects', icon: 'fas fa-wave-square', active: this.state.activeTab === 'sfx' },
                 { id: 'online', label: 'Online', icon: 'fas fa-globe', active: this.state.activeTab === 'online' }
-            ]
+            ],
+            moduleVersion
         };
     }
 

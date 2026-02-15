@@ -4,7 +4,7 @@ import { LibraryManager } from '@lib/LibraryManager';
 import { Logger } from '@utils/logger';
 import { formatTime } from '@utils/time';
 
-const MODULE_ID = 'advanced-sound-engine';
+const MODULE_ID = 'sound-engine-master';
 
 interface FilterState {
   searchQuery: string;
@@ -85,11 +85,11 @@ export class LocalLibraryApp extends Application {
   static override get defaultOptions() {
     return foundry.utils.mergeObject(super.defaultOptions, {
       id: 'local-library',
-      template: 'modules/advanced-sound-engine/templates/library.hbs',
+      template: 'modules/sound-engine-master/templates/library.hbs',
       title: 'Sound Library',
       width: 1100,
       height: 700,
-      classes: ['advanced-sound-engine', 'library'],
+      classes: ['sound-engine-master', 'library'],
       resizable: true,
       tabs: [{ navSelector: '.tabs', contentSelector: '.content', initial: 'library' }]
     });
@@ -2151,9 +2151,9 @@ export class LocalLibraryApp extends Application {
       return;
     }
 
-    // Upload to dedicated ase_audio folder (separate from worlds and modules)
+    // Upload to dedicated sem_audio folder (separate from worlds and modules)
     const targetSource = 'data';
-    const targetDir = 'ase_audio';
+    const targetDir = 'sem_audio';
 
     // Ensure directory exists (create if needed)
     try {

@@ -3,7 +3,7 @@ import { PlayerAudioEngine } from '@core/PlayerAudioEngine';
 import { SocketManager } from '@sync/SocketManager';
 import { Logger } from '@utils/logger';
 
-const MODULE_ID = 'advanced-sound-engine';
+const MODULE_ID = 'sound-engine-master';
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
 interface VolumeHudState {
